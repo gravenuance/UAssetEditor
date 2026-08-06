@@ -180,9 +180,12 @@
                             Margin="4,0" Padding="8,2" />
                 </WrapPanel>
 
-                <GroupBox Header="Search results (Value is directly editable, in place, across any number of rows/assets)" Grid.Row="1" Padding="6">
+                <GroupBox Header="Search results (Value is directly editable, in place, across any number of rows/assets)" Grid.Row="1" Padding="6"
+                          ToolTip="Edited rows are highlighted until you click Save All Edited, which writes every edit to disk at once.">
                     <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" IsEnabled="{Binding IsIdle}">
                         <DataGrid.RowStyle>
+                            <!-- No visible "dirty" indicator/column - just a quiet highlight on rows with an
+                                 edit not yet written to disk, so nothing needs explaining to use the grid. -->
                             <Style TargetType="DataGridRow">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsDirty}" Value="True">
@@ -192,7 +195,6 @@
                             </Style>
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
-                            <DataGridCheckBoxColumn Header="Dirty" Binding="{Binding IsDirty}" IsReadOnly="True" Width="50" />
                             <DataGridTextColumn Header="Export" Binding="{Binding ExportName}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Property" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*">
