@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using UAssetEditor.App.ViewModels;
@@ -36,8 +37,19 @@ public partial class MainWindow : Window
         if (DataContext is not MainViewModel viewModel) return;
         if (AssetTree.SelectedItem is not AssetTreeItemViewModel item) return;
 
+        // A no-op for any node kind other than Export (Folder/Asset/ExportsGroup just
+        // expand/collapse via the TreeView's own default double-click behavior).
         if (viewModel.OpenFromTreeCommand.CanExecute(item))
             viewModel.OpenFromTreeCommand.Execute(item);
+    }
+
+    /// <summary>Lazily populates an "Exports" tree node with real per-export children the first time it's expanded.</summary>
+    private async void AssetTree_Expanded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        if (e.OriginalSource is not TreeViewItem { DataContext: AssetTreeItemViewModel { Kind: TreeNodeKind.ExportsGroup } item }) return;
+
+        await viewModel.LoadExportsAsync(item);
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);

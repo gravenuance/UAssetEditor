@@ -6,7 +6,11 @@ namespace UAssetEditor.Core.AssetSources;
 
 /// <summary>
 /// Reads and writes .uasset files that sit as loose files under a root folder
-/// (as opposed to being packed inside a .pak/.utoc archive).
+/// (as opposed to being packed inside a .pak/.utoc archive). Asset-path identity is
+/// root-relative (e.g. "Game/Content/Foo.uasset"), mirroring how <see cref="PakAssetSource"/>
+/// already treats its paths as pak-relative, so a loose-folder tree and a pak tree branch
+/// identically for an equivalent layout. Resolved to an absolute path only where real
+/// file I/O actually happens.
 /// </summary>
 public sealed class LooseFolderAssetSource : IAssetSource
 {
@@ -18,16 +22,25 @@ public sealed class LooseFolderAssetSource : IAssetSource
     }
 
     public IEnumerable<string> EnumerateAssetPaths() =>
-        Directory.EnumerateFiles(_rootPath, "*.uasset", SearchOption.AllDirectories);
+        Directory.EnumerateFiles(_rootPath, "*.uasset", SearchOption.AllDirectories)
+            .Select(ToRelativePath);
 
     public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings) =>
-        ResilientAssetLoader.Open(assetPath, engineVersion, mappings);
+        ResilientAssetLoader.Open(ToAbsolutePath(assetPath), engineVersion, mappings);
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)
     {
-        if (createBackup)
-            File.Copy(assetPath, BackupPathResolver.Resolve(assetPath, backupFolder), overwrite: true);
+        var absolutePath = ToAbsolutePath(assetPath);
 
-        asset.Write(assetPath);
+        if (createBackup)
+            File.Copy(absolutePath, BackupPathResolver.Resolve(absolutePath, backupFolder), overwrite: true);
+
+        asset.Write(absolutePath);
     }
+
+    private string ToRelativePath(string absolutePath) =>
+        Path.GetRelativePath(_rootPath, absolutePath).Replace(Path.DirectorySeparatorChar, '/');
+
+    private string ToAbsolutePath(string relativePath) =>
+        Path.Combine(_rootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
 }

@@ -34,6 +34,20 @@ public class SearchServiceTests
     }
 
     [Fact]
+    public void PropertiesForExport_ReturnsOnlyThatExportsProperties()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, exportName: "First");
+        TestAssets.CreateSampleExport(asset, exportName: "Second");
+
+        var results = new SearchService().PropertiesForExport(asset, "Fake/Path.uasset", 1).ToList();
+
+        Assert.NotEmpty(results);
+        Assert.All(results, r => Assert.Equal("Second", r.ExportName));
+        Assert.All(results, r => Assert.Equal(1, r.ExportIndex));
+    }
+
+    [Fact]
     public void AllProperties_ReturnsEveryPropertyRegardlessOfAnyQuery()
     {
         var asset = TestAssets.CreateAsset();

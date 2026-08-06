@@ -56,7 +56,7 @@
             </Grid.RowDefinitions>
 
             <!-- Source / versioning / session settings -->
-            <GroupBox Header="Asset source" Grid.Row="0" Margin="0,0,0,8">
+            <GroupBox Header="Asset source" Grid.Row="0" Margin="0,0,0,8" Padding="8">
             <StackPanel>
                 <WrapPanel Orientation="Horizontal">
                     <TextBlock Text="Root folder:" VerticalAlignment="Center" Margin="4" />
@@ -72,6 +72,11 @@
                     <Button Content="Open Pak" Command="{Binding OpenPakCommand}" Margin="4" Padding="8,2" />
                     <Button Content="Repack..." Command="{Binding RepackCommand}" Margin="4" Padding="8,2"
                             Visibility="{Binding IsPakBacked, Converter={StaticResource BoolToVisibility}}" />
+
+                    <TextBlock Text=".uasset file:" VerticalAlignment="Center" Margin="16,4,4,4" />
+                    <TextBox Text="{Binding SingleFilePath, UpdateSourceTrigger=PropertyChanged}" Width="220" VerticalAlignment="Center" Margin="4" />
+                    <Button Content="Browse..." Command="{Binding BrowseSingleFileCommand}" Margin="4" Padding="8,2" />
+                    <Button Content="Open File" Command="{Binding OpenFileCommand}" Margin="4" Padding="8,2" ToolTip="Open one loose .uasset file directly" />
                 </WrapPanel>
                 <WrapPanel Orientation="Horizontal" Margin="0,4,0,0">
                     <TextBlock Text="Engine version:" VerticalAlignment="Center" Margin="4" />
@@ -96,7 +101,7 @@
         </GroupBox>
 
         <!-- Search / edit scope: one condition list per dimension, AND/OR per list -->
-        <GroupBox Header="Search / edit scope (one condition per line)" Grid.Row="1" Margin="0,0,0,8">
+        <GroupBox Header="Search / edit scope (one condition per line)" Grid.Row="1" Margin="0,0,0,8" Padding="8">
             <UniformGrid Columns="4" Rows="1">
                 <StackPanel Margin="4">
                     <TextBlock Text="Export (entry) name contains:" />
@@ -135,8 +140,9 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="Browse (double-click a .uasset to open it)" Grid.Column="0">
-                <TreeView x:Name="AssetTree" ItemsSource="{Binding RootTreeItems}" MouseDoubleClick="AssetTree_MouseDoubleClick">
+            <GroupBox Header="Browse (double-click an export to open it)" Grid.Column="0" Padding="6">
+                <TreeView x:Name="AssetTree" ItemsSource="{Binding RootTreeItems}"
+                          MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
                     <TreeView.ItemTemplate>
                         <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                             <TextBlock Text="{Binding Name}" />
@@ -163,7 +169,7 @@
                             Margin="4,0" Padding="8,2" />
                 </WrapPanel>
 
-                <GroupBox Header="Search results (Value is directly editable, in place, across any number of rows/assets)" Grid.Row="1">
+                <GroupBox Header="Search results (Value is directly editable, in place, across any number of rows/assets)" Grid.Row="1" Padding="6">
                     <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" IsEnabled="{Binding IsIdle}">
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow">
@@ -176,7 +182,8 @@
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
                             <DataGridCheckBoxColumn Header="Dirty" Binding="{Binding IsDirty}" IsReadOnly="True" Width="50" />
-                            <DataGridTextColumn Header="Asset" Binding="{Binding AssetPath}" IsReadOnly="True" Width="2*" />
+                            <DataGridTextColumn Header="Asset" Binding="{Binding AssetPath}" IsReadOnly="True" Width="2*"
+                                                 Visibility="{Binding DataContext.ShowAssetColumn, ElementName=ResultsGrid, Converter={StaticResource BoolToVisibility}}" />
                             <DataGridTextColumn Header="Export" Binding="{Binding ExportName}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Property" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*">
@@ -207,7 +214,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <GroupBox Header="Batch edit rules (applied to every asset under Root folder / pak matching the scope above)" Grid.Row="0" Margin="0,0,0,8">
+                <GroupBox Header="Batch edit rules (applied to every asset under Root folder / pak matching the scope above)" Grid.Row="0" Margin="0,0,0,8" Padding="8">
                     <StackPanel>
                         <WrapPanel>
                             <ComboBox ItemsSource="{Binding RuleKinds}" SelectedItem="{Binding SelectedRuleKind}" Width="130" Margin="4" />
@@ -241,7 +248,7 @@
                     </StackPanel>
                 </GroupBox>
 
-                <GroupBox Header="Preview (old -&gt; new)" Grid.Row="1">
+                <GroupBox Header="Preview (old -&gt; new)" Grid.Row="1" Padding="6">
                     <DataGrid ItemsSource="{Binding PreviewChanges}" AutoGenerateColumns="False" IsReadOnly="True">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Asset" Binding="{Binding AssetPath}" Width="2*" />
@@ -256,7 +263,7 @@
         </Grid>
 
         <!-- Status bar -->
-        <DockPanel Grid.Row="3" Margin="0,8,0,0">
+        <DockPanel Grid.Row="3" Margin="4,8,4,4">
             <TextBlock Text="{Binding StatusMessage}" DockPanel.Dock="Left" VerticalAlignment="Center" />
             <ProgressBar Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressCompleted}"
                          Width="300" Height="16" DockPanel.Dock="Right" Margin="8,0,0,0"

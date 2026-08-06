@@ -21,24 +21,34 @@ public sealed class SearchService
     public IEnumerable<SearchResult> AllProperties(UAsset asset, string assetPath)
     {
         for (var e = 0; e < asset.Exports.Count; e++)
+            foreach (var result in PropertiesForExport(asset, assetPath, e))
+                yield return result;
+    }
+
+    /// <summary>
+    /// Same per-export logic as <see cref="AllProperties"/>, scoped to exactly one
+    /// export - used when browsing the tree drills into a single export instead of
+    /// wanting every export's properties at once (which, for an asset with many exports,
+    /// can be tens of thousands of rows).
+    /// </summary>
+    public IEnumerable<SearchResult> PropertiesForExport(UAsset asset, string assetPath, int exportIndex)
+    {
+        var export = asset.Exports[exportIndex];
+        var exportName = export.ObjectName.Value?.Value ?? "";
+
+        if (export is RawExport rawExport)
         {
-            var export = asset.Exports[e];
-            var exportName = export.ObjectName.Value?.Value ?? "";
+            yield return new SearchResult(assetPath, exportIndex, exportName, SearchMatchKind.Unsupported, null,
+                $"Could not be parsed into properties ({rawExport.Data.Length} raw byte(s)) - not editable.");
+            yield break;
+        }
 
-            if (export is RawExport rawExport)
-            {
-                yield return new SearchResult(assetPath, e, exportName, SearchMatchKind.Unsupported, null,
-                    $"Could not be parsed into properties ({rawExport.Data.Length} raw byte(s)) - not editable.");
-                continue;
-            }
+        if (export is not NormalExport normalExport) yield break;
 
-            if (export is not NormalExport normalExport) continue;
-
-            foreach (var node in PropertyWalker.Walk(normalExport))
-            {
-                var text = PropertyValueAccessor.AsSearchableString(node.Property, asset);
-                yield return new SearchResult(assetPath, e, exportName, SearchMatchKind.Property, node.Path, text ?? "");
-            }
+        foreach (var node in PropertyWalker.Walk(normalExport))
+        {
+            var text = PropertyValueAccessor.AsSearchableString(node.Property, asset);
+            yield return new SearchResult(assetPath, exportIndex, exportName, SearchMatchKind.Property, node.Path, text ?? "");
         }
     }
 
