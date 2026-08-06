@@ -253,8 +253,10 @@
                                 <TextBlock Text="Operation:" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
                                 <ComboBox ItemsSource="{Binding NumericOperations}" SelectedItem="{Binding RuleOperation}" />
                             </StackPanel>
-                            <CheckBox Content="Regex" IsChecked="{Binding RuleIsRegex}" VerticalAlignment="Center" Margin="4"
-                                      Visibility="{Binding ShowRuleRegex, Converter={StaticResource BoolToVisibility}}" />
+                            <StackPanel Margin="4" VerticalAlignment="Top" Visibility="{Binding ShowRuleRegex, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text=" " FontSize="10" />
+                                <CheckBox Content="Regex" VerticalAlignment="Center" Margin="0,3,0,0" IsChecked="{Binding RuleIsRegex}" />
+                            </StackPanel>
                         </WrapPanel>
                         <WrapPanel>
                             <CheckBox Content="Skip if current value" IsChecked="{Binding RuleUseSkip}" VerticalAlignment="Center" Margin="4" />
