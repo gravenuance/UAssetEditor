@@ -169,7 +169,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <WrapPanel Grid.Row="0" Margin="0,0,0,4" Background="{StaticResource Mono.Background}">
+                <WrapPanel Grid.Row="0" Margin="0,0,0,4" Background="{StaticResource Mono.Background}" HorizontalAlignment="Center">
                     <Button Content="Search" Command="{Binding SearchCommand}" Margin="0,0,4,0" Padding="12,2" />
                     <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4,0" Padding="12,2" Style="{StaticResource Mono.AccentButton}"
                             Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
@@ -229,7 +229,8 @@
                 <GroupBox Header="Batch edit rules (applied to every asset in the loaded source matching the scope above)" Grid.Row="0" Margin="0,0,0,8" Padding="8">
                     <StackPanel>
                         <WrapPanel>
-                            <StackPanel Margin="4" Width="150">
+                            <StackPanel Margin="4" Width="140">
+                                <TextBlock Text="Action:" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
                                 <ComboBox ItemsSource="{Binding RuleKindOptions}" SelectedValuePath="Value" SelectedValue="{Binding SelectedRuleKind}">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
@@ -240,10 +241,20 @@
                                 <TextBlock Text="{Binding SelectedRuleKindDescription}" TextWrapping="Wrap" FontStyle="Italic"
                                            Foreground="{StaticResource Mono.Muted}" FontSize="10" Margin="0,2,0,0" />
                             </StackPanel>
-                            <TextBox Text="{Binding RuleValue1, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="4" ToolTip="Value / pattern / tag / old reference / numeric target" />
-                            <TextBox Text="{Binding RuleValue2, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="4" ToolTip="Replacement / new reference" />
-                            <ComboBox ItemsSource="{Binding NumericOperations}" SelectedItem="{Binding RuleOperation}" Width="70" Margin="4" ToolTip="Numeric Adjust operation" />
-                            <CheckBox Content="Regex" IsChecked="{Binding RuleIsRegex}" VerticalAlignment="Center" Margin="4" />
+                            <StackPanel Margin="4" Width="140" Visibility="{Binding ShowRuleValue1, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{Binding RuleValue1Label}" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
+                                <TextBox Text="{Binding RuleValue1, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Margin="4" Width="140" Visibility="{Binding ShowRuleValue2, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{Binding RuleValue2Label}" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
+                                <TextBox Text="{Binding RuleValue2, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Margin="4" Width="140" Visibility="{Binding ShowRuleOperation, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="Operation:" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
+                                <ComboBox ItemsSource="{Binding NumericOperations}" SelectedItem="{Binding RuleOperation}" />
+                            </StackPanel>
+                            <CheckBox Content="Regex" IsChecked="{Binding RuleIsRegex}" VerticalAlignment="Center" Margin="4"
+                                      Visibility="{Binding ShowRuleRegex, Converter={StaticResource BoolToVisibility}}" />
                         </WrapPanel>
                         <WrapPanel>
                             <CheckBox Content="Skip if current value" IsChecked="{Binding RuleUseSkip}" VerticalAlignment="Center" Margin="4" />

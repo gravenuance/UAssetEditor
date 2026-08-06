@@ -80,12 +80,43 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _referenceConditionsText = "";
     [ObservableProperty] private MatchLogic _referenceLogic = MatchLogic.Or;
 
-    [NotifyPropertyChangedFor(nameof(SelectedRuleKindDescription))]
+    [NotifyPropertyChangedFor(
+        nameof(SelectedRuleKindDescription), nameof(ShowRuleValue1), nameof(RuleValue1Label),
+        nameof(ShowRuleValue2), nameof(RuleValue2Label), nameof(ShowRuleOperation), nameof(ShowRuleRegex))]
     [ObservableProperty] private RuleKind _selectedRuleKind = RuleKind.SetValue;
 
     /// <summary>Shown next to the rule-kind dropdown so what each option actually does isn't a guessing game from the enum name alone.</summary>
     public string SelectedRuleKindDescription =>
         RuleKindOptions.First(o => o.Value == SelectedRuleKind).Description;
+
+    // Which rule-builder fields are actually meaningful depends entirely on the selected
+    // kind - e.g. the numeric Operation dropdown (set/add/sub/mul/div) only means anything
+    // for Numeric Adjust, and showing it (still selectable) alongside every other kind
+    // invited picking something like "mul" while "Replace Text" was selected, which does
+    // nothing. Every kind but Remove Property needs RuleValue1; only Replace Text and
+    // Replace Reference need RuleValue2, Regex, or a second value at all.
+    public bool ShowRuleValue1 => SelectedRuleKind != RuleKind.RemoveProperty;
+    public bool ShowRuleValue2 => SelectedRuleKind is RuleKind.ReplaceText or RuleKind.ReplaceReference;
+    public bool ShowRuleOperation => SelectedRuleKind == RuleKind.NumericAdjust;
+    public bool ShowRuleRegex => SelectedRuleKind is RuleKind.ReplaceText or RuleKind.ReplaceReference;
+
+    public string RuleValue1Label => SelectedRuleKind switch
+    {
+        RuleKind.SetValue => "New value:",
+        RuleKind.NumericAdjust => "Target value:",
+        RuleKind.ReplaceText => "Find pattern:",
+        RuleKind.AddTag => "Tag to add:",
+        RuleKind.RemoveTag => "Tag to remove:",
+        RuleKind.ReplaceReference => "Old reference:",
+        _ => "Value:",
+    };
+
+    public string RuleValue2Label => SelectedRuleKind switch
+    {
+        RuleKind.ReplaceText => "Replacement:",
+        RuleKind.ReplaceReference => "New reference:",
+        _ => "Value:",
+    };
 
     [ObservableProperty] private string _ruleValue1 = "";
     [ObservableProperty] private string _ruleValue2 = "";
