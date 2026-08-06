@@ -482,6 +482,7 @@ public partial class MainViewModel : ObservableObject
 
         var workspace = _workspace;
         var toLoad = new List<(string AssetPath, int ExportIndex)>();
+        var failedAssetCount = 0;
 
         async Task CollectAsync(AssetTreeItemViewModel node)
         {
@@ -494,8 +495,17 @@ public partial class MainViewModel : ObservableObject
                 if (exportsGroup != null)
                 {
                     await LoadExportsAsync(exportsGroup);
-                    foreach (var exportNode in exportsGroup.Children.Where(c => c.Kind == TreeNodeKind.Export))
-                        toLoad.Add((exportNode.FullPath!, exportNode.ExportIndex));
+                    if (exportsGroup.ExportsLoaded)
+                    {
+                        foreach (var exportNode in exportsGroup.Children.Where(c => c.Kind == TreeNodeKind.Export))
+                            toLoad.Add((exportNode.FullPath!, exportNode.ExportIndex));
+                    }
+                    else
+                    {
+                        // LoadExportsAsync already reported the specific failure via StatusMessage -
+                        // just tally it so the final summary doesn't silently imply full success.
+                        failedAssetCount++;
+                    }
                 }
             }
 
@@ -509,7 +519,9 @@ public partial class MainViewModel : ObservableObject
         var distinct = toLoad.Distinct().ToList();
         if (distinct.Count == 0)
         {
-            StatusMessage = "Check one or more exports/assets in the tree first.";
+            StatusMessage = failedAssetCount > 0
+                ? $"Failed to load {failedAssetCount} checked asset(s) - nothing to show."
+                : "Check one or more exports/assets in the tree first.";
             return;
         }
 
@@ -530,7 +542,8 @@ public partial class MainViewModel : ObservableObject
             }
             _lastOpenedExports = distinct;
             _lastSearchQuery = null;
-            StatusMessage = $"Loaded {distinct.Count} export(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total).";
+            var failedSuffix = failedAssetCount > 0 ? $" ({failedAssetCount} checked asset(s) failed to load and were skipped)" : "";
+            StatusMessage = $"Loaded {distinct.Count} export(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total){failedSuffix}.";
         }
         catch (Exception ex)
         {
