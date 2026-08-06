@@ -7,11 +7,10 @@ namespace UAssetEditor.App.ViewModels;
 /// <summary>Everything needed to restore a working session: source/versioning settings, search scope, and the rule list.</summary>
 public sealed class EditorSession
 {
-    public string RootFolder { get; init; } = "";
+    public string SourcePath { get; init; } = "";
     public EngineVersion DefaultEngineVersion { get; init; } = EngineVersion.VER_UE4_27;
     public string? UsmapPath { get; init; }
     public bool CreateBackup { get; init; } = true;
-    public string? BackupFolder { get; init; }
     public SearchQuery Scope { get; init; } = new();
     public List<EditRule> Rules { get; init; } = new();
 }

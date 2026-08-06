@@ -28,6 +28,9 @@ public enum RuleKind
 
 public sealed record RuleListItem(string Description, EditRule Rule);
 
+/// <summary>One selectable entry in the batch-edit rule-kind dropdown, pairing the enum value with a human-readable label/explanation - the bare enum name (e.g. "NumericAdjust") isn't self-explanatory on its own.</summary>
+public sealed record RuleKindOption(RuleKind Value, string Label, string Description);
+
 public partial class MainViewModel : ObservableObject
 {
     private static readonly string ConfigPath = Path.Combine(
@@ -41,7 +44,6 @@ public partial class MainViewModel : ObservableObject
     private readonly HashSet<string> _dirtyAssetPaths = new();
 
     private AssetWorkspace? _workspace;
-    private string? _workspaceRootFolder;
     private IAssetSource? _currentSource;
     private PakAssetSource? _currentPakSource;
     private CancellationTokenSource? _cts;
@@ -50,7 +52,7 @@ public partial class MainViewModel : ObservableObject
     // whichever of these ran most recently, mirroring how SearchResults itself is always
     // fully replaced (not merged) by either action. Both null means nothing to refresh.
     private SearchQuery? _lastSearchQuery;
-    private (string AssetPath, int ExportIndex)? _lastOpenedExport;
+    private List<(string AssetPath, int ExportIndex)> _lastOpenedExports = new();
 
     // Usmap path and AES key are free-text fields bound with UpdateSourceTrigger=
     // PropertyChanged, so they fire on every keystroke - debounced so a reload doesn't
@@ -59,16 +61,13 @@ public partial class MainViewModel : ObservableObject
     private readonly DispatcherTimer _reloadDebounceTimer;
     private bool _pendingAesReload;
 
-    [ObservableProperty] private string _rootFolder = "";
+    /// <summary>A folder, a .pak archive, or a single loose .uasset - auto-detected when <see cref="LoadSourceCommand"/> runs.</summary>
+    [ObservableProperty] private string _sourcePath = "";
     [ObservableProperty] private EngineVersion _defaultEngineVersion = EngineVersion.VER_UE4_27;
     [ObservableProperty] private string? _usmapPath;
-    [ObservableProperty] private int _maxDegreeOfParallelism; // 0 = adaptive (responds to memory pressure); >0 = fixed cap
 
-    [ObservableProperty] private string _pakPath = "";
     [ObservableProperty] private string _pakAesKeyHex = "";
     [ObservableProperty] private bool _isPakBacked;
-
-    [ObservableProperty] private string _singleFilePath = "";
 
     public ObservableCollection<AssetTreeItemViewModel> RootTreeItems { get; } = new();
 
@@ -81,7 +80,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _referenceConditionsText = "";
     [ObservableProperty] private MatchLogic _referenceLogic = MatchLogic.Or;
 
+    [NotifyPropertyChangedFor(nameof(SelectedRuleKindDescription))]
     [ObservableProperty] private RuleKind _selectedRuleKind = RuleKind.SetValue;
+
+    /// <summary>Shown next to the rule-kind dropdown so what each option actually does isn't a guessing game from the enum name alone.</summary>
+    public string SelectedRuleKindDescription =>
+        RuleKindOptions.First(o => o.Value == SelectedRuleKind).Description;
+
     [ObservableProperty] private string _ruleValue1 = "";
     [ObservableProperty] private string _ruleValue2 = "";
     [ObservableProperty] private bool _ruleIsRegex;
@@ -91,12 +96,11 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _ruleSkipValue = "";
 
     [ObservableProperty] private bool _createBackup = true;
-    [ObservableProperty] private string? _backupFolder;
 
     [NotifyCanExecuteChangedFor(
         nameof(SearchCommand), nameof(PreviewCommand), nameof(ApplyCommand), nameof(SaveAllEditedCommand),
-        nameof(RepackCommand), nameof(OpenPakCommand), nameof(OpenFolderCommand), nameof(OpenFileCommand), nameof(CloseWorkspaceCommand),
-        nameof(OpenFromTreeCommand), nameof(BrowseFolderCommand))]
+        nameof(RepackCommand), nameof(LoadSourceCommand), nameof(CloseWorkspaceCommand),
+        nameof(OpenFromTreeCommand), nameof(LoadSelectedCommand))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [ObservableProperty] private bool _isBusy;
 
@@ -114,13 +118,21 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private int _progressTotal;
 
     public IReadOnlyList<EngineVersion> EngineVersions { get; } = Enum.GetValues<EngineVersion>();
-    public IReadOnlyList<RuleKind> RuleKinds { get; } = Enum.GetValues<RuleKind>();
+
+    public IReadOnlyList<RuleKindOption> RuleKindOptions { get; } =
+    [
+        new(RuleKind.SetValue, "Set Value", "Replace the property's value outright with a fixed new value."),
+        new(RuleKind.NumericAdjust, "Numeric Adjust", "Add, subtract, multiply, or divide the property's current numeric value (pick the operation)."),
+        new(RuleKind.ReplaceText, "Replace Text", "Find and replace a substring (or regex) within the property's text value."),
+        new(RuleKind.RemoveProperty, "Remove Property", "Delete the property entirely from the export."),
+        new(RuleKind.AddTag, "Add Tag", "Add a tag to a Tags array property."),
+        new(RuleKind.RemoveTag, "Remove Tag", "Remove a tag from a Tags array property."),
+        new(RuleKind.ReplaceReference, "Replace Reference", "Replace one object/asset reference with another, wherever it's used."),
+    ];
+
     public IReadOnlyList<MatchLogic> MatchLogics { get; } = Enum.GetValues<MatchLogic>();
     public IReadOnlyList<SkipComparison> SkipComparisons { get; } = Enum.GetValues<SkipComparison>();
     public IReadOnlyList<string> NumericOperations { get; } = new[] { "set", "add", "sub", "mul", "div" };
-
-    /// <summary>Whether the results grid's Asset column should be shown - only earns its place when results span more than one asset (e.g. a batch Search), not when browsing a single opened export.</summary>
-    [ObservableProperty] private bool _showAssetColumn;
 
     public ObservableCollection<SearchResultRow> SearchResults { get; } = new();
     public ObservableCollection<RuleListItem> Rules { get; } = new();
@@ -219,24 +231,25 @@ public partial class MainViewModel : ObservableObject
 
         if (_lastSearchQuery != null)
         {
-            var results = await workspace.SearchAsync(_lastSearchQuery, maxDegreeOfParallelism: MaxDegreeOfParallelism);
+            var results = await workspace.SearchAsync(_lastSearchQuery, maxDegreeOfParallelism: 0);
             SearchResults.Clear();
             foreach (var result in results)
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
-            UpdateShowAssetColumn();
         }
-        else if (_lastOpenedExport != null)
+        else if (_lastOpenedExports.Count > 0)
         {
-            var (path, exportIndex) = _lastOpenedExport.Value;
-            var results = await Task.Run(() =>
-            {
-                var asset = workspace.GetOrOpen(path);
-                return _searchService.PropertiesForExport(asset, path, exportIndex).ToList();
-            });
+            var exports = _lastOpenedExports;
             SearchResults.Clear();
-            foreach (var result in results)
-                SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
-            UpdateShowAssetColumn();
+            foreach (var (path, exportIndex) in exports)
+            {
+                var results = await Task.Run(() =>
+                {
+                    var asset = workspace.GetOrOpen(path);
+                    return _searchService.PropertiesForExport(asset, path, exportIndex).ToList();
+                });
+                foreach (var result in results)
+                    SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+            }
         }
         else
         {
@@ -244,15 +257,20 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
-    private async Task BrowseFolderAsync()
+    [RelayCommand]
+    private void BrowseSourceFolder()
     {
         var dialog = new OpenFolderDialog { Title = "Select asset folder" };
         if (dialog.ShowDialog() == true)
-        {
-            RootFolder = dialog.FolderName;
-            await OpenFolderAsync();
-        }
+            SourcePath = dialog.FolderName;
+    }
+
+    [RelayCommand]
+    private void BrowseSourceFile()
+    {
+        var dialog = new OpenFileDialog { Title = "Select .pak or .uasset file", Filter = "Pak/Uasset files (*.pak;*.uasset)|*.pak;*.uasset|All files (*.*)|*.*" };
+        if (dialog.ShowDialog() == true)
+            SourcePath = dialog.FileName;
     }
 
     [RelayCommand]
@@ -263,32 +281,40 @@ public partial class MainViewModel : ObservableObject
             UsmapPath = dialog.FileName;
     }
 
-    [RelayCommand]
-    private void BrowsePak()
-    {
-        var dialog = new OpenFileDialog { Title = "Select .pak file", Filter = "Pak files (*.pak)|*.pak|All files (*.*)|*.*" };
-        if (dialog.ShowDialog() == true)
-            PakPath = dialog.FileName;
-    }
-
-    [RelayCommand]
-    private void BrowseSingleFile()
-    {
-        var dialog = new OpenFileDialog { Title = "Select .uasset file", Filter = "Uasset files (*.uasset)|*.uasset|All files (*.*)|*.*" };
-        if (dialog.ShowDialog() == true)
-            SingleFilePath = dialog.FileName;
-    }
-
-    /// <summary>Opens (or reopens) the loose-folder workspace and populates the tree from every file under it - not just .uasset entries, so the tree mirrors the real folder structure.</summary>
+    /// <summary>Loads whatever <see cref="SourcePath"/> points at - a folder, a .pak archive, or a single loose .uasset - auto-detected, so one path/browse/load flow covers all three instead of needing a separate control per kind.</summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
-    private async Task OpenFolderAsync()
+    private async Task LoadSourceAsync()
     {
-        if (!ValidateRootFolder() || !EnsureWorkspace()) return;
+        if (Directory.Exists(SourcePath))
+            await LoadFolderAsync(SourcePath);
+        else if (File.Exists(SourcePath) && SourcePath.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
+            await LoadPakAsync(SourcePath);
+        else if (File.Exists(SourcePath) && SourcePath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+            LoadSingleFile(SourcePath);
+        else
+            StatusMessage = "Enter or browse to a valid folder, .pak file, or .uasset file.";
+    }
+
+    /// <summary>Opens a loose-folder workspace and populates the tree from every file under it - not just .uasset entries, so the tree mirrors the real folder structure.</summary>
+    private async Task LoadFolderAsync(string folderPath)
+    {
+        if (!ConfirmDiscardDirtyEdits()) return;
 
         IsBusy = true;
         StatusMessage = "Loading folder tree...";
         try
         {
+            DisposeCurrentSource();
+            _dirtyAssetPaths.Clear();
+            SearchResults.Clear();
+            _lastSearchQuery = null;
+            _lastOpenedExports = [];
+
+            var source = new LooseFolderAssetSource(folderPath);
+            _currentSource = source;
+            _workspace = new AssetWorkspace(source, BuildVersionResolver());
+            IsPakBacked = false;
+
             // Enumerates only files (not EnumerateFileSystemEntries + a per-entry
             // Directory.Exists check) - halves the filesystem stat calls for large
             // Content trees, and directory nodes are inferred from path segments anyway.
@@ -296,8 +322,8 @@ public partial class MainViewModel : ObservableObject
             // the tree branches the same way a pak's tree does for an equivalent layout,
             // and so leaf FullPaths match LooseFolderAssetSource's root-relative identity.
             var relativePaths = await Task.Run(() =>
-                Directory.EnumerateFiles(RootFolder, "*", SearchOption.AllDirectories)
-                    .Select(p => Path.GetRelativePath(RootFolder, p).Replace(Path.DirectorySeparatorChar, '/'))
+                Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories)
+                    .Select(p => Path.GetRelativePath(folderPath, p).Replace(Path.DirectorySeparatorChar, '/'))
                     .ToList());
             RebuildTree(relativePaths, '/');
             StatusMessage = "Folder loaded.";
@@ -312,15 +338,8 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
-    private async Task OpenPakAsync()
+    private async Task LoadPakAsync(string pakPath)
     {
-        if (!File.Exists(PakPath))
-        {
-            StatusMessage = "Select a valid .pak file first.";
-            return;
-        }
-
         if (!ConfirmDiscardDirtyEdits()) return;
 
         IsBusy = true;
@@ -331,19 +350,17 @@ public partial class MainViewModel : ObservableObject
             _dirtyAssetPaths.Clear();
             SearchResults.Clear();
             _lastSearchQuery = null;
-            _lastOpenedExport = null;
+            _lastOpenedExports = [];
 
-            var pakPath = PakPath;
             var aesKey = ParseAesKey(PakAesKeyHex);
             var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey));
             _currentSource = pakSource;
             _currentPakSource = pakSource;
             _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
-            _workspaceRootFolder = null;
             IsPakBacked = true;
 
             RebuildTree(pakSource.ListAllEntries(), '/');
-            StatusMessage = $"Opened pak '{Path.GetFileName(PakPath)}' " +
+            StatusMessage = $"Opened pak '{Path.GetFileName(pakPath)}' " +
                 (pakSource.IsLargePak ? "(large - entries extract on open)." : "(fully extracted).");
         }
         catch (Exception ex)
@@ -357,45 +374,23 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Opens exactly one loose .uasset file - same tree/browse shape as a folder or pak, just rooted at that one file with no parent folders shown.</summary>
-    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
-    private void OpenFile()
+    private void LoadSingleFile(string filePath)
     {
-        if (!File.Exists(SingleFilePath))
-        {
-            StatusMessage = "Select a valid .uasset file first.";
-            return;
-        }
-
         if (!ConfirmDiscardDirtyEdits()) return;
 
-        IsBusy = true;
-        StatusMessage = "Opening file...";
-        try
-        {
-            DisposeCurrentSource();
-            _dirtyAssetPaths.Clear();
-            SearchResults.Clear();
-            _lastSearchQuery = null;
-            _lastOpenedExport = null;
+        DisposeCurrentSource();
+        _dirtyAssetPaths.Clear();
+        SearchResults.Clear();
+        _lastSearchQuery = null;
+        _lastOpenedExports = [];
 
-            var filePath = SingleFilePath;
-            var source = new SingleFileAssetSource(filePath);
-            _currentSource = source;
-            _workspace = new AssetWorkspace(source, BuildVersionResolver());
-            _workspaceRootFolder = null;
-            IsPakBacked = false;
+        var source = new SingleFileAssetSource(filePath);
+        _currentSource = source;
+        _workspace = new AssetWorkspace(source, BuildVersionResolver());
+        IsPakBacked = false;
 
-            RebuildTree([Path.GetFileName(filePath)], '/');
-            StatusMessage = $"Opened '{Path.GetFileName(filePath)}'.";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Failed to open file: {ex.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        RebuildTree([Path.GetFileName(filePath)], '/');
+        StatusMessage = $"Opened '{Path.GetFileName(filePath)}'.";
     }
 
     /// <summary>Opens one export node's properties, editable in place - same machinery as a search result row. Any other tree node kind is a no-op here; expand/collapse for those is handled by the TreeView itself.</summary>
@@ -428,8 +423,7 @@ public partial class MainViewModel : ObservableObject
             SearchResults.Clear();
             foreach (var result in results)
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
-            UpdateShowAssetColumn();
-            _lastOpenedExport = (fullPath, exportIndex);
+            _lastOpenedExports = [(fullPath, exportIndex)];
             _lastSearchQuery = null;
             StatusMessage = $"Opened {fullPath} [{item.Name}] ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")}).";
         }
@@ -468,6 +462,83 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"Failed to load exports for {assetPath}: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Loads every checked tree node's properties into the grid at once - a checked
+    /// Export node contributes just itself; a checked Asset node contributes every one
+    /// of its exports (loading them first if the Exports node hasn't been expanded yet).
+    /// Replaces the grid's current contents, same as a single tree-driven open.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
+    private async Task LoadSelectedAsync()
+    {
+        if (_workspace == null)
+        {
+            StatusMessage = "Load a folder, .pak file, or .uasset file first.";
+            return;
+        }
+
+        var workspace = _workspace;
+        var toLoad = new List<(string AssetPath, int ExportIndex)>();
+
+        async Task CollectAsync(AssetTreeItemViewModel node)
+        {
+            if (node.Kind == TreeNodeKind.Export && node.IsChecked && node.FullPath != null)
+                toLoad.Add((node.FullPath, node.ExportIndex));
+
+            if (node.Kind == TreeNodeKind.Asset && node.IsChecked && node.FullPath != null)
+            {
+                var exportsGroup = node.Children.FirstOrDefault(c => c.Kind == TreeNodeKind.ExportsGroup);
+                if (exportsGroup != null)
+                {
+                    await LoadExportsAsync(exportsGroup);
+                    foreach (var exportNode in exportsGroup.Children.Where(c => c.Kind == TreeNodeKind.Export))
+                        toLoad.Add((exportNode.FullPath!, exportNode.ExportIndex));
+                }
+            }
+
+            foreach (var child in node.Children)
+                await CollectAsync(child);
+        }
+
+        foreach (var root in RootTreeItems)
+            await CollectAsync(root);
+
+        var distinct = toLoad.Distinct().ToList();
+        if (distinct.Count == 0)
+        {
+            StatusMessage = "Check one or more exports/assets in the tree first.";
+            return;
+        }
+
+        IsBusy = true;
+        StatusMessage = $"Loading {distinct.Count} export(s)...";
+        try
+        {
+            SearchResults.Clear();
+            foreach (var (path, exportIndex) in distinct)
+            {
+                var results = await Task.Run(() =>
+                {
+                    var asset = workspace.GetOrOpen(path);
+                    return _searchService.PropertiesForExport(asset, path, exportIndex).ToList();
+                });
+                foreach (var result in results)
+                    SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+            }
+            _lastOpenedExports = distinct;
+            _lastSearchQuery = null;
+            StatusMessage = $"Loaded {distinct.Count} export(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total).";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load selection: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -552,11 +623,15 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task SearchAsync()
     {
-        if (!ValidateRootFolder() || !EnsureWorkspace()) return;
+        if (_workspace == null)
+        {
+            StatusMessage = "Load a folder, .pak file, or .uasset file first.";
+            return;
+        }
 
         var query = BuildScope();
         _lastSearchQuery = query;
-        _lastOpenedExport = null;
+        _lastOpenedExports = [];
 
         SearchResults.Clear();
         IsBusy = true;
@@ -570,10 +645,9 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var results = await _workspace!.SearchAsync(query, progress, MaxDegreeOfParallelism, _cts.Token);
+            var results = await _workspace!.SearchAsync(query, progress, maxDegreeOfParallelism: 0, _cts.Token);
             foreach (var result in results)
                 SearchResults.Add(new SearchResultRow(result, _workspace!, OnResultRowDirty));
-            UpdateShowAssetColumn();
             StatusMessage = $"Found {results.Count} match(es).";
         }
         catch (OperationCanceledException)
@@ -606,7 +680,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            await Task.Run(() => _workspace.SaveAll(dirtyPaths, CreateBackup, BackupFolder));
+            await Task.Run(() => _workspace.SaveAll(dirtyPaths, CreateBackup, backupFolder: null));
 
             foreach (var row in SearchResults.Where(r => dirtyPaths.Contains(r.AssetPath)))
                 row.IsDirty = false;
@@ -632,13 +706,11 @@ public partial class MainViewModel : ObservableObject
         _workspace?.CloseAll();
         DisposeCurrentSource();
         _workspace = null;
-        _workspaceRootFolder = null;
         _dirtyAssetPaths.Clear();
         SearchResults.Clear();
         RootTreeItems.Clear();
         _lastSearchQuery = null;
-        _lastOpenedExport = null;
-        ShowAssetColumn = false;
+        _lastOpenedExports = [];
         IsPakBacked = false;
         StatusMessage = "Workspace closed.";
     }
@@ -652,9 +724,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task PreviewAsync()
     {
-        if (_currentSource == null && !ValidateRootFolder()) return;
+        if (_currentSource == null)
+        {
+            StatusMessage = "Load a folder, .pak file, or .uasset file first.";
+            return;
+        }
 
-        var source = ResolveBatchSource();
+        var source = _currentSource;
         var versions = BuildVersionResolver();
         var ruleSet = BuildRuleSet();
 
@@ -670,7 +746,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var changeSets = await _editExecutor.PreviewAsync(source, versions, ruleSet, progress, MaxDegreeOfParallelism, _cts.Token);
+            var changeSets = await _editExecutor.PreviewAsync(source, versions, ruleSet, progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
             foreach (var change in changeSets.SelectMany(c => c.Changes))
                 PreviewChanges.Add(change);
             StatusMessage = $"Preview: {changeSets.Count} asset(s), {PreviewChanges.Count} change(s).";
@@ -693,9 +769,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task ApplyAsync()
     {
-        if (_currentSource == null && !ValidateRootFolder()) return;
+        if (_currentSource == null)
+        {
+            StatusMessage = "Load a folder, .pak file, or .uasset file first.";
+            return;
+        }
 
-        var source = ResolveBatchSource();
+        var source = _currentSource;
         var versions = BuildVersionResolver();
         var ruleSet = BuildRuleSet();
 
@@ -710,7 +790,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var changeSets = await _editExecutor.ApplyAsync(source, versions, ruleSet, CreateBackup, BackupFolder, progress, MaxDegreeOfParallelism, _cts.Token);
+            var changeSets = await _editExecutor.ApplyAsync(source, versions, ruleSet, CreateBackup, backupFolder: null, progress: progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
             StatusMessage = $"Applied changes to {changeSets.Count} asset(s).";
             SaveConfig();
         }
@@ -781,31 +861,6 @@ public partial class MainViewModel : ObservableObject
 
     private void OnResultRowDirty(SearchResultRow row) => _dirtyAssetPaths.Add(row.AssetPath);
 
-    /// <summary>The Asset column only earns its place once results span more than one asset (e.g. a batch Search) - a single opened export's rows are all the same asset, so it'd just be repeated noise.</summary>
-    private void UpdateShowAssetColumn() =>
-        ShowAssetColumn = SearchResults.Select(r => r.AssetPath).Distinct().Count() > 1;
-
-    private bool EnsureWorkspace()
-    {
-        if (_workspace != null && !IsPakBacked && _workspaceRootFolder == RootFolder) return true;
-
-        if (!ConfirmDiscardDirtyEdits()) return false;
-
-        _workspace?.CloseAll();
-        DisposeCurrentSource();
-        _dirtyAssetPaths.Clear();
-        SearchResults.Clear();
-        _lastSearchQuery = null;
-        _lastOpenedExport = null;
-
-        var source = new LooseFolderAssetSource(RootFolder);
-        _currentSource = source;
-        _workspace = new AssetWorkspace(source, BuildVersionResolver());
-        _workspaceRootFolder = RootFolder;
-        IsPakBacked = false;
-        return true;
-    }
-
     private bool ConfirmDiscardDirtyEdits(string message = "The current workspace has unsaved edits. Discard them and continue?")
     {
         if (_dirtyAssetPaths.Count == 0) return true;
@@ -822,9 +877,6 @@ public partial class MainViewModel : ObservableObject
         _currentPakSource = null;
     }
 
-    /// <summary>The source batch Preview/Apply should run against: whatever's currently open (folder or pak), or a fresh loose-folder source over <see cref="RootFolder"/> if nothing has been explicitly opened yet.</summary>
-    private IAssetSource ResolveBatchSource() => _currentSource ?? new LooseFolderAssetSource(RootFolder);
-
     private void RebuildTree(IEnumerable<string> paths, char separator)
     {
         RootTreeItems.Clear();
@@ -838,13 +890,6 @@ public partial class MainViewModel : ObservableObject
         hex = hex.Trim();
         if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
         return hex.Length == 0 ? null : Convert.FromHexString(hex);
-    }
-
-    private bool ValidateRootFolder()
-    {
-        if (Directory.Exists(RootFolder)) return true;
-        StatusMessage = "Select a valid asset folder first.";
-        return false;
     }
 
     private EngineVersionResolver BuildVersionResolver()
@@ -880,22 +925,20 @@ public partial class MainViewModel : ObservableObject
 
     private EditorSession BuildSession() => new()
     {
-        RootFolder = RootFolder,
+        SourcePath = SourcePath,
         DefaultEngineVersion = DefaultEngineVersion,
         UsmapPath = UsmapPath,
         CreateBackup = CreateBackup,
-        BackupFolder = BackupFolder,
         Scope = BuildScope(),
         Rules = Rules.Select(r => r.Rule).ToList(),
     };
 
     private void ApplySession(EditorSession session)
     {
-        RootFolder = session.RootFolder;
+        SourcePath = session.SourcePath;
         DefaultEngineVersion = session.DefaultEngineVersion;
         UsmapPath = session.UsmapPath;
         CreateBackup = session.CreateBackup;
-        BackupFolder = session.BackupFolder;
 
         ExportNameConditionsText = JoinLines(session.Scope.ExportNamePatterns);
         ExportNameLogic = session.Scope.ExportNameLogic;

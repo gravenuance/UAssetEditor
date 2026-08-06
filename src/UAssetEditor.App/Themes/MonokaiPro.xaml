@@ -261,15 +261,22 @@
 
     <!-- ===================== ComboBox ===================== -->
 
+    <!-- Spans the ComboBox's full width so a click anywhere on the control opens the
+         dropdown (not just on the arrow glyph) - the arrow itself is pinned to a narrow
+         right-hand column within this same hit-test area, purely for visual placement. -->
     <Style x:Key="Mono.ComboBoxToggleButton" TargetType="ToggleButton">
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Border Background="Transparent">
-                        <Path Data="M 0,0 L 4,4 L 8,0" Stroke="{StaticResource Mono.Muted}" StrokeThickness="1.5"
+                    <Grid Background="Transparent">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="22" />
+                        </Grid.ColumnDefinitions>
+                        <Path Grid.Column="1" Data="M 0,0 L 4,4 L 8,0" Stroke="{StaticResource Mono.Muted}" StrokeThickness="1.5"
                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
@@ -296,19 +303,15 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="22" />
-                        </Grid.ColumnDefinitions>
-                        <Border Grid.Column="0" Grid.ColumnSpan="2" Background="{StaticResource Mono.Surface}"
+                        <Border Background="{StaticResource Mono.Surface}"
                                 BorderBrush="{StaticResource Mono.Border}" BorderThickness="1" CornerRadius="3" />
-                        <ContentPresenter x:Name="ContentSite" Grid.Column="0" IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        <ToggleButton Style="{StaticResource Mono.ComboBoxToggleButton}"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" />
+                        <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False" HorizontalAlignment="Left" VerticalAlignment="Center"
                                           Margin="{TemplateBinding Padding}" Content="{TemplateBinding SelectionBoxItem}"
                                           ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" />
-                        <TextBox x:Name="PART_EditableTextBox" Grid.Column="0" Visibility="Collapsed" Background="Transparent" Foreground="{StaticResource Mono.Foreground}" />
-                        <ToggleButton Grid.Column="1" Style="{StaticResource Mono.ComboBoxToggleButton}"
-                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" />
-                        <Popup x:Name="Popup" Grid.Column="0" Grid.ColumnSpan="2" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
+                        <TextBox x:Name="PART_EditableTextBox" Visibility="Collapsed" Background="Transparent" Foreground="{StaticResource Mono.Foreground}" />
+                        <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}"
                                AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
                             <Border MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1">
@@ -395,6 +398,26 @@
         <Setter Property="Padding" Value="2" />
         <Style.Triggers>
             <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource Mono.SelectionHighlight}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ===================== ContextMenu / MenuItem ===================== -->
+
+    <Style TargetType="ContextMenu">
+        <Setter Property="Background" Value="{StaticResource Mono.Surface}" />
+        <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Mono.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+    </Style>
+
+    <Style TargetType="MenuItem">
+        <Setter Property="Background" Value="{StaticResource Mono.Surface}" />
+        <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Style.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
                 <Setter Property="Background" Value="{StaticResource Mono.SelectionHighlight}" />
             </Trigger>
         </Style.Triggers>

@@ -59,24 +59,28 @@
             <GroupBox Header="Asset source" Grid.Row="0" Margin="0,0,0,8" Padding="8">
             <StackPanel>
                 <WrapPanel Orientation="Horizontal">
-                    <TextBlock Text="Root folder:" VerticalAlignment="Center" Margin="4" />
-                    <TextBox Text="{Binding RootFolder, UpdateSourceTrigger=PropertyChanged}" Width="300" VerticalAlignment="Center" Margin="4" />
-                    <Button Content="Browse..." Command="{Binding BrowseFolderCommand}" Margin="4" Padding="8,2" ToolTip="Pick a folder and load its tree" />
-                    <Button Content="Load Tree" Command="{Binding OpenFolderCommand}" Margin="4" Padding="8,2" ToolTip="(Re)load the tree for the folder path above" />
+                    <TextBlock Text="Source (folder, .pak, or .uasset file):" VerticalAlignment="Center" Margin="4" />
+                    <TextBox Text="{Binding SourcePath, UpdateSourceTrigger=PropertyChanged}" Width="360" VerticalAlignment="Center" Margin="4" />
+                    <Button x:Name="BrowseSourceButton" Content="Browse..." Click="BrowseSourceButton_Click" Margin="4" Padding="8,2"
+                            ToolTip="Pick a folder, .pak file, or .uasset file">
+                        <Button.ContextMenu>
+                            <!-- A ContextMenu is a separate popup root and doesn't inherit DataContext through
+                                 the visual tree like normal children do - rebind it explicitly via the
+                                 PlacementTarget (set to this Button in code-behind) so its MenuItem commands
+                                 can still reach the MainViewModel. -->
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="Folder..." Command="{Binding BrowseSourceFolderCommand}" />
+                                <MenuItem Header="File (.pak/.uasset)..." Command="{Binding BrowseSourceFileCommand}" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button Content="Load" Command="{Binding LoadSourceCommand}" Margin="4" Padding="8,2"
+                            ToolTip="Load the source above - folder, .pak, or .uasset is auto-detected" />
 
-                    <TextBlock Text=".pak file:" VerticalAlignment="Center" Margin="16,4,4,4" />
-                    <TextBox Text="{Binding PakPath, UpdateSourceTrigger=PropertyChanged}" Width="220" VerticalAlignment="Center" Margin="4" />
-                    <Button Content="Browse..." Command="{Binding BrowsePakCommand}" Margin="4" Padding="8,2" />
-                    <TextBlock Text="AES key (hex, optional):" VerticalAlignment="Center" Margin="12,4,4,4" />
+                    <TextBlock Text="AES key (hex, optional, for .pak):" VerticalAlignment="Center" Margin="12,4,4,4" />
                     <TextBox Text="{Binding PakAesKeyHex, UpdateSourceTrigger=PropertyChanged}" Width="140" VerticalAlignment="Center" Margin="4" />
-                    <Button Content="Open Pak" Command="{Binding OpenPakCommand}" Margin="4" Padding="8,2" />
                     <Button Content="Repack..." Command="{Binding RepackCommand}" Margin="4" Padding="8,2"
                             Visibility="{Binding IsPakBacked, Converter={StaticResource BoolToVisibility}}" />
-
-                    <TextBlock Text=".uasset file:" VerticalAlignment="Center" Margin="16,4,4,4" />
-                    <TextBox Text="{Binding SingleFilePath, UpdateSourceTrigger=PropertyChanged}" Width="220" VerticalAlignment="Center" Margin="4" />
-                    <Button Content="Browse..." Command="{Binding BrowseSingleFileCommand}" Margin="4" Padding="8,2" />
-                    <Button Content="Open File" Command="{Binding OpenFileCommand}" Margin="4" Padding="8,2" ToolTip="Open one loose .uasset file directly" />
                 </WrapPanel>
                 <WrapPanel Orientation="Horizontal" Margin="0,4,0,0">
                     <TextBlock Text="Engine version:" VerticalAlignment="Center" Margin="4" />
@@ -86,12 +90,7 @@
                     <TextBox Text="{Binding UsmapPath, UpdateSourceTrigger=PropertyChanged}" Width="200" VerticalAlignment="Center" Margin="4" />
                     <Button Content="Browse..." Command="{Binding BrowseUsmapCommand}" Margin="4" Padding="8,2" />
 
-                    <TextBlock Text="Parallelism (0 = adaptive):" VerticalAlignment="Center" Margin="12,4,4,4" />
-                    <TextBox Text="{Binding MaxDegreeOfParallelism, UpdateSourceTrigger=PropertyChanged}" Width="40" VerticalAlignment="Center" Margin="4" />
-
-                    <CheckBox Content="Back up before saving" IsChecked="{Binding CreateBackup}" VerticalAlignment="Center" Margin="16,4,4,4" />
-                    <TextBlock Text="Backup folder (optional):" VerticalAlignment="Center" Margin="4" />
-                    <TextBox Text="{Binding BackupFolder, UpdateSourceTrigger=PropertyChanged}" Width="180" VerticalAlignment="Center" Margin="4" />
+                    <CheckBox Content="Back up before saving (alongside the original file)" IsChecked="{Binding CreateBackup}" VerticalAlignment="Center" Margin="16,4,4,4" />
 
                     <Button Content="Save Config" Command="{Binding SaveConfigCommand}" Margin="16,4,4,4" Padding="8,2" />
                     <Button Content="Load Config" Command="{Binding LoadConfigCommand}" Margin="4" Padding="8,2" />
@@ -140,15 +139,27 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="Browse (double-click an export to open it)" Grid.Column="0" Padding="6">
-                <TreeView x:Name="AssetTree" ItemsSource="{Binding RootTreeItems}"
-                          MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
-                    <TreeView.ItemTemplate>
-                        <HierarchicalDataTemplate ItemsSource="{Binding Children}">
-                            <TextBlock Text="{Binding Name}" />
-                        </HierarchicalDataTemplate>
-                    </TreeView.ItemTemplate>
-                </TreeView>
+            <GroupBox Header="Browse" Grid.Column="0" Padding="6" ToolTip="Check exports/assets and click Load Selected, or double-click one export to open it alone">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Button Grid.Row="0" Content="Load Selected" Command="{Binding LoadSelectedCommand}"
+                            HorizontalAlignment="Left" Margin="0,0,0,4" Padding="8,2" />
+                    <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}"
+                              MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
+                        <TreeView.ItemTemplate>
+                            <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,4,0"
+                                              Visibility="{Binding IsCheckable, Converter={StaticResource BoolToVisibility}}" />
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+                </Grid>
             </GroupBox>
 
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
@@ -182,8 +193,6 @@
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
                             <DataGridCheckBoxColumn Header="Dirty" Binding="{Binding IsDirty}" IsReadOnly="True" Width="50" />
-                            <DataGridTextColumn Header="Asset" Binding="{Binding AssetPath}" IsReadOnly="True" Width="2*"
-                                                 Visibility="{Binding DataContext.ShowAssetColumn, ElementName=ResultsGrid, Converter={StaticResource BoolToVisibility}}" />
                             <DataGridTextColumn Header="Export" Binding="{Binding ExportName}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Property" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*">
@@ -214,10 +223,20 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <GroupBox Header="Batch edit rules (applied to every asset under Root folder / pak matching the scope above)" Grid.Row="0" Margin="0,0,0,8" Padding="8">
+                <GroupBox Header="Batch edit rules (applied to every asset in the loaded source matching the scope above)" Grid.Row="0" Margin="0,0,0,8" Padding="8">
                     <StackPanel>
                         <WrapPanel>
-                            <ComboBox ItemsSource="{Binding RuleKinds}" SelectedItem="{Binding SelectedRuleKind}" Width="130" Margin="4" />
+                            <StackPanel Margin="4" Width="150">
+                                <ComboBox ItemsSource="{Binding RuleKindOptions}" SelectedValuePath="Value" SelectedValue="{Binding SelectedRuleKind}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Label}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="{Binding SelectedRuleKindDescription}" TextWrapping="Wrap" FontStyle="Italic"
+                                           Foreground="{StaticResource Mono.Muted}" FontSize="10" Margin="0,2,0,0" />
+                            </StackPanel>
                             <TextBox Text="{Binding RuleValue1, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="4" ToolTip="Value / pattern / tag / old reference / numeric target" />
                             <TextBox Text="{Binding RuleValue2, UpdateSourceTrigger=PropertyChanged}" Width="130" Margin="4" ToolTip="Replacement / new reference" />
                             <ComboBox ItemsSource="{Binding NumericOperations}" SelectedItem="{Binding RuleOperation}" Width="70" Margin="4" ToolTip="Numeric Adjust operation" />

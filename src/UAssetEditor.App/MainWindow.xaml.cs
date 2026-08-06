@@ -52,6 +52,14 @@ public partial class MainWindow : Window
         await viewModel.LoadExportsAsync(item);
     }
 
+    /// <summary>Windows has no single dialog that picks either a folder or a file, so this one button offers both via a small menu instead of three separate source rows.</summary>
+    private void BrowseSourceButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        menu.PlacementTarget = button;
+        menu.IsOpen = true;
+    }
+
     private void MinimizeButton_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
 
     private void MaximizeRestoreButton_Click(object sender, RoutedEventArgs e) =>

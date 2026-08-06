@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using UAssetEditor.Core.AssetSources;
 
 namespace UAssetEditor.App.ViewModels;
@@ -22,7 +23,7 @@ public enum TreeNodeKind
 /// <see cref="TreeNodeKind.ExportsGroup"/> child with a single dummy placeholder, and real
 /// per-export children only appear once <see cref="MarkExportsLoaded"/> is called.
 /// </summary>
-public sealed class AssetTreeItemViewModel
+public sealed partial class AssetTreeItemViewModel : ObservableObject
 {
     private static readonly AssetTreeItemViewModel LoadingPlaceholder =
         new("Loading...", null, TreeNodeKind.OtherFile);
@@ -39,6 +40,12 @@ public sealed class AssetTreeItemViewModel
     public string? AssetPath { get; private init; }
 
     public bool ExportsLoaded { get; private set; }
+
+    /// <summary>Only Asset/Export nodes are meaningful multi-select targets for <c>LoadSelectedCommand</c> - Folder/ExportsGroup/OtherFile nodes don't show a checkbox at all.</summary>
+    public bool IsCheckable => Kind is TreeNodeKind.Asset or TreeNodeKind.Export;
+
+    /// <summary>Only meaningful for <see cref="TreeNodeKind.Asset"/>/<see cref="TreeNodeKind.Export"/> nodes - checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c>, independent of the TreeView's own single-item selection highlight.</summary>
+    [ObservableProperty] private bool _isChecked;
 
     private AssetTreeItemViewModel(string name, string? fullPath, TreeNodeKind kind)
     {
