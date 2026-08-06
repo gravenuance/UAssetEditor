@@ -466,10 +466,12 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Loads every checked tree node's properties into the grid at once - a checked
-    /// Export node contributes just itself; a checked Asset node contributes every one
-    /// of its exports (loading them first if the Exports node hasn't been expanded yet).
-    /// Replaces the grid's current contents, same as a single tree-driven open.
+    /// Loads every checked export's properties into the grid at once. Only Export nodes
+    /// are checkable (see <see cref="AssetTreeItemViewModel.IsCheckable"/>) - by the time
+    /// one exists to check, its asset was already parsed when its "Exports" node was
+    /// expanded, so this never triggers a parse of its own; it just gathers what's
+    /// already known. Replaces the grid's current contents, same as a single tree-driven
+    /// open.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task LoadSelectedAsync()
@@ -482,46 +484,23 @@ public partial class MainViewModel : ObservableObject
 
         var workspace = _workspace;
         var toLoad = new List<(string AssetPath, int ExportIndex)>();
-        var failedAssetCount = 0;
 
-        async Task CollectAsync(AssetTreeItemViewModel node)
+        void Collect(AssetTreeItemViewModel node)
         {
             if (node.Kind == TreeNodeKind.Export && node.IsChecked && node.FullPath != null)
                 toLoad.Add((node.FullPath, node.ExportIndex));
 
-            if (node.Kind == TreeNodeKind.Asset && node.IsChecked && node.FullPath != null)
-            {
-                var exportsGroup = node.Children.FirstOrDefault(c => c.Kind == TreeNodeKind.ExportsGroup);
-                if (exportsGroup != null)
-                {
-                    await LoadExportsAsync(exportsGroup);
-                    if (exportsGroup.ExportsLoaded)
-                    {
-                        foreach (var exportNode in exportsGroup.Children.Where(c => c.Kind == TreeNodeKind.Export))
-                            toLoad.Add((exportNode.FullPath!, exportNode.ExportIndex));
-                    }
-                    else
-                    {
-                        // LoadExportsAsync already reported the specific failure via StatusMessage -
-                        // just tally it so the final summary doesn't silently imply full success.
-                        failedAssetCount++;
-                    }
-                }
-            }
-
             foreach (var child in node.Children)
-                await CollectAsync(child);
+                Collect(child);
         }
 
         foreach (var root in RootTreeItems)
-            await CollectAsync(root);
+            Collect(root);
 
         var distinct = toLoad.Distinct().ToList();
         if (distinct.Count == 0)
         {
-            StatusMessage = failedAssetCount > 0
-                ? $"Failed to load {failedAssetCount} checked asset(s) - nothing to show."
-                : "Check one or more exports/assets in the tree first.";
+            StatusMessage = "Check one or more exports in the tree first (expand an asset's Exports node to see them).";
             return;
         }
 
@@ -542,8 +521,7 @@ public partial class MainViewModel : ObservableObject
             }
             _lastOpenedExports = distinct;
             _lastSearchQuery = null;
-            var failedSuffix = failedAssetCount > 0 ? $" ({failedAssetCount} checked asset(s) failed to load and were skipped)" : "";
-            StatusMessage = $"Loaded {distinct.Count} export(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total){failedSuffix}.";
+            StatusMessage = $"Loaded {distinct.Count} export(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total).";
         }
         catch (Exception ex)
         {

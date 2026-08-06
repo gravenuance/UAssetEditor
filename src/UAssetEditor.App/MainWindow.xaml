@@ -139,7 +139,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="Browse" Grid.Column="0" Padding="6" ToolTip="Check exports/assets and click Load Selected, or double-click one export to open it alone">
+            <GroupBox Header="Browse" Grid.Column="0" Padding="6" ToolTip="Expand an asset's Exports node, check the ones you want, and click Load Selected - or double-click one export to open it alone">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -152,9 +152,9 @@
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal">
-                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,4,0"
-                                              Visibility="{Binding IsCheckable, Converter={StaticResource BoolToVisibility}}" />
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                    <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                              Visibility="{Binding IsCheckable, Converter={StaticResource BoolToVisibility}}" />
                                 </StackPanel>
                             </HierarchicalDataTemplate>
                         </TreeView.ItemTemplate>

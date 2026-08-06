@@ -41,10 +41,16 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
 
     public bool ExportsLoaded { get; private set; }
 
-    /// <summary>Only Asset/Export nodes are meaningful multi-select targets for <c>LoadSelectedCommand</c> - Folder/ExportsGroup/OtherFile nodes don't show a checkbox at all.</summary>
-    public bool IsCheckable => Kind is TreeNodeKind.Asset or TreeNodeKind.Export;
+    /// <summary>
+    /// Only Export nodes are checkable - by the time one exists, its asset has already
+    /// been parsed (expanding "Exports" is what loads them), so checking it can never
+    /// trigger a surprise parse. An Asset node is deliberately not checkable: selecting
+    /// its exports means actually looking at what's there first, not blindly grabbing
+    /// everything sight-unseen.
+    /// </summary>
+    public bool IsCheckable => Kind is TreeNodeKind.Export;
 
-    /// <summary>Only meaningful for <see cref="TreeNodeKind.Asset"/>/<see cref="TreeNodeKind.Export"/> nodes - checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c>, independent of the TreeView's own single-item selection highlight.</summary>
+    /// <summary>Checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c>, independent of the TreeView's own single-item selection highlight.</summary>
     [ObservableProperty] private bool _isChecked;
 
     private AssetTreeItemViewModel(string name, string? fullPath, TreeNodeKind kind)
