@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -44,6 +45,19 @@ public partial class MainViewModel : ObservableObject
     private IAssetSource? _currentSource;
     private PakAssetSource? _currentPakSource;
     private CancellationTokenSource? _cts;
+
+    // What to replay against the reopened context after a UE version/usmap/AES change -
+    // whichever of these ran most recently, mirroring how SearchResults itself is always
+    // fully replaced (not merged) by either action. Both null means nothing to refresh.
+    private SearchQuery? _lastSearchQuery;
+    private string? _lastOpenedTreePath;
+
+    // Usmap path and AES key are free-text fields bound with UpdateSourceTrigger=
+    // PropertyChanged, so they fire on every keystroke - debounced so a reload doesn't
+    // fire (and pop a discard-changes prompt) mid-typing. Engine version is a discrete
+    // ComboBox selection and reloads immediately, no debounce needed.
+    private readonly DispatcherTimer _reloadDebounceTimer;
+    private bool _pendingAesReload;
 
     [ObservableProperty] private string _rootFolder = "";
     [ObservableProperty] private EngineVersion _defaultEngineVersion = EngineVersion.VER_UE4_27;
@@ -109,8 +123,118 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        _reloadDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
+        _reloadDebounceTimer.Tick += ReloadDebounceTimer_Tick;
+
         if (File.Exists(ConfigPath))
             LoadConfig();
+    }
+
+    partial void OnDefaultEngineVersionChanged(EngineVersion value) => _ = ReloadContextAsync(aesKeyChanged: false);
+
+    partial void OnUsmapPathChanged(string? value) => ScheduleDebouncedReload(aesKeyChanged: false);
+
+    partial void OnPakAesKeyHexChanged(string value) => ScheduleDebouncedReload(aesKeyChanged: true);
+
+    private void ScheduleDebouncedReload(bool aesKeyChanged)
+    {
+        _pendingAesReload = _pendingAesReload || aesKeyChanged;
+        _reloadDebounceTimer.Stop();
+        _reloadDebounceTimer.Start();
+    }
+
+    private async void ReloadDebounceTimer_Tick(object? sender, EventArgs e)
+    {
+        _reloadDebounceTimer.Stop();
+        var aesKeyChanged = _pendingAesReload;
+        _pendingAesReload = false;
+        await ReloadContextAsync(aesKeyChanged);
+    }
+
+    /// <summary>
+    /// Reacts to the user changing the UE version, usmap, or (for a pak-backed workspace)
+    /// AES key without requiring a restart: an AES key change can only take effect by
+    /// re-opening the pak (the key is baked into the native reader at construction), so
+    /// that path rebuilds the source and tree from scratch; a version/usmap-only change
+    /// reuses the existing source and just drops every already-open asset so the next
+    /// access re-parses it under the new settings. Either way, whatever was last shown
+    /// (a search, or one opened tree entry) is then replayed so the visible content
+    /// actually reflects the change instead of silently going stale.
+    /// </summary>
+    private async Task ReloadContextAsync(bool aesKeyChanged)
+    {
+        if (_workspace == null) return; // nothing open yet - new settings apply automatically the next time something opens
+        if (IsBusy) return; // don't interrupt in-flight work; settings still apply on the next explicit action
+
+        if (!ConfirmDiscardDirtyEdits("Changing the engine version, usmap, or AES key requires reloading already-open assets. Discard unsaved edits and reload now?"))
+            return;
+
+        IsBusy = true;
+        StatusMessage = "Reloading with updated settings...";
+        try
+        {
+            _dirtyAssetPaths.Clear();
+
+            if (aesKeyChanged && IsPakBacked && _currentPakSource != null)
+            {
+                var pakPath = _currentPakSource.PakPath;
+                var aesKey = ParseAesKey(PakAesKeyHex);
+
+                DisposeCurrentSource();
+
+                var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey));
+                _currentSource = pakSource;
+                _currentPakSource = pakSource;
+                _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
+                RebuildTree(pakSource.ListAllEntries(), '/');
+            }
+            else
+            {
+                _workspace.UpdateVersionResolver(BuildVersionResolver());
+            }
+
+            await RefreshOpenContentAsync();
+            StatusMessage = "Reloaded with updated settings.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Reload failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Re-runs whichever of the last search or last opened tree entry populated the results grid, against the (just-reloaded) workspace.</summary>
+    private async Task RefreshOpenContentAsync()
+    {
+        var workspace = _workspace;
+        if (workspace == null) return;
+
+        if (_lastSearchQuery != null)
+        {
+            var results = await workspace.SearchAsync(_lastSearchQuery, maxDegreeOfParallelism: MaxDegreeOfParallelism);
+            SearchResults.Clear();
+            foreach (var result in results)
+                SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+        }
+        else if (_lastOpenedTreePath != null)
+        {
+            var path = _lastOpenedTreePath;
+            var results = await Task.Run(() =>
+            {
+                var asset = workspace.GetOrOpen(path);
+                return _searchService.AllProperties(asset, path).ToList();
+            });
+            SearchResults.Clear();
+            foreach (var result in results)
+                SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+        }
+        else
+        {
+            SearchResults.Clear();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
@@ -186,6 +310,8 @@ public partial class MainViewModel : ObservableObject
             DisposeCurrentSource();
             _dirtyAssetPaths.Clear();
             SearchResults.Clear();
+            _lastSearchQuery = null;
+            _lastOpenedTreePath = null;
 
             var pakPath = PakPath;
             var aesKey = ParseAesKey(PakAesKeyHex);
@@ -244,6 +370,8 @@ public partial class MainViewModel : ObservableObject
             SearchResults.Clear();
             foreach (var result in results)
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+            _lastOpenedTreePath = fullPath;
+            _lastSearchQuery = null;
             StatusMessage = $"Opened {fullPath} ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")}).";
         }
         catch (Exception ex)
@@ -340,6 +468,8 @@ public partial class MainViewModel : ObservableObject
         if (!ValidateRootFolder() || !EnsureWorkspace()) return;
 
         var query = BuildScope();
+        _lastSearchQuery = query;
+        _lastOpenedTreePath = null;
 
         SearchResults.Clear();
         IsBusy = true;
@@ -418,6 +548,8 @@ public partial class MainViewModel : ObservableObject
         _dirtyAssetPaths.Clear();
         SearchResults.Clear();
         RootTreeItems.Clear();
+        _lastSearchQuery = null;
+        _lastOpenedTreePath = null;
         IsPakBacked = false;
         StatusMessage = "Workspace closed.";
     }
@@ -570,6 +702,8 @@ public partial class MainViewModel : ObservableObject
         DisposeCurrentSource();
         _dirtyAssetPaths.Clear();
         SearchResults.Clear();
+        _lastSearchQuery = null;
+        _lastOpenedTreePath = null;
 
         var source = new LooseFolderAssetSource(RootFolder);
         _currentSource = source;

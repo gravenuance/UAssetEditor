@@ -17,7 +17,7 @@ namespace UAssetEditor.Core.AssetSources;
 public sealed class AssetWorkspace
 {
     private readonly IAssetSource _source;
-    private readonly EngineVersionResolver _versions;
+    private EngineVersionResolver _versions;
     private readonly SearchService _search = new();
 
     // Lazy<UAsset> rather than UAsset directly: ConcurrentDictionary.GetOrAdd can invoke
@@ -45,6 +45,20 @@ public sealed class AssetWorkspace
     public void Close(string assetPath) => _openAssets.TryRemove(assetPath, out _);
 
     public void CloseAll() => _openAssets.Clear();
+
+    /// <summary>
+    /// Swaps in a new engine-version/usmap resolver (e.g. the user changed the UE version
+    /// or usmap in the UI) and drops every already-open asset, since each one was parsed
+    /// under the old settings. The next <see cref="GetOrOpen"/> for a given path re-reads
+    /// and re-parses it from the underlying source under the new settings - callers that
+    /// want the currently-displayed content to reflect the change need to re-request it
+    /// (e.g. re-run the last search) after calling this.
+    /// </summary>
+    public void UpdateVersionResolver(EngineVersionResolver versions)
+    {
+        _versions = versions;
+        CloseAll();
+    }
 
     /// <summary>
     /// Searches every asset in the underlying source in parallel, opening (or reusing an

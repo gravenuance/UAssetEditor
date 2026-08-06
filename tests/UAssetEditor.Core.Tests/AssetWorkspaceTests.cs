@@ -63,6 +63,30 @@ public class AssetWorkspaceTests
     }
 
     [Fact]
+    public void UpdateVersionResolver_ClosesCachedAssetsSoTheyReopenUnderTheNewSettings()
+    {
+        var oldAsset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(oldAsset);
+        var newAsset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(newAsset);
+
+        var source = new VersionSwitchedAssetSource(oldAsset, newAsset, UAssetAPI.UnrealTypes.EngineVersion.VER_UE5_1);
+        var workspace = new AssetWorkspace(source, new EngineVersionResolver { DefaultVersion = UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_27 });
+
+        var first = workspace.GetOrOpen("a.uasset");
+        Assert.Same(oldAsset, first);
+
+        // Simulates the user changing the UE version/usmap in the UI: the resolver is
+        // swapped and every already-open asset is dropped so the next access re-reads
+        // and re-parses under the new settings, instead of silently keeping stale content.
+        workspace.UpdateVersionResolver(new EngineVersionResolver { DefaultVersion = UAssetAPI.UnrealTypes.EngineVersion.VER_UE5_1 });
+        var second = workspace.GetOrOpen("a.uasset");
+
+        Assert.Same(newAsset, second);
+        Assert.NotSame(first, second);
+    }
+
+    [Fact]
     public void SaveAll_OnlySavesRequestedPaths()
     {
         var assetOne = TestAssets.CreateAsset();
@@ -126,6 +150,16 @@ public class AssetWorkspaceTests
             Thread.Sleep(20); // widen the race window so concurrent GetOrOpen calls are likely to actually overlap
             return assets[assetPath];
         }
+
+        public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }
+    }
+
+    private sealed class VersionSwitchedAssetSource(UAsset forOldVersion, UAsset forNewVersion, UAssetAPI.UnrealTypes.EngineVersion newVersionMarker) : IAssetSource
+    {
+        public IEnumerable<string> EnumerateAssetPaths() => new[] { "a.uasset" };
+
+        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings) =>
+            engineVersion == newVersionMarker ? forNewVersion : forOldVersion;
 
         public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }
     }
