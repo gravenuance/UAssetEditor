@@ -1,0 +1,38 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch UAssetEditor.App (Debug)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-app-debug",
+            "program": "${workspaceFolder}/src/UAssetEditor.App/bin/Debug/net8.0-windows/UAssetEditor.App.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/UAssetEditor.App",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Launch UAssetEditor.App (Release)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build-app-release",
+            "program": "${workspaceFolder}/src/UAssetEditor.App/bin/Release/net8.0-windows/UAssetEditor.App.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/src/UAssetEditor.App",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Debug Core Tests",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "test",
+            "program": "dotnet",
+            "args": ["test", "${workspaceFolder}/tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj"],
+            "cwd": "${workspaceFolder}",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        }
+    ]
+}

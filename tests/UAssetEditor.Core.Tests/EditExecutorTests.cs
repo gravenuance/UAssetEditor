@@ -1,0 +1,237 @@
+using UAssetAPI;
+using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.PropertyAccess;
+using UAssetEditor.Core.Search;
+using UAssetEditor.Core.Versioning;
+
+namespace UAssetEditor.Core.Tests;
+
+public class EditExecutorTests
+{
+    [Fact]
+    public async Task PreviewAsync_ComputesChangeAndAppliesItInMemoryButNeverSaves()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Rules = { new SetPropertyValueRule { NewValue = "42" } },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        var change = Assert.Single(Assert.Single(changeSets).Changes);
+        Assert.Equal("5", change.OldValue);
+        Assert.Equal("42", change.NewValue);
+        Assert.Equal(0, source.SaveCount);
+
+        var countNode = PropertyWalker.Walk(export).Single(n => n.Path == "Count");
+        Assert.Equal("42", PropertyValueAccessor.AsSearchableString(countNode.Property, asset));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_SavesAssetWhenChangesWereMade()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Rules = { new SetPropertyValueRule { NewValue = "42" } },
+        };
+
+        await new EditExecutor().ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null);
+
+        Assert.Equal(1, source.SaveCount);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_DoesNotSaveWhenNoRuleMatched()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["NoSuchProperty"] },
+            Rules = { new SetPropertyValueRule { NewValue = "42" } },
+        };
+
+        var changeSets = await new EditExecutor().ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null);
+
+        Assert.Empty(changeSets);
+        Assert.Equal(0, source.SaveCount);
+    }
+
+    [Fact]
+    public async Task RemoveTagRule_RemovesMatchingElementFromNameArray()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Tags"] },
+            Rules = { new RemoveTagRule { Tag = "Alpha" } },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        // Both "Tags" (the array itself, matched by name) and "Tags[0]"/"Tags[1]" (elements)
+        // match the scope; only the array-typed node can honor a RemoveTagRule.
+        var change = Assert.Single(Assert.Single(changeSets).Changes);
+        Assert.Equal("RemoveTag", change.RuleDescription);
+        Assert.Equal("Alpha", change.NewValue);
+    }
+
+    [Theory]
+    [InlineData("add", "3", 8)]
+    [InlineData("sub", "3", 2)]
+    [InlineData("mul", "3", 15)]
+    [InlineData("set", "3", 3)]
+    public async Task NumericAdjustRule_AppliesArithmeticToIntProperty(string operation, string target, int expected)
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset); // Count = 5
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Rules = { new NumericAdjustRule { Operation = operation, TargetValue = target } },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        var change = Assert.Single(Assert.Single(changeSets).Changes);
+        Assert.Equal(expected.ToString(), change.NewValue);
+    }
+
+    [Fact]
+    public async Task NumericAdjustRule_DivideByZero_SkipsInsteadOfThrowing()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset); // Count = 5
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Rules = { new NumericAdjustRule { Operation = "div", TargetValue = "0" } },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        Assert.Empty(changeSets);
+    }
+
+    [Fact]
+    public async Task NumericAdjustRule_SkipCondition_LeavesMatchingValuesUntouched()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset); // Count = 5
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Rules = { new NumericAdjustRule { Operation = "add", TargetValue = "1", Skip = new SkipCondition { Comparison = SkipComparison.Eq, Value = "5" } } },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        Assert.Empty(changeSets);
+    }
+
+    [Fact]
+    public async Task SetPropertyValueRule_SkipCondition_ComparesAgainstCurrentTextValue()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset); // DisplayName = "Hello World"
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["DisplayName"] },
+            Rules = { new SetPropertyValueRule { NewValue = "Changed", Skip = new SkipCondition { Comparison = SkipComparison.Eq, Value = "Hello World" } } },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        Assert.Empty(changeSets);
+    }
+
+    [Fact]
+    public async Task SetPropertyValueRule_UpdatesIsZeroFlagAfterMutation()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset); // Count = 5 (non-zero)
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Rules = { new SetPropertyValueRule { NewValue = "0" } },
+        };
+
+        await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        var countNode = PropertyWalker.Walk(export).Single(n => n.Path == "Count");
+        Assert.True(countNode.Property.IsZero);
+    }
+
+    [Fact]
+    public async Task RemovePropertyRule_MultipleMatchesInSameExport_UnaffectedByEarlierRemovalShiftingIndices()
+    {
+        // Regression test for the property-node cache added to avoid re-walking the whole
+        // export per (rule, match): removing "Count" (index 1) shifts "DisplayName" from
+        // index 2 to index 1 in the underlying list. If the cache weren't invalidated after
+        // a structural mutation, the second match's stale OwnerIndex would remove whatever
+        // now sits at index 2 ("Location") instead of "DisplayName".
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset); // bEnabled, Count, DisplayName, Location, Tags
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["Count", "DisplayName"], PropertyNameLogic = MatchLogic.Or },
+            Rules = { new RemovePropertyRule() },
+        };
+
+        var changeSets = await new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+
+        var changes = Assert.Single(changeSets).Changes;
+        Assert.Equal(2, changes.Count);
+
+        var remainingNames = export.Data.Select(p => p.Name.Value!.Value).ToList();
+        Assert.DoesNotContain("Count", remainingNames);
+        Assert.DoesNotContain("DisplayName", remainingNames);
+        Assert.Contains("bEnabled", remainingNames);
+        Assert.Contains("Location", remainingNames);
+        Assert.Contains("Tags", remainingNames);
+    }
+
+    [Fact]
+    public async Task PreviewAsync_DoesNotThrow_WhenAScopePatternIsInvalidRegex()
+    {
+        // Regression test: an unhandled exception from one asset's rule application (or
+        // scope evaluation) used to propagate out of the whole batch, discarding results
+        // already computed for every other asset. Now it's caught per-asset.
+        var assetOne = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(assetOne);
+        var assetTwo = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(assetTwo);
+
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset>
+        {
+            ["a.uasset"] = assetOne,
+            ["b.uasset"] = assetTwo,
+        });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNamePatterns = ["["], PropertyNameCompare = TextCompare.Regex }, // unterminated character class
+            Rules = { new SetPropertyValueRule { NewValue = "x" } },
+        };
+
+        var exception = await Record.ExceptionAsync(() => new EditExecutor().PreviewAsync(source, new EngineVersionResolver(), ruleSet));
+
+        Assert.Null(exception);
+    }
+}

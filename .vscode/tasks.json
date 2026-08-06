@@ -1,0 +1,45 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build-app-debug",
+            "type": "process",
+            "command": "dotnet",
+            "args": ["build", "${workspaceFolder}/src/UAssetEditor.App/UAssetEditor.App.csproj", "-c", "Debug"],
+            "problemMatcher": "$msCompile",
+            "group": "build"
+        },
+        {
+            "label": "build-app-release",
+            "type": "process",
+            "command": "dotnet",
+            "args": ["build", "${workspaceFolder}/src/UAssetEditor.App/UAssetEditor.App.csproj", "-c", "Release"],
+            "problemMatcher": "$msCompile",
+            "group": "build"
+        },
+        {
+            "label": "build-solution-debug",
+            "type": "process",
+            "command": "dotnet",
+            "args": ["build", "${workspaceFolder}/UAssetEditor.slnx", "-c", "Debug"],
+            "problemMatcher": "$msCompile",
+            "group": { "kind": "build", "isDefault": true }
+        },
+        {
+            "label": "build-solution-release",
+            "type": "process",
+            "command": "dotnet",
+            "args": ["build", "${workspaceFolder}/UAssetEditor.slnx", "-c", "Release"],
+            "problemMatcher": "$msCompile",
+            "group": "build"
+        },
+        {
+            "label": "test",
+            "type": "process",
+            "command": "dotnet",
+            "args": ["test", "${workspaceFolder}/tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj"],
+            "problemMatcher": "$msCompile",
+            "group": { "kind": "test", "isDefault": true }
+        }
+    ]
+}
