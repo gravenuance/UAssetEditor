@@ -113,6 +113,9 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public bool IsIdle => !IsBusy;
 
+    /// <summary>True only while a Search/Preview/Apply is actually in flight (i.e. <see cref="_cts"/> is live) - drives the Cancel buttons' visibility, so Cancel doesn't sit around offering to stop something that isn't cancelable (like loading a source, which doesn't use <see cref="_cts"/> at all).</summary>
+    [ObservableProperty] private bool _isCancelable;
+
     [ObservableProperty] private string _statusMessage = "Ready.";
     [ObservableProperty] private int _progressCompleted;
     [ObservableProperty] private int _progressTotal;
@@ -628,6 +631,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         StatusMessage = "Searching...";
         _cts = new CancellationTokenSource();
+        IsCancelable = true;
         var progress = new Progress<SearchProgress>(p =>
         {
             ProgressCompleted = p.Completed;
@@ -652,6 +656,7 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            IsCancelable = false;
             _cts = null;
         }
     }
@@ -729,6 +734,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         StatusMessage = "Computing preview...";
         _cts = new CancellationTokenSource();
+        IsCancelable = true;
         var progress = new Progress<EditProgress>(p =>
         {
             ProgressCompleted = p.Completed;
@@ -753,6 +759,7 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            IsCancelable = false;
             _cts = null;
         }
     }
@@ -773,6 +780,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         StatusMessage = "Applying changes...";
         _cts = new CancellationTokenSource();
+        IsCancelable = true;
         var progress = new Progress<EditProgress>(p =>
         {
             ProgressCompleted = p.Completed;
@@ -796,6 +804,7 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+            IsCancelable = false;
             _cts = null;
         }
     }

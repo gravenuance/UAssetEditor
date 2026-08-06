@@ -94,7 +94,6 @@
 
                     <Button Content="Save Config" Command="{Binding SaveConfigCommand}" Margin="16,4,4,4" Padding="8,2" />
                     <Button Content="Load Config" Command="{Binding LoadConfigCommand}" Margin="4" Padding="8,2" />
-                    <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4" Padding="8,2" Style="{StaticResource Mono.AccentButton}" />
                 </WrapPanel>
             </StackPanel>
         </GroupBox>
@@ -172,6 +171,8 @@
 
                 <WrapPanel Grid.Row="0" Margin="0,0,0,4" Background="{StaticResource Mono.Background}">
                     <Button Content="Search" Command="{Binding SearchCommand}" Margin="0,0,4,0" Padding="12,2" />
+                    <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4,0" Padding="12,2" Style="{StaticResource Mono.AccentButton}"
+                            Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
                     <Button Content="Save All Edited" Command="{Binding SaveAllEditedCommand}" Margin="4,0" Padding="12,2" />
                     <Button Content="Close Workspace" Command="{Binding CloseWorkspaceCommand}" Margin="4,0" Padding="8,2" />
                     <Button Content="Promote Selected to Rule"
@@ -265,6 +266,8 @@
                         <WrapPanel>
                             <Button Content="Preview" Command="{Binding PreviewCommand}" Margin="4" Padding="12,2" />
                             <Button Content="Apply" Command="{Binding ApplyCommand}" Margin="4" Padding="12,2" Style="{StaticResource Mono.AccentButton}" />
+                            <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4" Padding="12,2"
+                                    Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
                         </WrapPanel>
                     </StackPanel>
                 </GroupBox>
