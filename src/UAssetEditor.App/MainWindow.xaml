@@ -4,22 +4,59 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:UAssetEditor.App.ViewModels"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="UAssetEditor" Height="900" Width="1400" MinWidth="1000" MinHeight="650"
+        Background="{StaticResource Mono.Background}"
         d:DataContext="{d:DesignInstance vm:MainViewModel}">
+    <!-- Extends the themed client-area background up into the native title-bar strip
+         (which WPF otherwise leaves as plain system chrome) while keeping the native
+         minimize/maximize/close buttons and system menu working - no hand-drawn chrome. -->
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="34" ResizeBorderThickness="5" GlassFrameThickness="0" CornerRadius="0" />
+    </shell:WindowChrome.WindowChrome>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
     </Window.Resources>
-    <Grid Margin="8">
+    <!-- Every layer below sets its own Background explicitly rather than relying on
+         transparency + inheritance from the Window - a gap in that chain (e.g. a WrapPanel's
+         unused row width) would otherwise show through as unthemed white. -->
+    <Grid Background="{StaticResource Mono.Background}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
+            <RowDefinition Height="34" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Source / versioning / session settings -->
-        <GroupBox Header="Asset source" Grid.Row="0" Margin="0,0,0,8">
+        <!-- Title bar strip: plain themed background + app name, draggable by WindowChrome's
+             CaptionHeight by default since nothing here needs IsHitTestVisibleInChrome -
+             except the caption buttons, which are hand-drawn (not left to DWM) since native
+             caption glyphs did not reliably render over a WindowChrome background of this
+             configuration - this way "the window can always be closed" doesn't depend on it. -->
+        <Border Grid.Row="0" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="UAssetEditor" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Mono.Muted}" FontWeight="SemiBold" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button Content="&#x2500;" Click="MinimizeButton_Click" Style="{StaticResource Mono.TitleBarButton}" ToolTip="Minimize" />
+                    <Button Content="&#x25A1;" Click="MaximizeRestoreButton_Click" Style="{StaticResource Mono.TitleBarButton}" ToolTip="Maximize/Restore" />
+                    <Button Content="&#xD7;" Click="CloseButton_Click" Style="{StaticResource Mono.TitleBarButton}" ToolTip="Close" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="1" Margin="8" Background="{StaticResource Mono.Background}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Source / versioning / session settings -->
+            <GroupBox Header="Asset source" Grid.Row="0" Margin="0,0,0,8">
             <StackPanel>
                 <WrapPanel Orientation="Horizontal">
                     <TextBlock Text="Root folder:" VerticalAlignment="Center" Margin="4" />
@@ -53,7 +90,7 @@
 
                     <Button Content="Save Config" Command="{Binding SaveConfigCommand}" Margin="16,4,4,4" Padding="8,2" />
                     <Button Content="Load Config" Command="{Binding LoadConfigCommand}" Margin="4" Padding="8,2" />
-                    <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4" Padding="8,2" Background="#FFE0A0A0" />
+                    <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4" Padding="8,2" Style="{StaticResource Mono.AccentButton}" />
                 </WrapPanel>
             </StackPanel>
         </GroupBox>
@@ -89,7 +126,7 @@
         </GroupBox>
 
         <!-- Tree / results / rules / preview -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" Background="{StaticResource Mono.Background}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="260" />
                 <ColumnDefinition Width="8" />
@@ -110,13 +147,13 @@
 
             <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
 
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="2" Background="{StaticResource Mono.Background}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <WrapPanel Grid.Row="0" Margin="0,0,0,4">
+                <WrapPanel Grid.Row="0" Margin="0,0,0,4" Background="{StaticResource Mono.Background}">
                     <Button Content="Search" Command="{Binding SearchCommand}" Margin="0,0,4,0" Padding="12,2" />
                     <Button Content="Save All Edited" Command="{Binding SaveAllEditedCommand}" Margin="4,0" Padding="12,2" />
                     <Button Content="Close Workspace" Command="{Binding CloseWorkspaceCommand}" Margin="4,0" Padding="8,2" />
@@ -132,7 +169,7 @@
                             <Style TargetType="DataGridRow">
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsDirty}" Value="True">
-                                        <Setter Property="Background" Value="#FFFCE8A6" />
+                                        <Setter Property="Background" Value="{StaticResource Mono.DirtyHighlight}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -142,7 +179,21 @@
                             <DataGridTextColumn Header="Asset" Binding="{Binding AssetPath}" IsReadOnly="True" Width="2*" />
                             <DataGridTextColumn Header="Export" Binding="{Binding ExportName}" IsReadOnly="True" Width="*" />
                             <DataGridTextColumn Header="Property" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="*" />
-                            <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*" />
+                            <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*">
+                                <DataGridTextColumn.CellStyle>
+                                    <!-- Reference and Unsupported rows have nowhere to write an edit to - disabling
+                                         the cell (rather than leaving it editable and silently doing nothing) makes
+                                         that visible instead of inviting an edit that will never take effect. -->
+                                    <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                        <Setter Property="IsEnabled" Value="False" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Kind}" Value="Property">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGridTextColumn.CellStyle>
+                            </DataGridTextColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </GroupBox>
@@ -150,7 +201,7 @@
 
             <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" />
 
-            <Grid Grid.Column="4">
+            <Grid Grid.Column="4" Background="{StaticResource Mono.Background}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -185,7 +236,7 @@
                         </ListBox>
                         <WrapPanel>
                             <Button Content="Preview" Command="{Binding PreviewCommand}" Margin="4" Padding="12,2" />
-                            <Button Content="Apply" Command="{Binding ApplyCommand}" Margin="4" Padding="12,2" Background="#FFE0A0A0" />
+                            <Button Content="Apply" Command="{Binding ApplyCommand}" Margin="4" Padding="12,2" Style="{StaticResource Mono.AccentButton}" />
                         </WrapPanel>
                     </StackPanel>
                 </GroupBox>
@@ -211,5 +262,6 @@
                          Width="300" Height="16" DockPanel.Dock="Right" Margin="8,0,0,0"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
         </DockPanel>
+        </Grid>
     </Grid>
 </Window>

@@ -10,15 +10,31 @@ namespace UAssetEditor.Core.Search;
 
 public sealed class SearchService
 {
-    /// <summary>Walks every export's property tree unconditionally - no <see cref="SearchQuery"/> filtering - for showing everything about one already-selected asset (e.g. opened from a browsable tree).</summary>
+    /// <summary>
+    /// Walks every export's property tree unconditionally - no <see cref="SearchQuery"/>
+    /// filtering - for showing everything about one already-selected asset (e.g. opened
+    /// from a browsable tree). An export that couldn't be parsed into properties (a
+    /// <see cref="RawExport"/> - see <see cref="AssetSources.ResilientAssetLoader"/>) is
+    /// surfaced as a single informational, non-editable row rather than silently omitted,
+    /// so the export's existence stays visible even though its content isn't.
+    /// </summary>
     public IEnumerable<SearchResult> AllProperties(UAsset asset, string assetPath)
     {
         for (var e = 0; e < asset.Exports.Count; e++)
         {
-            if (asset.Exports[e] is not NormalExport export) continue;
+            var export = asset.Exports[e];
             var exportName = export.ObjectName.Value?.Value ?? "";
 
-            foreach (var node in PropertyWalker.Walk(export))
+            if (export is RawExport rawExport)
+            {
+                yield return new SearchResult(assetPath, e, exportName, SearchMatchKind.Unsupported, null,
+                    $"Could not be parsed into properties ({rawExport.Data.Length} raw byte(s)) - not editable.");
+                continue;
+            }
+
+            if (export is not NormalExport normalExport) continue;
+
+            foreach (var node in PropertyWalker.Walk(normalExport))
             {
                 var text = PropertyValueAccessor.AsSearchableString(node.Property, asset);
                 yield return new SearchResult(assetPath, e, exportName, SearchMatchKind.Property, node.Path, text ?? "");

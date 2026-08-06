@@ -21,7 +21,7 @@ public sealed class LooseFolderAssetSource : IAssetSource
         Directory.EnumerateFiles(_rootPath, "*.uasset", SearchOption.AllDirectories);
 
     public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings) =>
-        new(assetPath, engineVersion, mappings);
+        ResilientAssetLoader.Open(assetPath, engineVersion, mappings);
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)
     {

@@ -1,3 +1,5 @@
+using UAssetAPI.ExportTypes;
+using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Search;
 using UAssetEditor.Core.Versioning;
 
@@ -5,6 +7,32 @@ namespace UAssetEditor.Core.Tests;
 
 public class SearchServiceTests
 {
+    [Fact]
+    public void AllProperties_SurfacesRawExportsAsUnsupportedButStillReturnsNormalExportProperties()
+    {
+        // Regression test for "retain what is properly constructed": an asset with one
+        // export that couldn't be parsed into properties (UAssetAPI's RawExport fallback)
+        // shouldn't lose visibility into that export, nor should it prevent properties on
+        // the asset's other, successfully-parsed exports from still showing up.
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, exportName: "GoodExport");
+        var rawExport = new RawExport([1, 2, 3, 4], asset, [])
+        {
+            ObjectName = new FName(asset, "BrokenExport"),
+        };
+        asset.Exports.Add(rawExport);
+
+        var results = new SearchService().AllProperties(asset, "Fake/Path.uasset").ToList();
+
+        var unsupported = Assert.Single(results, r => r.Kind == SearchMatchKind.Unsupported);
+        Assert.Equal("BrokenExport", unsupported.ExportName);
+        Assert.Equal(1, unsupported.ExportIndex);
+        Assert.Null(unsupported.PropertyPath);
+        Assert.Contains("4 raw byte", unsupported.MatchedText);
+
+        Assert.Contains(results, r => r.Kind == SearchMatchKind.Property && r.PropertyPath == "Count");
+    }
+
     [Fact]
     public void AllProperties_ReturnsEveryPropertyRegardlessOfAnyQuery()
     {
