@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -30,6 +31,8 @@ public sealed record RuleListItem(string Description, EditRule Rule);
 
 /// <summary>One selectable entry in the batch-edit rule-kind dropdown, pairing the enum value with a human-readable label/explanation - the bare enum name (e.g. "NumericAdjust") isn't self-explanatory on its own.</summary>
 public sealed record RuleKindOption(RuleKind Value, string Label, string Description);
+
+public sealed record EngineVersionOption(EngineVersion Value, string Label);
 
 public partial class MainViewModel : ObservableObject
 {
@@ -151,7 +154,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private int _progressCompleted;
     [ObservableProperty] private int _progressTotal;
 
-    public IReadOnlyList<EngineVersion> EngineVersions { get; } = Enum.GetValues<EngineVersion>();
+    public IReadOnlyList<EngineVersionOption> EngineVersionOptions { get; } = BuildEngineVersionOptions();
 
     public IReadOnlyList<RuleKindOption> RuleKindOptions { get; } =
     [
@@ -180,6 +183,32 @@ public partial class MainViewModel : ObservableObject
         if (File.Exists(ConfigPath))
             LoadConfig();
     }
+
+    /// <summary>
+    /// UAssetAPI's <see cref="EngineVersion"/> enum mixes real per-release values (VER_UE4_27, VER_UE5_3, ...)
+    /// with sentinels that aren't selectable versions (UNKNOWN, VER_UE4_OLDEST_LOADABLE_PACKAGE) and an alias
+    /// that duplicates whichever release is newest (VER_UE4_AUTOMATIC_VERSION, VER_UE4_AUTOMATIC_VERSION_PLUS_ONE).
+    /// Keep only the values whose name follows the "VER_UE{major}_{minor}[EA]" pattern and turn them into
+    /// readable labels like "Unreal Engine 5.0 Early Access".
+    /// </summary>
+    private static List<EngineVersionOption> BuildEngineVersionOptions()
+    {
+        var options = new List<EngineVersionOption>();
+        foreach (var version in Enum.GetValues<EngineVersion>())
+        {
+            var match = EngineVersionNamePattern().Match(version.ToString());
+            if (!match.Success)
+                continue;
+
+            var suffix = match.Groups["ea"].Success ? " Early Access" : "";
+            options.Add(new EngineVersionOption(version, $"Unreal Engine {match.Groups["major"].Value}.{match.Groups["minor"].Value}{suffix}"));
+        }
+
+        return options;
+    }
+
+    [GeneratedRegex(@"^VER_UE(?<major>\d+)_(?<minor>\d+)(?<ea>EA)?$")]
+    private static partial Regex EngineVersionNamePattern();
 
     partial void OnDefaultEngineVersionChanged(EngineVersion value) => _ = ReloadContextAsync(aesKeyChanged: false);
 

@@ -85,7 +85,14 @@
                 </WrapPanel>
                 <WrapPanel Orientation="Horizontal" Margin="0,4,0,0">
                     <TextBlock Text="Engine version:" VerticalAlignment="Center" Margin="4" />
-                    <ComboBox ItemsSource="{Binding EngineVersions}" SelectedItem="{Binding DefaultEngineVersion}" Width="150" Margin="4" />
+                    <ComboBox ItemsSource="{Binding EngineVersionOptions}" SelectedValuePath="Value"
+                              SelectedValue="{Binding DefaultEngineVersion}" Width="150" Margin="4">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
 
                     <TextBlock Text="Usmap (optional):" VerticalAlignment="Center" Margin="12,4,4,4" />
                     <TextBox Text="{Binding UsmapPath, UpdateSourceTrigger=PropertyChanged}" Width="200" VerticalAlignment="Center" Margin="4" />
