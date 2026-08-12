@@ -62,4 +62,78 @@ internal static class TestAssets
         asset.Exports.Add(export);
         return export;
     }
+
+    /// <summary>Adds an "Outer" struct (itself containing a nested "Inner" struct with one scalar field) to an already-built export's Data - exercises a table nested inside another table, rather than just a table of scalars.</summary>
+    public static StructPropertyData AddNestedStruct(UAsset asset, NormalExport export)
+    {
+        var inner = new StructPropertyData(new FName(asset, "Inner"))
+        {
+            StructType = new FName(asset, "InnerType"),
+            Value = new List<PropertyData>
+            {
+                new IntPropertyData(new FName(asset, "Value")) { Value = 7 },
+            },
+        };
+        var outer = new StructPropertyData(new FName(asset, "Outer"))
+        {
+            StructType = new FName(asset, "OuterType"),
+            Value = new List<PropertyData> { inner },
+        };
+
+        export.Data.Add(outer);
+        return outer;
+    }
+
+    /// <summary>A small NameProperty-to-IntProperty map, for exercising map-entry traversal.</summary>
+    public static MapPropertyData CreateSampleMap(UAsset asset, string propertyName = "Scores")
+    {
+        var map = new MapPropertyData(new FName(asset, propertyName))
+        {
+            KeyType = new FName(asset, "NameProperty"),
+            ValueType = new FName(asset, "IntProperty"),
+            Value = new TMap<PropertyData, PropertyData>(),
+        };
+        map.Value.Add(
+            new NamePropertyData(new FName(asset, "Key")) { Value = new FName(asset, "Alice") },
+            new IntPropertyData(new FName(asset, "Value")) { Value = 10 });
+        map.Value.Add(
+            new NamePropertyData(new FName(asset, "Key")) { Value = new FName(asset, "Bob") },
+            new IntPropertyData(new FName(asset, "Value")) { Value = 20 });
+        return map;
+    }
+
+    /// <summary>An export whose only top-level property is a map - exercises map-entry traversal in <see cref="PropertyAccess.PropertyWalker"/>/<see cref="PropertyAccess.PropertyTreeExpander"/>.</summary>
+    public static NormalExport CreateExportWithMap(UAsset asset, string exportName = "MapExport")
+    {
+        var export = new NormalExport(asset, Array.Empty<byte>())
+        {
+            ObjectName = new FName(asset, exportName),
+            Data = new List<PropertyData> { CreateSampleMap(asset) },
+        };
+
+        asset.Exports.Add(export);
+        return export;
+    }
+
+    /// <summary>A DataTableExport whose rows (each a struct) live in Table.Data rather than the export's own (empty) Data - exercises the DataTable-specific root in <see cref="PropertyAccess.PropertyTreeExpander"/>.</summary>
+    public static DataTableExport CreateSampleDataTableExport(UAsset asset, string exportName = "TestDataTable")
+    {
+        var row = new StructPropertyData(new FName(asset, "Row1"))
+        {
+            StructType = new FName(asset, "TestRow"),
+            Value = new List<PropertyData>
+            {
+                new IntPropertyData(new FName(asset, "Damage")) { Value = 42 },
+            },
+        };
+
+        var table = new UDataTable(new List<StructPropertyData> { row });
+        var export = new DataTableExport(table, asset, Array.Empty<byte>())
+        {
+            ObjectName = new FName(asset, exportName),
+        };
+
+        asset.Exports.Add(export);
+        return export;
+    }
 }

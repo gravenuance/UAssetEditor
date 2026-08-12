@@ -35,4 +35,28 @@ public class PropertyWalkerTests
         Assert.Same(export.Data, countNode.Owner);
         Assert.Same(export.Data[countNode.OwnerIndex], countNode.Property);
     }
+
+    [Fact]
+    public void Walk_DescendsIntoMapEntriesByKey()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateExportWithMap(asset);
+
+        var paths = PropertyWalker.Walk(export).Select(n => n.Path).ToList();
+
+        Assert.Contains("Scores[Alice]", paths);
+        Assert.Contains("Scores[Bob]", paths);
+    }
+
+    [Fact]
+    public void Walk_ForDataTableExport_YieldsRowFieldsFromTableDataNotTheExportsOwnData()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleDataTableExport(asset);
+
+        var paths = PropertyWalker.Walk(export).Select(n => n.Path).ToList();
+
+        Assert.Contains("Row1", paths);
+        Assert.Contains("Row1.Damage", paths);
+    }
 }

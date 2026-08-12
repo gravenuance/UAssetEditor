@@ -52,6 +52,31 @@ public sealed class SearchService
         }
     }
 
+    /// <summary>
+    /// Same per-export logic as <see cref="PropertiesForExport"/>, scoped to just one
+    /// property's own subtree - used when double-clicking a table reached by drilling into
+    /// the Browse tree rather than a whole export. The tree itself never shows scalar leaf
+    /// properties as their own entries (see <see cref="PropertyAccess.PropertyTreeExpander"/>),
+    /// so this is how their values are actually reached: re-walk the export fresh (paths
+    /// aren't cached) and keep only the node for the table itself plus everything under it.
+    /// </summary>
+    public IEnumerable<SearchResult> PropertiesUnder(UAsset asset, string assetPath, int exportIndex, string propertyPath)
+    {
+        if (asset.Exports[exportIndex] is not NormalExport normalExport) yield break;
+        var exportName = normalExport.ObjectName.Value?.Value ?? "";
+
+        foreach (var node in PropertyWalker.Walk(normalExport))
+        {
+            if (node.Path != propertyPath &&
+                !node.Path.StartsWith(propertyPath + ".", StringComparison.Ordinal) &&
+                !node.Path.StartsWith(propertyPath + "[", StringComparison.Ordinal))
+                continue;
+
+            var text = PropertyValueAccessor.AsSearchableString(node.Property, asset);
+            yield return new SearchResult(assetPath, exportIndex, exportName, SearchMatchKind.Property, node.Path, text ?? "");
+        }
+    }
+
     /// <summary>Searches every export's property tree (and, if requested, the import table) of a single already-opened asset.</summary>
     public IEnumerable<SearchResult> SearchAsset(UAsset asset, string assetPath, SearchQuery query)
     {

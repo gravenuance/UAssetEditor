@@ -43,13 +43,26 @@ public partial class MainWindow : Window
             viewModel.OpenFromTreeCommand.Execute(item);
     }
 
-    /// <summary>Lazily populates an "Exports" tree node with real per-export children the first time it's expanded.</summary>
+    /// <summary>
+    /// Lazily populates a tree node with its real children the first time it's expanded -
+    /// an "Exports" node's per-export children, or an Export/Property node's own
+    /// top-level property children (which may themselves be further expandable structs,
+    /// arrays, or maps).
+    /// </summary>
     private async void AssetTree_Expanded(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel) return;
-        if (e.OriginalSource is not TreeViewItem { DataContext: AssetTreeItemViewModel { Kind: TreeNodeKind.ExportsGroup } item }) return;
+        if (e.OriginalSource is not TreeViewItem { DataContext: AssetTreeItemViewModel item }) return;
 
-        await viewModel.LoadExportsAsync(item);
+        switch (item.Kind)
+        {
+            case TreeNodeKind.ExportsGroup:
+                await viewModel.LoadExportsAsync(item);
+                break;
+            case TreeNodeKind.Export or TreeNodeKind.Property:
+                await viewModel.LoadPropertiesAsync(item);
+                break;
+        }
     }
 
     /// <summary>Windows has no single dialog that picks either a folder or a file, so this one button offers both via a small menu instead of three separate source rows.</summary>

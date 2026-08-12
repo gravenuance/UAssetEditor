@@ -48,6 +48,29 @@ public class SearchServiceTests
     }
 
     [Fact]
+    public void PropertiesUnder_ReturnsOnlyTheGivenTableAndItsOwnDescendants()
+    {
+        // This is how double-clicking a table reached by drilling into the Browse tree
+        // opens it into the edit grid - the tree itself never shows scalar leaf
+        // properties (Location's own X/Y) as their own entries, so this scoped walk is
+        // the only way their values are actually reached.
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+
+        var results = new SearchService().PropertiesUnder(asset, "Fake/Path.uasset", 0, "Location").ToList();
+        var paths = results.Select(r => r.PropertyPath).ToList();
+
+        Assert.Contains("Location", paths);
+        Assert.Contains("Location.X", paths);
+        Assert.Contains("Location.Y", paths);
+        Assert.DoesNotContain("bEnabled", paths);
+        Assert.DoesNotContain("Count", paths);
+        Assert.DoesNotContain("Tags", paths);
+
+        Assert.Equal("1.5", results.Single(r => r.PropertyPath == "Location.X").MatchedText);
+    }
+
+    [Fact]
     public void AllProperties_ReturnsEveryPropertyRegardlessOfAnyQuery()
     {
         var asset = TestAssets.CreateAsset();

@@ -11,6 +11,7 @@ using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
 using UAssetEditor.Core.Versioning;
 
@@ -456,11 +457,18 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Opened '{Path.GetFileName(filePath)}'.";
     }
 
-    /// <summary>Opens one export node's properties, editable in place - same machinery as a search result row. Any other tree node kind is a no-op here; expand/collapse for those is handled by the TreeView itself.</summary>
+    /// <summary>
+    /// Opens one export's, or one table's, properties into the results grid, editable in
+    /// place - same machinery as a search result row. Since the Browse tree never shows a
+    /// scalar leaf property as its own entry (only struct/array/map tables are tree
+    /// nodes - see <see cref="AssetTreeItemViewModel.MarkPropertiesLoaded"/>), double-clicking
+    /// a Property node is how its own leaf fields are actually reached. Any other tree node
+    /// kind is a no-op here; expand/collapse for those is handled by the TreeView itself.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task OpenFromTreeAsync(AssetTreeItemViewModel? item)
     {
-        if (item is not { Kind: TreeNodeKind.Export, FullPath: not null }) return;
+        if (item is not { Kind: TreeNodeKind.Export or TreeNodeKind.Property, FullPath: not null }) return;
         if (_workspace == null)
         {
             StatusMessage = "Open a folder, pak, or file first.";
@@ -470,6 +478,7 @@ public partial class MainViewModel : ObservableObject
         var workspace = _workspace;
         var fullPath = item.FullPath;
         var exportIndex = item.ExportIndex;
+        var propertyPath = item.PropertyPath;
 
         IsBusy = true;
         StatusMessage = $"Opening {fullPath} [{item.Name}]...";
@@ -480,7 +489,9 @@ public partial class MainViewModel : ObservableObject
             var results = await Task.Run(() =>
             {
                 var asset = workspace.GetOrOpen(fullPath);
-                return _searchService.PropertiesForExport(asset, fullPath, exportIndex).ToList();
+                return propertyPath == null
+                    ? _searchService.PropertiesForExport(asset, fullPath, exportIndex).ToList()
+                    : _searchService.PropertiesUnder(asset, fullPath, exportIndex, propertyPath).ToList();
             });
 
             SearchResults.Clear();
@@ -525,6 +536,38 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"Failed to load exports for {assetPath}: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Lazily populates one Export or Property tree node with its own top-level property
+    /// children the first time it's expanded - an export's own properties for an Export
+    /// node, or one level further into a struct/array/map for a Property node. The asset
+    /// is already open (its Exports node had to be expanded first to reach either kind of
+    /// node), so this never triggers a fresh parse; it's just reading what's already there.
+    /// </summary>
+    public async Task LoadPropertiesAsync(AssetTreeItemViewModel node)
+    {
+        if (node.PropertiesLoaded || node.AssetPath == null || _workspace == null) return;
+        if (node.Kind is not (TreeNodeKind.Export or TreeNodeKind.Property)) return;
+
+        var workspace = _workspace;
+        var assetPath = node.AssetPath;
+
+        try
+        {
+            var items = await Task.Run(() =>
+            {
+                var asset = workspace.GetOrOpen(assetPath);
+                return node.Kind == TreeNodeKind.Export
+                    ? PropertyTreeExpander.GetExportRoot(asset.Exports[node.ExportIndex], asset)
+                    : PropertyTreeExpander.GetChildren(node.Property!, node.PropertyPath!, asset);
+            });
+            node.MarkPropertiesLoaded(items);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to load properties for {assetPath}: {ex.Message}";
         }
     }
 
