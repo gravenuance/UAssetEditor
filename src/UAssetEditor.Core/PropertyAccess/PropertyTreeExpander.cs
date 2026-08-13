@@ -9,9 +9,11 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// <summary>
 /// One tree node's worth of a property: its full path (the same path scheme
 /// <see cref="PropertyWalker"/>'s flat walk uses, so it can be re-located the same way),
-/// how to display it, and the property itself.
+/// how to display it, the property itself, and whether it's worth offering a "load this"
+/// checkbox for (see <see cref="PropertyWalker.HasEditableDescendant"/>) - a table that
+/// recursively holds nothing but more tables has nothing of its own to usefully load.
 /// </summary>
-public sealed record PropertyTreeItem(string Path, string DisplayName, PropertyData Property);
+public sealed record PropertyTreeItem(string Path, string DisplayName, PropertyData Property, bool HasEditableContent);
 
 /// <summary>
 /// Supplies the Browse tree's property children one level at a time, filtered down to only
@@ -34,18 +36,18 @@ public static class PropertyTreeExpander
             _ => null,
         };
 
-        return data == null ? [] : FilterFields(data, "");
+        return data == null ? [] : FilterFields(data, "", asset);
     }
 
     public static IReadOnlyList<PropertyTreeItem> GetChildren(PropertyData property, string path, UAsset asset) => property switch
     {
-        StructPropertyData s => FilterFields(s.Value, path),
-        ArrayPropertyData { Value: { } elements } => FilterElements(elements, path),
+        StructPropertyData s => FilterFields(s.Value, path, asset),
+        ArrayPropertyData { Value: { } elements } => FilterElements(elements, path, asset),
         MapPropertyData map => FilterEntries(map.Value, path, asset),
         _ => [],
     };
 
-    private static List<PropertyTreeItem> FilterFields(IEnumerable<PropertyData> properties, string prefix)
+    private static List<PropertyTreeItem> FilterFields(IEnumerable<PropertyData> properties, string prefix, UAsset asset)
     {
         var items = new List<PropertyTreeItem>();
         foreach (var property in properties)
@@ -54,12 +56,13 @@ public static class PropertyTreeExpander
             if (count == 0) continue;
 
             var name = property.Name?.Value?.Value ?? "";
-            items.Add(new PropertyTreeItem(PropertyPaths.Child(prefix, property), $"{name} ({count})", property));
+            items.Add(new PropertyTreeItem(PropertyPaths.Child(prefix, property), $"{name} ({count})", property,
+                PropertyWalker.HasEditableDescendant(property, asset)));
         }
         return items;
     }
 
-    private static List<PropertyTreeItem> FilterElements(PropertyData[] elements, string prefix)
+    private static List<PropertyTreeItem> FilterElements(PropertyData[] elements, string prefix, UAsset asset)
     {
         var items = new List<PropertyTreeItem>();
         for (var i = 0; i < elements.Length; i++)
@@ -67,7 +70,8 @@ public static class PropertyTreeExpander
             var count = ChildCount(elements[i]);
             if (count == 0) continue;
 
-            items.Add(new PropertyTreeItem(PropertyPaths.ArrayElement(prefix, i), $"[{i}] ({count})", elements[i]));
+            items.Add(new PropertyTreeItem(PropertyPaths.ArrayElement(prefix, i), $"[{i}] ({count})", elements[i],
+                PropertyWalker.HasEditableDescendant(elements[i], asset)));
         }
         return items;
     }
@@ -81,7 +85,8 @@ public static class PropertyTreeExpander
             if (count == 0) continue;
 
             var keyText = PropertyValueAccessor.AsSearchableString(key, asset) ?? key.Name?.Value?.Value ?? "?";
-            items.Add(new PropertyTreeItem(PropertyPaths.MapEntry(prefix, keyText), $"{keyText} ({count})", value));
+            items.Add(new PropertyTreeItem(PropertyPaths.MapEntry(prefix, keyText), $"{keyText} ({count})", value,
+                PropertyWalker.HasEditableDescendant(value, asset)));
         }
         return items;
     }

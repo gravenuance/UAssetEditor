@@ -56,13 +56,16 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     public bool PropertiesLoaded { get; private set; }
 
     /// <summary>
-    /// Only Export nodes are checkable - by the time one exists, its asset has already
+    /// Export nodes are always checkable - by the time one exists, its asset has already
     /// been parsed (expanding "Exports" is what loads them), so checking it can never
-    /// trigger a surprise parse. An Asset node is deliberately not checkable: selecting
-    /// its exports means actually looking at what's there first, not blindly grabbing
-    /// everything sight-unseen.
+    /// trigger a surprise parse. A Property node is checkable only if it has editable
+    /// content somewhere in its own subtree (see <see cref="PropertyTreeItem.HasEditableContent"/>) -
+    /// a table that only serves to hold other (in turn empty) tables has nothing of its
+    /// own worth loading alongside other checked entries. An Asset node is deliberately
+    /// never checkable: selecting its exports means actually looking at what's there
+    /// first, not blindly grabbing everything sight-unseen.
     /// </summary>
-    public bool IsCheckable => Kind is TreeNodeKind.Export;
+    public bool IsCheckable { get; private init; }
 
     /// <summary>Checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c>, independent of the TreeView's own single-item selection highlight.</summary>
     [ObservableProperty] private bool _isChecked;
@@ -109,7 +112,7 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         Children.Clear();
         for (var i = 0; i < exportNames.Count; i++)
         {
-            var exportNode = new AssetTreeItemViewModel(exportNames[i], AssetPath, TreeNodeKind.Export) { ExportIndex = i, AssetPath = AssetPath };
+            var exportNode = new AssetTreeItemViewModel(exportNames[i], AssetPath, TreeNodeKind.Export) { ExportIndex = i, AssetPath = AssetPath, IsCheckable = true };
             exportNode.Children.Add(LoadingPlaceholder);
             Children.Add(exportNode);
         }
@@ -138,6 +141,7 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
                 ExportIndex = ExportIndex,
                 Property = item.Property,
                 PropertyPath = item.Path,
+                IsCheckable = item.HasEditableContent,
             };
             node.Children.Add(LoadingPlaceholder);
             Children.Add(node);

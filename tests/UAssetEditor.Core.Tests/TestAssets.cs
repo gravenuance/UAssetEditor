@@ -84,6 +84,24 @@ internal static class TestAssets
         return outer;
     }
 
+    /// <summary>Adds a "MiddleContainer" struct whose only field is an entirely empty "EmptyInner" struct - a table that (however deep you go) never bottoms out in an actual editable leaf, for exercising <see cref="PropertyAccess.PropertyWalker.HasEditableDescendant"/>'s negative case.</summary>
+    public static StructPropertyData AddPurelyStructuralStruct(UAsset asset, NormalExport export)
+    {
+        var emptyInner = new StructPropertyData(new FName(asset, "EmptyInner"))
+        {
+            StructType = new FName(asset, "EmptyInnerType"),
+            Value = new List<PropertyData>(),
+        };
+        var middle = new StructPropertyData(new FName(asset, "MiddleContainer"))
+        {
+            StructType = new FName(asset, "MiddleContainerType"),
+            Value = new List<PropertyData> { emptyInner },
+        };
+
+        export.Data.Add(middle);
+        return middle;
+    }
+
     /// <summary>A small NameProperty-to-IntProperty map, for exercising map-entry traversal.</summary>
     public static MapPropertyData CreateSampleMap(UAsset asset, string propertyName = "Scores")
     {

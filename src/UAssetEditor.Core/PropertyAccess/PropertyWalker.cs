@@ -24,6 +24,16 @@ public static class PropertyWalker
             : WalkList(export.Data, "", asset);
     }
 
+    /// <summary>
+    /// Whether this property's own subtree (however deep) contains at least one leaf
+    /// property with an actual editable value - used to decide whether a Browse-tree table
+    /// is worth offering a "load this" checkbox for. A table that recursively holds nothing
+    /// but more tables (no leaf ever bottoms out anywhere underneath it) has nothing of its
+    /// own to usefully load.
+    /// </summary>
+    public static bool HasEditableDescendant(PropertyData property, UAsset asset) =>
+        WalkChildren(property, "", asset).Any(n => PropertyValueAccessor.AsSearchableString(n.Property, asset) != null);
+
     private static IEnumerable<PropertyNode> WalkRows(List<StructPropertyData> rows, UAsset asset)
     {
         foreach (var row in rows)

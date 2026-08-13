@@ -6,6 +6,15 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Matches UAssetEditor.App's SingleFileRelease publish profile: embed this project's
+       own debug symbols too instead of leaving a separate UAssetEditor.Core.pdb next to
+       the single .exe. Only takes effect for that specific publish (PublishSingleFile is
+       unset for a normal build/run/test), so this project's own Debug/Release output and
+       the test project are unaffected. -->
+  <PropertyGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="UAssetAPI" Version="1.1.0" />
   </ItemGroup>

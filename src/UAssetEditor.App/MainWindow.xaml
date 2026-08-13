@@ -146,7 +146,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="Browse" Grid.Column="0" Padding="6" ToolTip="Expand an asset's Exports node, check the ones you want, and click Load Selected - or double-click one export to open it alone">
+            <GroupBox Header="Browse" Grid.Column="0" Padding="6" ToolTip="Expand an asset's Exports node, then check the exports and/or tables you want (a table only shows a checkbox if it actually holds editable data) and click Load Selected - or double-click one to open it alone">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

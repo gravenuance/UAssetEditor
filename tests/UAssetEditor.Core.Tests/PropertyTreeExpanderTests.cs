@@ -78,6 +78,46 @@ public class PropertyTreeExpanderTests
     }
 
     [Fact]
+    public void GetExportRoot_MarksATableWithDirectScalarFieldsAsUsefulToLoad()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+
+        var location = PropertyTreeExpander.GetExportRoot(export, asset).Single(i => i.Path == "Location");
+
+        Assert.True(location.HasEditableContent);
+    }
+
+    [Fact]
+    public void GetExportRoot_MarksATableWithOnlyADeeplyNestedLeafAsUsefulToLoad()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddNestedStruct(asset, export);
+
+        // Outer's own direct field is Inner (another struct) - no scalar of its own -
+        // but Inner.Value is a real editable leaf, so Outer is still worth loading.
+        var outer = PropertyTreeExpander.GetExportRoot(export, asset).Single(i => i.Path == "Outer");
+
+        Assert.True(outer.HasEditableContent);
+    }
+
+    [Fact]
+    public void GetExportRoot_MarksATableThatOnlyHoldsOtherEmptyTablesAsNotUsefulToLoad()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddPurelyStructuralStruct(asset, export);
+
+        // MiddleContainer's only field is EmptyInner, which itself has nothing inside it -
+        // no leaf ever bottoms out anywhere under MiddleContainer, so loading it would show
+        // nothing editable.
+        var middle = PropertyTreeExpander.GetExportRoot(export, asset).Single(i => i.Path == "MiddleContainer");
+
+        Assert.False(middle.HasEditableContent);
+    }
+
+    [Fact]
     public void GetExportRoot_ForDataTableExport_UsesTableRowsNotTheExportsOwnData()
     {
         var asset = TestAssets.CreateAsset();

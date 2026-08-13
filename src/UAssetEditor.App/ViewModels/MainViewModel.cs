@@ -35,6 +35,9 @@ public sealed record RuleKindOption(RuleKind Value, string Label, string Descrip
 
 public sealed record EngineVersionOption(EngineVersion Value, string Label);
 
+/// <summary>What a tree-driven "open"/"load" populated the results grid with - a whole export (PropertyPath null) or just one table's own subtree, so a later refresh (UE version/usmap/AES change) can replay exactly that, not more.</summary>
+public sealed record OpenedScope(string AssetPath, int ExportIndex, string? PropertyPath);
+
 public partial class MainViewModel : ObservableObject
 {
     private static readonly string ConfigPath = Path.Combine(
@@ -56,7 +59,7 @@ public partial class MainViewModel : ObservableObject
     // whichever of these ran most recently, mirroring how SearchResults itself is always
     // fully replaced (not merged) by either action. Both null means nothing to refresh.
     private SearchQuery? _lastSearchQuery;
-    private List<(string AssetPath, int ExportIndex)> _lastOpenedExports = new();
+    private List<OpenedScope> _lastOpenedExports = new();
 
     // Usmap path and AES key are free-text fields bound with UpdateSourceTrigger=
     // PropertyChanged, so they fire on every keystroke - debounced so a reload doesn't
@@ -302,14 +305,16 @@ public partial class MainViewModel : ObservableObject
         }
         else if (_lastOpenedExports.Count > 0)
         {
-            var exports = _lastOpenedExports;
+            var scopes = _lastOpenedExports;
             SearchResults.Clear();
-            foreach (var (path, exportIndex) in exports)
+            foreach (var scope in scopes)
             {
                 var results = await Task.Run(() =>
                 {
-                    var asset = workspace.GetOrOpen(path);
-                    return _searchService.PropertiesForExport(asset, path, exportIndex).ToList();
+                    var asset = workspace.GetOrOpen(scope.AssetPath);
+                    return scope.PropertyPath == null
+                        ? _searchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
+                        : _searchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
                 });
                 foreach (var result in results)
                     SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
@@ -497,7 +502,7 @@ public partial class MainViewModel : ObservableObject
             SearchResults.Clear();
             foreach (var result in results)
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
-            _lastOpenedExports = [(fullPath, exportIndex)];
+            _lastOpenedExports = [new OpenedScope(fullPath, exportIndex, propertyPath)];
             _lastSearchQuery = null;
             StatusMessage = $"Opened {fullPath} [{item.Name}] ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")}).";
         }
@@ -572,12 +577,15 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Loads every checked export's properties into the grid at once. Only Export nodes
-    /// are checkable (see <see cref="AssetTreeItemViewModel.IsCheckable"/>) - by the time
-    /// one exists to check, its asset was already parsed when its "Exports" node was
-    /// expanded, so this never triggers a parse of its own; it just gathers what's
-    /// already known. Replaces the grid's current contents, same as a single tree-driven
-    /// open.
+    /// Loads every checked export's or table's properties into the grid at once. A whole
+    /// Export node is always checkable (see <see cref="AssetTreeItemViewModel.IsCheckable"/>);
+    /// a Property (table) node is checkable only when it has editable content somewhere in
+    /// its own subtree, so a table that only serves to hold other tables never clutters up
+    /// a multi-selection with nothing to actually load. By the time either kind of node
+    /// exists to check, its asset was already parsed (expanding "Exports" is what loads
+    /// exports; expanding an export is what loads its tables), so this never triggers a
+    /// parse of its own - it just gathers what's already known. Replaces the grid's current
+    /// contents, same as a single tree-driven open.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task LoadSelectedAsync()
@@ -589,12 +597,16 @@ public partial class MainViewModel : ObservableObject
         }
 
         var workspace = _workspace;
-        var toLoad = new List<(string AssetPath, int ExportIndex)>();
+        var toLoad = new List<OpenedScope>();
 
         void Collect(AssetTreeItemViewModel node)
         {
-            if (node.Kind == TreeNodeKind.Export && node.IsChecked && node.FullPath != null)
-                toLoad.Add((node.FullPath, node.ExportIndex));
+            if (node.IsChecked && node.FullPath != null)
+            {
+                toLoad.Add(node.Kind == TreeNodeKind.Export
+                    ? new OpenedScope(node.FullPath, node.ExportIndex, null)
+                    : new OpenedScope(node.FullPath, node.ExportIndex, node.PropertyPath!));
+            }
 
             foreach (var child in node.Children)
                 Collect(child);
@@ -606,28 +618,30 @@ public partial class MainViewModel : ObservableObject
         var distinct = toLoad.Distinct().ToList();
         if (distinct.Count == 0)
         {
-            StatusMessage = "Check one or more exports in the tree first (expand an asset's Exports node to see them).";
+            StatusMessage = "Check one or more exports or tables in the tree first (expand an asset's Exports node to see them).";
             return;
         }
 
         IsBusy = true;
-        StatusMessage = $"Loading {distinct.Count} export(s)...";
+        StatusMessage = $"Loading {distinct.Count} item(s)...";
         try
         {
             SearchResults.Clear();
-            foreach (var (path, exportIndex) in distinct)
+            foreach (var scope in distinct)
             {
                 var results = await Task.Run(() =>
                 {
-                    var asset = workspace.GetOrOpen(path);
-                    return _searchService.PropertiesForExport(asset, path, exportIndex).ToList();
+                    var asset = workspace.GetOrOpen(scope.AssetPath);
+                    return scope.PropertyPath == null
+                        ? _searchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
+                        : _searchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
                 });
                 foreach (var result in results)
                     SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
             }
             _lastOpenedExports = distinct;
             _lastSearchQuery = null;
-            StatusMessage = $"Loaded {distinct.Count} export(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total).";
+            StatusMessage = $"Loaded {distinct.Count} item(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total).";
         }
         catch (Exception ex)
         {
