@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!-- Monokai Pro "Classic" palette -->
     <Color x:Key="Mono.Background.Color">#FF2D2A2E</Color>
@@ -8,7 +9,7 @@
     <Color x:Key="Mono.SurfaceRaised.Color">#FF403E41</Color>
     <Color x:Key="Mono.Border.Color">#FF5B595C</Color>
     <Color x:Key="Mono.Foreground.Color">#FFFCFCFA</Color>
-    <Color x:Key="Mono.Muted.Color">#FF939293</Color>
+    <Color x:Key="Mono.Muted.Color">#FFBCBCBC</Color>
     <Color x:Key="Mono.Red.Color">#FFFF6188</Color>
     <Color x:Key="Mono.Orange.Color">#FFFC9867</Color>
     <Color x:Key="Mono.Yellow.Color">#FFFFD866</Color>
@@ -34,11 +35,23 @@
     <SolidColorBrush x:Key="Mono.DirtyHighlight" Color="{StaticResource Mono.Yellow.Color}" Opacity="0.28" />
     <SolidColorBrush x:Key="Mono.SelectionHighlight" Color="{StaticResource Mono.Purple.Color}" Opacity="0.35" />
 
+    <!-- Type scale - three sizes, used everywhere instead of ad-hoc per-element FontSize
+         values. Caption is for labels/headers/hints/status text; Body is default control/
+         data text; Heading is for dialog titles and section emphasis. -->
+    <sys:Double x:Key="Mono.Type.Caption">11</sys:Double>
+    <sys:Double x:Key="Mono.Type.Body">13</sys:Double>
+    <sys:Double x:Key="Mono.Type.Heading">16</sys:Double>
+
+    <!-- Monospace face for data (property paths, hex keys, file paths) - kept visually
+         distinct from the UI chrome font, same distinction the redesign mockup uses. -->
+    <FontFamily x:Key="Mono.Type.DataFont">Consolas</FontFamily>
+
     <!-- ===================== Window / base text ===================== -->
 
     <Style TargetType="Window">
         <Setter Property="Background" Value="{StaticResource Mono.Background}" />
         <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+        <Setter Property="FontSize" Value="{StaticResource Mono.Type.Body}" />
     </Style>
 
     <Style TargetType="TextBlock">
@@ -47,6 +60,26 @@
 
     <Style TargetType="Label">
         <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+    </Style>
+
+    <!-- Unstyled ToolTip defaults to the OS light theme's white background - combined with
+         Window's Foreground (near-white, inherited into the tooltip's content) that's
+         invisible white-on-white text. -->
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="{StaticResource Mono.SurfaceRaised}" />
+        <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+        <Setter Property="FontSize" Value="{StaticResource Mono.Type.Caption}" />
+        <Setter Property="Padding" Value="7,4" />
+        <Setter Property="HasDropShadow" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolTip">
+                    <Border Background="{TemplateBinding Background}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===================== ScrollBar (flat, minimal) ===================== -->
@@ -209,8 +242,51 @@
         </Setter>
     </Style>
 
+    <!-- Menu-bar buttons (File/Tools/Help - see MainWindow.xaml) - flat, no border, normal
+         padding (unlike Mono.TitleBarButton's fixed caption-glyph size), each with its own
+         attached ContextMenu opened on click. -->
+    <Style x:Key="Mono.MenuBarButton" TargetType="Button" BasedOn="{StaticResource Mono.ButtonBase}">
+        <Setter Property="Padding" Value="10,3" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource Mono.Muted}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" CornerRadius="3">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Mono.SurfaceRaised}" />
+                            <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+                        </Trigger>
+                        <Trigger Property="ContextMenu.IsOpen" Value="True">
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Mono.SurfaceRaised}" />
+                            <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== ProgressBar ===================== -->
+
+    <!-- Recolors via the properties WPF's own default template already respects, rather
+         than a hand-rolled ControlTemplate - the built-in fill-width logic is exactly right
+         and not worth reimplementing just to reskin it. -->
+    <Style TargetType="ProgressBar">
+        <Setter Property="Background" Value="{StaticResource Mono.Surface}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Mono.Border}" />
+        <Setter Property="Foreground" Value="{StaticResource Mono.Purple}" />
+    </Style>
+
     <!-- ===================== TextBox ===================== -->
 
+    <!-- Rounded to match every other "field"-shaped control (buttons, combo boxes) - the
+         redesign mockup's .field treatment applies to text input everywhere, not just the
+         toolbar. -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{StaticResource Mono.Surface}" />
         <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
@@ -218,16 +294,79 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CaretBrush" Value="{StaticResource Mono.Foreground}" />
         <Setter Property="SelectionBrush" Value="{StaticResource Mono.Purple}" />
-        <Setter Property="Padding" Value="3" />
-        <Style.Triggers>
-            <Trigger Property="IsFocused" Value="True">
-                <Setter Property="BorderBrush" Value="{StaticResource Mono.Purple}" />
-            </Trigger>
-            <Trigger Property="IsEnabled" Value="False">
-                <Setter Property="Foreground" Value="{StaticResource Mono.Muted}" />
-                <Setter Property="Background" Value="{StaticResource Mono.Panel}" />
-            </Trigger>
-        </Style.Triggers>
+        <Setter Property="Padding" Value="6,4" />
+        <!-- Centered by default - a custom template's PART_ContentHost doesn't inherit the
+             default template's vertical-centering behavior on its own, it has to be wired
+             explicitly, otherwise single-line text sits flush against the top of the box
+             whenever Height exceeds one line (every field in the toolbar, for instance). -->
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                        <!-- Padding, not Margin: Margin shrinks the space PART_ContentHost is
+                             measured with BEFORE VerticalAlignment=Center gets to act, so
+                             whenever that shrunk constraint came out smaller than one line of
+                             text actually needs, the ScrollViewer clipped its own content
+                             instead of centering it - a real bug, not just a top-alignment
+                             cosmetic issue, and visible on every TextBox in the app to a
+                             degree that depended on its container's own measure pass. Padding
+                             is applied inside the ScrollViewer's own content presenter, so its
+                             measure constraint is never reduced below what the Border actually
+                             has to give it. -->
+                        <ScrollViewer x:Name="PART_ContentHost" Padding="{TemplateBinding Padding}"
+                                      VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      HorizontalScrollBarVisibility="{TemplateBinding HorizontalScrollBarVisibility}"
+                                      VerticalScrollBarVisibility="{TemplateBinding VerticalScrollBarVisibility}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsFocused" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Mono.Purple}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Mono.Muted}" />
+                            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource Mono.Panel}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Chip-shaped button (Recent, status-bar tags in the redesign mockup) - pill radius,
+         quiet by default, purple border + full-brightness text on hover. -->
+    <Style x:Key="Mono.ChipButton" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource Mono.Surface}" />
+        <Setter Property="Foreground" Value="{StaticResource Mono.Muted}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Mono.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontFamily" Value="{StaticResource Mono.Type.DataFont}" />
+        <Setter Property="FontSize" Value="{StaticResource Mono.Type.Caption}" />
+        <Setter Property="Padding" Value="9,3" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <!-- A rounded rectangle, not a full stadium/pill - an extreme corner
+                         radius rendered as a lens/oval shape here rather than a clean pill. -->
+                    <Border x:Name="Chrome" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Mono.Purple}" />
+                            <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+                        </Trigger>
+                        <Trigger Property="ContextMenu.IsOpen" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Mono.Purple}" />
+                            <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ===================== CheckBox ===================== -->
@@ -336,6 +475,11 @@
 
     <!-- ===================== GroupBox ===================== -->
 
+    <!-- Flat "pane" (redesign mockup's .pane-head/.pane-body) - a header strip differentiated
+         from its body by background color alone, no outer border or rounded corners framing
+         the whole box. Panes sit directly adjacent to each other (divided only by the 1px
+         GridSplitter/Border already used between them in MainWindow.xaml), not as separate
+         boxed cards. -->
     <Style TargetType="GroupBox">
         <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
         <Setter Property="BorderBrush" Value="{StaticResource Mono.Border}" />
@@ -344,15 +488,18 @@
                 <ControlTemplate TargetType="GroupBox">
                     <Grid>
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="26" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Background="{StaticResource Mono.SurfaceRaised}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1,1,1,0" CornerRadius="4,4,0,0" Padding="8,4">
-                            <ContentPresenter ContentSource="Header" TextElement.Foreground="{StaticResource Mono.Muted}" TextElement.FontWeight="SemiBold" />
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="0,0,0,1" Padding="9,0">
+                            <!-- Foreground (not Muted) - Muted only reaches 3.42:1 against this
+                                 SurfaceRaised background (fails WCAG AA), and a section title is
+                                 exactly the kind of label that must stay readable. -->
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center" TextElement.Foreground="{StaticResource Mono.Foreground}"
+                                              TextElement.FontWeight="SemiBold" TextElement.FontSize="{StaticResource Mono.Type.Caption}" />
                         </Border>
-                        <Border Grid.Row="1" Background="{StaticResource Mono.Panel}"
-                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="0,0,4,4" Padding="6">
+                        <Border Grid.Row="1" Background="{StaticResource Mono.Surface}" Padding="4">
                             <ContentPresenter />
                         </Border>
                     </Grid>
@@ -463,6 +610,18 @@
         <Setter Property="RowHeaderWidth" Value="0" />
     </Style>
 
+    <!-- Without this, a selected row falls back to the OS's default selection chrome (often
+         a near-white system highlight) while the DataGridCell style below still forces
+         Foreground to near-white text - white-on-white, unreadable. -->
+    <Style TargetType="DataGridRow">
+        <Setter Property="Background" Value="Transparent" />
+        <Style.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="{StaticResource Mono.SelectionHighlight}" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
     <Style TargetType="DataGridColumnHeader">
         <Setter Property="Background" Value="{StaticResource Mono.SurfaceRaised}" />
         <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
@@ -470,6 +629,7 @@
         <Setter Property="BorderThickness" Value="0,0,1,1" />
         <Setter Property="Padding" Value="6,4" />
         <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="FontSize" Value="{StaticResource Mono.Type.Caption}" />
     </Style>
 
     <Style TargetType="DataGridCell">
@@ -477,6 +637,8 @@
         <Setter Property="Foreground" Value="{StaticResource Mono.Foreground}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="4,2" />
+        <!-- Data, not chrome - kept visually distinct from labels the same way the redesign mockup does. -->
+        <Setter Property="FontFamily" Value="{StaticResource Mono.Type.DataFont}" />
         <Style.Triggers>
             <Trigger Property="IsSelected" Value="True">
                 <Setter Property="Background" Value="{StaticResource Mono.SelectionHighlight}" />

@@ -1,0 +1,55 @@
+<Window x:Class="UAssetEditor.App.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About" Height="360" Width="380" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Mono.Background}">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal">
+            <TextBlock Text="UAssetEditor" FontSize="{StaticResource Mono.Type.Heading}" FontWeight="Bold" VerticalAlignment="Center" />
+        </StackPanel>
+
+        <TextBlock x:Name="VersionText" Grid.Row="1" Margin="0,2,0,0" Foreground="{StaticResource Mono.Muted}" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" />
+
+        <TextBlock Grid.Row="2" Margin="0,10,0,0" TextWrapping="Wrap" FontSize="{StaticResource Mono.Type.Body}"
+                   Text="A focused editor for Unreal Engine .uasset data - browse, search, batch-edit, and repack, without opening the engine." />
+
+        <StackPanel Grid.Row="3" Margin="0,14,0,0">
+            <TextBlock Text="BUILT WITH" FontSize="{StaticResource Mono.Type.Caption}" FontWeight="SemiBold" Foreground="{StaticResource Mono.Muted}" />
+            <Grid Margin="0,6,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="UAssetAPI - atenfyr" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,2" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="MIT" FontSize="{StaticResource Mono.Type.Caption}" Foreground="{StaticResource Mono.Muted}" Margin="8,2,0,2" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="repak - trumank" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,2" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="MIT" FontSize="{StaticResource Mono.Type.Caption}" Foreground="{StaticResource Mono.Muted}" Margin="8,2,0,2" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="ZstdSharp.Port" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,2" />
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="MIT" FontSize="{StaticResource Mono.Type.Caption}" Foreground="{StaticResource Mono.Muted}" Margin="8,2,0,2" />
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="CommunityToolkit.Mvvm" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,2" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="MIT" FontSize="{StaticResource Mono.Type.Caption}" Foreground="{StaticResource Mono.Muted}" Margin="8,2,0,2" />
+            </Grid>
+        </StackPanel>
+
+        <TextBlock Grid.Row="4" Margin="0,10,0,0" Text="github.com/gravenuance/UAssetEditor" Foreground="{StaticResource Mono.Cyan}"
+                   Cursor="Hand" TextDecorations="Underline" FontSize="{StaticResource Mono.Type.Caption}" MouseLeftButtonUp="GitHubLink_MouseLeftButtonUp" />
+
+        <Button Grid.Row="5" Content="Close" HorizontalAlignment="Right" Margin="0,14,0,0" Padding="10,3" Click="CloseButton_Click" />
+    </Grid>
+</Window>

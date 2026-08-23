@@ -55,7 +55,7 @@ public class AssetWorkspaceTests
         });
         var workspace = new AssetWorkspace(source, new EngineVersionResolver());
 
-        var results = await workspace.SearchAsync(new SearchQuery { PropertyNamePatterns = ["Count"] });
+        var results = await workspace.SearchAsync(new SearchQuery { PropertyNameTerms = ["Count"] });
 
         Assert.Equal(2, results.Count);
         Assert.True(workspace.IsOpen("a.uasset"));

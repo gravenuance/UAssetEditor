@@ -1,0 +1,62 @@
+<Window x:Class="UAssetEditor.App.Views.UnpackPakWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:UAssetEditor.App.ViewModels"
+        mc:Ignorable="d"
+        Title="Unpack .pak..." Height="270" Width="480" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Mono.Background}"
+        d:DataContext="{d:DesignInstance vm:UnpackPakViewModel}">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+            <TextBlock Text="Source .pak" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+            <DockPanel Margin="0,2,0,0">
+                <Button Content="Browse..." DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2"
+                        Command="{Binding BrowseSourceCommand}" IsEnabled="{Binding IsNotRunning}" />
+                <TextBox Text="{Binding SourcePakPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
+            </DockPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Margin="0,0,0,8">
+            <TextBlock Text="Destination folder" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+            <DockPanel Margin="0,2,0,0">
+                <Button Content="Browse..." DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2"
+                        Command="{Binding BrowseDestinationCommand}" IsEnabled="{Binding IsNotRunning}" />
+                <TextBox Text="{Binding DestinationFolder, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
+            </DockPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Margin="0,0,0,8">
+            <TextBlock Text="AES key (hex)" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+            <TextBox Text="{Binding AesKeyHex, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,0" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="3" Text="Every entry is extracted as-is, mirroring the pak's internal folder structure." TextWrapping="Wrap" FontStyle="Italic" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Top" />
+
+        <StackPanel Grid.Row="4" Margin="0,8,0,8">
+            <ProgressBar Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressDone, Mode=OneWay}" Height="14"
+                         Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock Text="{Binding Status}" Margin="0,4,0,0" FontSize="{StaticResource Mono.Type.Body}" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" Margin="0,0,6,0" Padding="10,3" Command="{Binding CancelCommand}"
+                    Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
+            <Button Content="Close" Margin="0,0,6,0" Padding="10,3" Click="CloseButton_Click"
+                    Visibility="{Binding IsNotRunning, Converter={StaticResource BoolToVisibility}}" />
+            <Button Content="Unpack" Padding="10,3" Style="{StaticResource Mono.AccentButton}"
+                    Command="{Binding RunCommand}" Visibility="{Binding IsNotRunning, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+    </Grid>
+</Window>

@@ -1,0 +1,165 @@
+<UserControl x:Class="UAssetEditor.App.Controls.TermsBox"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" x:Name="Root" Width="150" Height="24"
+             d:DesignHeight="24" d:DesignWidth="150">
+    <UserControl.Resources>
+        <!-- Shared AND/OR/NOT color coding - dark text on a light, tag-colored fill, the
+             same convention the app already uses for its pink Apply/AccentButton (Mono.Red
+             background + Mono.Background foreground). AND=cyan, OR=purple, NOT=red, so NOT
+             reads as a warning the same way it would in the mockup's "IS green / NOT red"
+             framing, while AND/OR stay visually distinct from each other. -->
+        <Style x:Key="TagBadgeBase" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="{StaticResource Mono.Cyan}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag}" Value="Or">
+                    <Setter Property="Background" Value="{StaticResource Mono.Purple}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag}" Value="Not">
+                    <Setter Property="Background" Value="{StaticResource Mono.Red}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    <Grid>
+        <!-- Closed state: looks like a TextBox, shows a clipped row of mini chip previews
+             (or a muted placeholder when empty) - overflow is simply clipped by the fixed
+             Height/ClipToBounds rather than wrapped, which is the "concatenated to fit the
+             box" behavior. Click anywhere to open the full editable list; the tag square is
+             a non-interactive glance-preview here (the real per-chip AND/OR/NOT toggle is
+             in the popup, where there's room for it not to fight the box's own click target). -->
+        <ToggleButton x:Name="Toggle" Focusable="False" Cursor="Hand">
+            <ToggleButton.Template>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Chrome" Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}"
+                            BorderThickness="1" CornerRadius="4" Padding="5,3" ClipToBounds="True">
+                        <Grid>
+                            <TextBlock Text="Any" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}"
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Terms.Count, ElementName=Root}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Terms, ElementName=Root}" VerticalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}"
+                                                BorderThickness="1" CornerRadius="4" Padding="4,1" Margin="0,0,3,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="6" Height="6" Margin="0,0,4,0" CornerRadius="1.5" Style="{StaticResource TagBadgeBase}" />
+                                                <TextBlock Text="{Binding Text}" Foreground="{StaticResource Mono.Foreground}"
+                                                           FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Mono.Purple}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource Mono.Purple}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </ToggleButton.Template>
+        </ToggleButton>
+
+        <!-- Open state: a popup with every term as a removable, taggable chip, plus a field
+             to add a new one. StaysOpen=False so clicking anywhere else closes it. -->
+        <Popup x:Name="EditorPopup" IsOpen="{Binding IsChecked, ElementName=Toggle, Mode=TwoWay}"
+               PlacementTarget="{Binding ElementName=Toggle}" Placement="Bottom" StaysOpen="False"
+               AllowsTransparency="True" PopupAnimation="Fade">
+            <Border Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}"
+                    BorderThickness="1" CornerRadius="4" Padding="8" MinWidth="240" MaxWidth="340">
+                <StackPanel>
+                    <ItemsControl ItemsSource="{Binding Terms, ElementName=Root}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}"
+                                        BorderThickness="1" CornerRadius="8" Padding="4,3" Margin="0,0,4,4">
+                                    <DockPanel LastChildFill="False">
+                                        <!-- Click cycles And -> Or -> Not -> And (CycleTag_Click) - a three-way
+                                             toggle rather than a dropdown, since there are only three states and
+                                             the whole point is a quick glance-and-click at the term itself. -->
+                                        <Button DockPanel.Dock="Left" Click="CycleTag_Click" Padding="0" Margin="0,0,5,0"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                ToolTip="Click to cycle AND / OR / NOT">
+                                            <Border Style="{StaticResource TagBadgeBase}" Padding="4,1" MinWidth="28">
+                                                <TextBlock Foreground="{StaticResource Mono.Background}"
+                                                           FontWeight="SemiBold" FontSize="9" HorizontalAlignment="Center">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <!-- Default set via a plain Setter, not a local Text= attribute -
+                                                                 a local value would always beat the DataTriggers below
+                                                                 regardless of which one is active, leaving the label stuck
+                                                                 on "AND" while only the badge's background color cycled. -->
+                                                            <Setter Property="Text" Value="AND" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Tag}" Value="Or">
+                                                                    <Setter Property="Text" Value="OR" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Tag}" Value="Not">
+                                                                    <Setter Property="Text" Value="NOT" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Button>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Text}" Foreground="{StaticResource Mono.Foreground}"
+                                                   FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}"
+                                                   VerticalAlignment="Center" />
+                                        <Button DockPanel.Dock="Right" Content="&#xD7;" Padding="4,0" Margin="6,0,0,0"
+                                                Click="RemoveTerm_Click" ToolTip="Remove" />
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="No entries yet - type below and press Enter" FontSize="{StaticResource Mono.Type.Caption}"
+                               Foreground="{StaticResource Mono.Muted}" Margin="0,0,0,6" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Terms.Count, ElementName=Root}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <TextBox x:Name="NewTermBox" Height="24" FontSize="{StaticResource Mono.Type.Caption}"
+                             KeyDown="NewTermBox_KeyDown" />
+                </StackPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

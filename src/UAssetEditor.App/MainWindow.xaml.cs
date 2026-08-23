@@ -65,8 +65,14 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Windows has no single dialog that picks either a folder or a file, so this one button offers both via a small menu instead of three separate source rows.</summary>
-    private void BrowseSourceButton_Click(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Every button with an attached ContextMenu (the File/Tools/Help menu-bar buttons, the
+    /// Source "Browse..." split button, the "Recent" dropdown) opens it the same way on a
+    /// left click instead of waiting for a right click - a ContextMenu is a separate popup
+    /// root, so PlacementTarget has to be set explicitly for its items' bindings to reach
+    /// back to the button's own DataContext.
+    /// </summary>
+    private void OpenAttachedContextMenu_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { ContextMenu: { } menu } button) return;
         menu.PlacementTarget = button;

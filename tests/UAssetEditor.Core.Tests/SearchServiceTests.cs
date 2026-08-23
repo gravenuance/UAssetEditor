@@ -95,7 +95,7 @@ public class SearchServiceTests
         TestAssets.CreateSampleExport(asset);
         var service = new SearchService();
 
-        var results = service.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { PropertyNamePatterns = ["Count"] }).ToList();
+        var results = service.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { PropertyNameTerms = ["Count"] }).ToList();
 
         var result = Assert.Single(results);
         Assert.Equal("Count", result.PropertyPath);
@@ -109,7 +109,7 @@ public class SearchServiceTests
         TestAssets.CreateSampleExport(asset);
         var service = new SearchService();
 
-        var results = service.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { ValuePatterns = ["Alpha"] }).ToList();
+        var results = service.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { ValueTerms = ["Alpha"] }).ToList();
 
         var result = Assert.Single(results);
         Assert.Equal("Tags[0]", result.PropertyPath);
@@ -122,13 +122,13 @@ public class SearchServiceTests
         TestAssets.CreateSampleExport(asset);
         var service = new SearchService();
 
-        var noMatch = service.SearchAsset(asset, "p", new SearchQuery { PropertyNamePatterns = ["Count"], ValuePatterns = ["Alpha"] });
+        var noMatch = service.SearchAsset(asset, "p", new SearchQuery { PropertyNameTerms = ["Count"], ValueTerms = ["Alpha"] });
 
         Assert.Empty(noMatch);
     }
 
     [Fact]
-    public void SearchAsset_ExportNamePatterns_RestrictsWhichExportsAreConsidered()
+    public void SearchAsset_ExportNameTerms_RestrictsWhichExportsAreConsidered()
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset, exportName: "Match_Me");
@@ -137,8 +137,8 @@ public class SearchServiceTests
 
         var results = service.SearchAsset(asset, "p", new SearchQuery
         {
-            ExportNamePatterns = ["Match_Me"],
-            PropertyNamePatterns = ["Count"],
+            ExportNameTerms = ["Match_Me"],
+            PropertyNameTerms = ["Count"],
         }).ToList();
 
         Assert.Single(results);
@@ -146,7 +146,7 @@ public class SearchServiceTests
     }
 
     [Fact]
-    public void SearchAsset_OrLogic_MatchesAnyPattern()
+    public void SearchAsset_OrTags_MatchAnyPattern()
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
@@ -154,29 +154,46 @@ public class SearchServiceTests
 
         var results = service.SearchAsset(asset, "p", new SearchQuery
         {
-            PropertyNamePatterns = ["Count", "DisplayName"],
-            PropertyNameLogic = MatchLogic.Or,
+            PropertyNameTerms = [new ConditionTerm("Count", TermTag.Or), new ConditionTerm("DisplayName", TermTag.Or)],
         }).ToList();
 
         Assert.Equal(2, results.Count);
     }
 
     [Fact]
-    public void SearchAsset_AndLogic_RequiresAllPatterns()
+    public void SearchAsset_AndTags_RequireAllPatterns()
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
         var service = new SearchService();
 
         // No single property path contains both substrings, so AND should yield nothing,
-        // while the same patterns under OR (default) would match "Location" and "Location.X"/"Location.Y".
+        // while the same patterns tagged Or would match "Location" and "Location.X"/"Location.Y".
         var andResults = service.SearchAsset(asset, "p", new SearchQuery
         {
-            PropertyNamePatterns = ["Location", "DisplayName"],
-            PropertyNameLogic = MatchLogic.And,
+            PropertyNameTerms = [new ConditionTerm("Location", TermTag.And), new ConditionTerm("DisplayName", TermTag.And)],
         }).ToList();
 
         Assert.Empty(andResults);
+    }
+
+    [Fact]
+    public void SearchAsset_NotTag_ExcludesMatchesEvenWhenOtherTermsMatch()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+        var service = new SearchService();
+
+        // "Location" alone would match "Location", "Location.X", "Location.Y" - the Not
+        // term for "Location.X" should exclude just that one, regardless of the Or match.
+        var results = service.SearchAsset(asset, "p", new SearchQuery
+        {
+            PropertyNameTerms = [new ConditionTerm("Location", TermTag.Or), new ConditionTerm("Location.X", TermTag.Not)],
+        }).ToList();
+
+        Assert.DoesNotContain(results, r => r.PropertyPath == "Location.X");
+        Assert.Contains(results, r => r.PropertyPath == "Location");
+        Assert.Contains(results, r => r.PropertyPath == "Location.Y");
     }
 
     [Fact]
@@ -189,7 +206,7 @@ public class SearchServiceTests
         var versions = new EngineVersionResolver();
         var service = new SearchService();
 
-        var results = await service.SearchAllAsync(source, versions, new SearchQuery { PropertyNamePatterns = ["Count"] });
+        var results = await service.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] });
 
         Assert.Single(results);
         Assert.Equal("good.uasset", results[0].AssetPath);
@@ -204,7 +221,7 @@ public class SearchServiceTests
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
         var source = new InMemoryAssetSource(new Dictionary<string, UAssetAPI.UAsset> { ["a.uasset"] = asset });
-        var query = new SearchQuery { PropertyNamePatterns = ["["], PropertyNameCompare = TextCompare.Regex };
+        var query = new SearchQuery { PropertyNameTerms = ["["], PropertyNameCompare = TextCompare.Regex };
 
         var exception = await Record.ExceptionAsync(() => new SearchService().SearchAllAsync(source, new EngineVersionResolver(), query));
 

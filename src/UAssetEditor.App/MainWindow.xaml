@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:UAssetEditor.App.ViewModels"
+        xmlns:controls="clr-namespace:UAssetEditor.App.Controls"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
         Title="UAssetEditor" Height="900" Width="1400" MinWidth="1000" MinHeight="650"
@@ -14,18 +15,23 @@
          (which WPF otherwise leaves as plain system chrome) while keeping the native
          minimize/maximize/close buttons and system menu working - no hand-drawn chrome. -->
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="34" ResizeBorderThickness="5" GlassFrameThickness="0" CornerRadius="0" />
+        <shell:WindowChrome CaptionHeight="32" ResizeBorderThickness="5" GlassFrameThickness="0" CornerRadius="0" />
     </shell:WindowChrome.WindowChrome>
-    <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-    </Window.Resources>
-    <!-- Every layer below sets its own Background explicitly rather than relying on
-         transparency + inheritance from the Window - a gap in that chain (e.g. a WrapPanel's
-         unused row width) would otherwise show through as unthemed white. -->
+    <Window.InputBindings>
+        <KeyBinding Key="O" Modifiers="Control" Command="{Binding BrowseSourceFileCommand}" />
+        <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveAllEditedCommand}" />
+    </Window.InputBindings>
+    <!-- Flush edge-to-edge chrome, matching the redesign mockup: every strip below sets its
+         own background and the only separation between them is a 1px border, not margin -
+         no outer window padding, no gaps between sections. -->
     <Grid Background="{StaticResource Mono.Background}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="34" />
+            <RowDefinition Height="32" />
+            <RowDefinition Height="26" />
+            <RowDefinition Height="40" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="28" />
         </Grid.RowDefinitions>
 
         <!-- Title bar strip: plain themed background + app name, draggable by WindowChrome's
@@ -39,7 +45,7 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="UAssetEditor" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Mono.Muted}" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="0" Text="UAssetEditor" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{StaticResource Mono.Muted}" FontWeight="SemiBold" FontSize="{StaticResource Mono.Type.Caption}" />
                 <StackPanel Grid.Column="1" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button Content="&#x2500;" Click="MinimizeButton_Click" Style="{StaticResource Mono.TitleBarButton}" ToolTip="Minimize" />
                     <Button Content="&#x25A1;" Click="MaximizeRestoreButton_Click" Style="{StaticResource Mono.TitleBarButton}" ToolTip="Maximize/Restore" />
@@ -48,21 +54,59 @@
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="8" Background="{StaticResource Mono.Background}">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
+        <!-- Menu bar: three plain buttons, each opening its own already-styled ContextMenu
+             on click (OpenAttachedContextMenu_Click) - the theme's MenuItem style was built
+             only for flat ContextMenu items like these, with no submenu/Popup chrome, so this
+             reuses that instead of writing a full native Menu ControlTemplate from scratch. -->
+        <Border Grid.Row="1" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Margin="4,0">
+                <Button x:Name="FileMenuButton" Content="File" Click="OpenAttachedContextMenu_Click" Style="{StaticResource Mono.MenuBarButton}">
+                    <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="Open Folder..." Command="{Binding BrowseSourceFolderCommand}" />
+                            <MenuItem Header="Open .pak / .uasset...   Ctrl+O" Command="{Binding BrowseSourceFileCommand}" />
+                            <Separator />
+                            <MenuItem Header="Save All Edited   Ctrl+S" Command="{Binding SaveAllEditedCommand}" />
+                            <MenuItem Header="Close Workspace" Command="{Binding CloseWorkspaceCommand}" />
+                            <Separator />
+                            <MenuItem Header="Back Up Before Saving" IsCheckable="True" IsChecked="{Binding CreateBackup}" />
+                            <MenuItem Header="Save Session Config" Command="{Binding SaveConfigCommand}" />
+                            <MenuItem Header="Load Session Config" Command="{Binding LoadConfigCommand}" />
+                            <Separator />
+                            <MenuItem Header="Exit" Click="CloseButton_Click" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button x:Name="ToolsMenuButton" Content="Tools" Click="OpenAttachedContextMenu_Click" Style="{StaticResource Mono.MenuBarButton}">
+                    <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="Unpack .pak..." Command="{Binding UnpackPakCommand}" />
+                            <MenuItem Header="Pack Folder into .pak..." Command="{Binding PackFolderCommand}" />
+                            <Separator />
+                            <MenuItem Header="Repack Loaded .pak..." Command="{Binding RepackCommand}" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button x:Name="HelpMenuButton" Content="Help" Click="OpenAttachedContextMenu_Click" Style="{StaticResource Mono.MenuBarButton}">
+                    <Button.ContextMenu>
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="About UAssetEditor..." Command="{Binding ShowAboutCommand}" />
+                            <MenuItem Header="View on GitHub" Command="{Binding ViewOnGitHubCommand}" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+            </StackPanel>
+        </Border>
 
-            <!-- Source / versioning / session settings -->
-            <GroupBox Header="Asset source" Grid.Row="0" Margin="0,0,0,8" Padding="8">
-            <StackPanel>
-                <WrapPanel Orientation="Horizontal">
-                    <TextBlock Text="Source (folder, .pak, or .uasset file):" VerticalAlignment="Center" Margin="4" />
-                    <TextBox Text="{Binding SourcePath, UpdateSourceTrigger=PropertyChanged}" Width="360" VerticalAlignment="Center" Margin="4" />
-                    <Button x:Name="BrowseSourceButton" Content="Browse..." Click="BrowseSourceButton_Click" Margin="4" Padding="8,2"
+        <!-- Asset source toolbar: a flat 40px strip (no GroupBox/header, no outer margin) -
+             every field is "label beside field" inline within one row, matching the
+             redesign mockup's .toolbar/.field-group exactly, not stacked captions. -->
+        <Border Grid.Row="2" Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1">
+            <DockPanel Margin="10,0" LastChildFill="False">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock Text="Source" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                    <TextBox Text="{Binding SourcePath, UpdateSourceTrigger=PropertyChanged}" Width="300" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" />
+                    <Button x:Name="BrowseSourceButton" Content="Browse..." Click="OpenAttachedContextMenu_Click" Height="24" Padding="10,0" Margin="6,0,0,0"
                             ToolTip="Pick a folder, .pak file, or .uasset file">
                         <Button.ContextMenu>
                             <!-- A ContextMenu is a separate popup root and doesn't inherit DataContext through
@@ -75,18 +119,15 @@
                             </ContextMenu>
                         </Button.ContextMenu>
                     </Button>
-                    <Button Content="Load" Command="{Binding LoadSourceCommand}" Margin="4" Padding="8,2"
-                            ToolTip="Load the source above - folder, .pak, or .uasset is auto-detected" />
 
-                    <TextBlock Text="AES key (hex, optional, for .pak):" VerticalAlignment="Center" Margin="12,4,4,4" />
-                    <TextBox Text="{Binding PakAesKeyHex, UpdateSourceTrigger=PropertyChanged}" Width="140" VerticalAlignment="Center" Margin="4" />
-                    <Button Content="Repack..." Command="{Binding RepackCommand}" Margin="4" Padding="8,2"
-                            Visibility="{Binding IsPakBacked, Converter={StaticResource BoolToVisibility}}" />
-                </WrapPanel>
-                <WrapPanel Orientation="Horizontal" Margin="0,4,0,0">
-                    <TextBlock Text="Engine version:" VerticalAlignment="Center" Margin="4" />
+                    <Border Width="1" Height="20" Background="{StaticResource Mono.Border}" Margin="14,0" />
+
+                    <TextBlock Text="AES key" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                    <TextBox Text="{Binding PakAesKeyHex, UpdateSourceTrigger=PropertyChanged}" Width="110" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" Margin="0,0,14,0" />
+
+                    <TextBlock Text="Engine" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
                     <ComboBox ItemsSource="{Binding EngineVersionOptions}" SelectedValuePath="Value"
-                              SelectedValue="{Binding DefaultEngineVersion}" Width="150" Margin="4">
+                              SelectedValue="{Binding DefaultEngineVersion}" Width="150" Height="24" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,0,14,0">
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
                                 <TextBlock Text="{Binding Label}" />
@@ -94,71 +135,111 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
 
-                    <TextBlock Text="Usmap (optional):" VerticalAlignment="Center" Margin="12,4,4,4" />
-                    <TextBox Text="{Binding UsmapPath, UpdateSourceTrigger=PropertyChanged}" Width="200" VerticalAlignment="Center" Margin="4" />
-                    <Button Content="Browse..." Command="{Binding BrowseUsmapCommand}" Margin="4" Padding="8,2" />
-
-                    <CheckBox Content="Back up before saving (alongside the original file)" IsChecked="{Binding CreateBackup}" VerticalAlignment="Center" Margin="16,4,4,4" />
-
-                    <Button Content="Save Config" Command="{Binding SaveConfigCommand}" Margin="16,4,4,4" Padding="8,2" />
-                    <Button Content="Load Config" Command="{Binding LoadConfigCommand}" Margin="4" Padding="8,2" />
-                </WrapPanel>
-            </StackPanel>
-        </GroupBox>
-
-        <!-- Search / edit scope: one condition list per dimension, AND/OR per list -->
-        <GroupBox Header="Search / edit scope (one condition per line)" Grid.Row="1" Margin="0,0,0,8" Padding="8">
-            <UniformGrid Columns="4" Rows="1">
-                <StackPanel Margin="4">
-                    <TextBlock Text="Export (entry) name contains:" />
-                    <TextBox Text="{Binding ExportNameConditionsText, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" Height="70" />
-                    <ComboBox ItemsSource="{Binding MatchLogics}" SelectedItem="{Binding ExportNameLogic}" Margin="0,4,0,0" />
+                    <TextBlock Text="Usmap" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                    <TextBox Text="{Binding UsmapPath, UpdateSourceTrigger=PropertyChanged}" Width="150" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" />
+                    <Button Content="Browse..." Command="{Binding BrowseUsmapCommand}" Height="24" Padding="10,0" Margin="6,0,0,0" />
                 </StackPanel>
-                <StackPanel Margin="4">
-                    <TextBlock Text="Property name contains:" />
-                    <TextBox Text="{Binding PropertyNameConditionsText, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" Height="70" />
-                    <ComboBox ItemsSource="{Binding MatchLogics}" SelectedItem="{Binding PropertyNameLogic}" Margin="0,4,0,0" />
-                </StackPanel>
-                <StackPanel Margin="4">
-                    <TextBlock Text="Value contains:" />
-                    <TextBox Text="{Binding ValueConditionsText, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" Height="70" />
-                    <ComboBox ItemsSource="{Binding MatchLogics}" SelectedItem="{Binding ValueLogic}" Margin="0,4,0,0" />
-                </StackPanel>
-                <StackPanel Margin="4">
-                    <TextBlock Text="Reference contains:" />
-                    <TextBox Text="{Binding ReferenceConditionsText, UpdateSourceTrigger=PropertyChanged}"
-                             AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" Height="70" />
-                    <ComboBox ItemsSource="{Binding MatchLogics}" SelectedItem="{Binding ReferenceLogic}" Margin="0,4,0,0" />
-                </StackPanel>
-            </UniformGrid>
-        </GroupBox>
 
-        <!-- Tree / results / rules / preview -->
-        <Grid Grid.Row="2" Background="{StaticResource Mono.Background}">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <Button x:Name="RecentButton" Content="{Binding RecentSourceLabel}" Style="{StaticResource Mono.ChipButton}" Click="OpenAttachedContextMenu_Click" Margin="0,0,8,0"
+                            ToolTip="Reopen a recently used source">
+                        <Button.ContextMenu>
+                            <ContextMenu ItemsSource="{Binding RecentSources}">
+                                <ContextMenu.ItemContainerStyle>
+                                    <Style TargetType="MenuItem">
+                                        <Setter Property="Header" Value="{Binding}" />
+                                        <Setter Property="Command" Value="{Binding PlacementTarget.DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                        <Setter Property="CommandParameter" Value="{Binding}" />
+                                    </Style>
+                                </ContextMenu.ItemContainerStyle>
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button Content="Load" Command="{Binding LoadSourceCommand}" Style="{StaticResource Mono.AccentButton}" Height="24" Padding="14,0"
+                            ToolTip="Load the source above - folder, .pak, or .uasset is auto-detected" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Search / edit scope: condensed to one compact row per condition (inline label +
+             field) instead of four full-height stacked columns, closing most of the gap to
+             the mockup's single-row .scope strip. Each field is a TermsBox - a chip/tag input
+             whose closed state clips its previews to fit the box, with the full editable list
+             available in a popup on click; each chip carries its own AND/OR/NOT tag (click
+             the small colored badge to cycle) instead of one AND/OR setting for the whole
+             field. -->
+        <Border Grid.Row="3" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Padding="10,6">
+            <WrapPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="Export name contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <controls:TermsBox Terms="{Binding ExportNameTerms}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="Property name contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <controls:TermsBox Terms="{Binding PropertyNameTerms}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="Value contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <controls:TermsBox Terms="{Binding ValueTerms}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Reference contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <controls:TermsBox Terms="{Binding ReferenceTerms}" />
+                </StackPanel>
+            </WrapPanel>
+        </Border>
+
+        <!-- Tree / results / rules / preview - three flat panes (no GroupBox card framing,
+             see the shared GroupBox template) divided by thin splitters, matching the
+             mockup's 230px / 1fr / 300px column split exactly. -->
+        <Grid Grid.Row="4" Background="{StaticResource Mono.Background}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="260" />
-                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="230" />
+                <ColumnDefinition Width="2" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="8" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="26" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="Browse" Grid.Column="0" Padding="6" ToolTip="Expand an asset's Exports node, then check the exports and/or tables you want (a table only shows a checkbox if it actually holds editable data) and click Load Selected - or double-click one to open it alone">
+            <GroupBox Header="BROWSE" Grid.Column="0" ToolTip="Expand an asset's Exports node, then check the exports and/or tables you want (a table only shows a checkbox if it actually holds editable data) and click Load Selected - or double-click one to open it alone">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Button Grid.Row="0" Content="Load Selected" Command="{Binding LoadSelectedCommand}"
-                            HorizontalAlignment="Left" Margin="0,0,0,4" Padding="8,2" />
-                    <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}"
+                            HorizontalAlignment="Left" Margin="0,0,0,4" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}" />
+                    <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}" FontSize="{StaticResource Mono.Type.Caption}"
                               MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal">
+                                    <!-- Folder/Asset/Property(table) get a small type glyph, matching the
+                                         redesign mockup's icon language - other node kinds (ExportsGroup,
+                                         Export, OtherFile) stay icon-less, same as in the mockup. -->
+                                    <Path Width="12" Height="12" Stretch="Uniform" Margin="0,0,5,0" VerticalAlignment="Center" StrokeThickness="1.1">
+                                        <Path.Style>
+                                            <Style TargetType="Path">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Folder">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Setter Property="Data" Value="M1,3 L4.5,3 L5.5,4.3 L11,4.3 L11,10 L1,10 Z" />
+                                                        <Setter Property="Stroke" Value="{StaticResource Mono.Yellow}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Asset">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Setter Property="Data" Value="M2,1 L8,1 L8,11 L2,11 Z M3.3,4 L6.7,4 M3.3,6.3 L6.7,6.3 M3.3,8.6 L5.5,8.6" />
+                                                        <Setter Property="Stroke" Value="{StaticResource Mono.Cyan}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding Kind}" Value="Property">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Setter Property="Data" Value="M1,2 L11,2 L11,10 L1,10 Z M1,6 L11,6 M6,2 L6,10" />
+                                                        <Setter Property="Stroke" Value="{StaticResource Mono.Purple}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Path.Style>
+                                    </Path>
                                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                                     <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}" VerticalAlignment="Center" Margin="8,0,0,0"
                                               Visibility="{Binding IsCheckable, Converter={StaticResource BoolToVisibility}}" />
@@ -169,151 +250,285 @@
                 </Grid>
             </GroupBox>
 
-            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" />
+            <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="{StaticResource Mono.Border}" />
 
             <Grid Grid.Column="2" Background="{StaticResource Mono.Background}">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <WrapPanel Grid.Row="0" Margin="0,0,0,4" Background="{StaticResource Mono.Background}" HorizontalAlignment="Center">
-                    <Button Content="Search" Command="{Binding SearchCommand}" Margin="0,0,4,0" Padding="12,2" />
-                    <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4,0" Padding="12,2" Style="{StaticResource Mono.AccentButton}"
-                            Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
-                    <Button Content="Save All Edited" Command="{Binding SaveAllEditedCommand}" Margin="4,0" Padding="12,2" />
-                    <Button Content="Close Workspace" Command="{Binding CloseWorkspaceCommand}" Margin="4,0" Padding="8,2" />
-                    <Button Content="Promote Selected to Rule"
-                            Command="{Binding PromoteToRuleCommand}"
-                            CommandParameter="{Binding SelectedItem, ElementName=ResultsGrid}"
-                            Margin="4,0" Padding="8,2" />
-                </WrapPanel>
-
-                <GroupBox Header="Search results (Value is directly editable, in place, across any number of rows/assets)" Grid.Row="1" Padding="6"
+                <GroupBox Grid.Row="0"
                           ToolTip="Edited rows are highlighted until you click Save All Edited, which writes every edit to disk at once.">
-                    <DataGrid x:Name="ResultsGrid" ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" IsEnabled="{Binding IsIdle}">
-                        <DataGrid.RowStyle>
-                            <!-- No visible "dirty" indicator/column - just a quiet highlight on rows with an
-                                 edit not yet written to disk, so nothing needs explaining to use the grid. -->
-                            <Style TargetType="DataGridRow">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsDirty}" Value="True">
-                                        <Setter Property="Background" Value="{StaticResource Mono.DirtyHighlight}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </DataGrid.RowStyle>
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Export" Binding="{Binding ExportName}" IsReadOnly="True" Width="*" />
-                            <DataGridTextColumn Header="Property" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="*" />
-                            <DataGridTextColumn Header="Value" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="*">
-                                <DataGridTextColumn.CellStyle>
-                                    <!-- Reference and Unsupported rows have nowhere to write an edit to - disabling
-                                         the cell (rather than leaving it editable and silently doing nothing) makes
-                                         that visible instead of inviting an edit that will never take effect. -->
-                                    <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
-                                        <Setter Property="IsEnabled" Value="False" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Kind}" Value="Property">
-                                                <Setter Property="IsEnabled" Value="True" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </DataGridTextColumn.CellStyle>
-                            </DataGridTextColumn>
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </GroupBox>
-            </Grid>
+                    <GroupBox.Header>
+                        <DockPanel LastChildFill="False">
+                            <TextBlock DockPanel.Dock="Left" Text="SEARCH RESULTS — DIRECTLY EDITABLE" VerticalAlignment="Center" />
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Content="Search" Command="{Binding SearchCommand}" Padding="8,1" FontSize="{StaticResource Mono.Type.Caption}" Margin="4,0,0,0" />
+                                <Button Content="Cancel" Command="{Binding CancelCommand}" Padding="8,1" FontSize="{StaticResource Mono.Type.Caption}" Style="{StaticResource Mono.AccentButton}" Margin="4,0,0,0"
+                                        Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
+                                <Button Content="Promote to Rule" Command="{Binding PromoteToRuleCommand}" CommandParameter="{Binding SelectedItem, ElementName=ResultsGrid}"
+                                        Padding="8,1" FontSize="{StaticResource Mono.Type.Caption}" Margin="4,0,0,0" />
+                            </StackPanel>
+                        </DockPanel>
+                    </GroupBox.Header>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <DataGrid x:Name="ResultsGrid" Grid.Row="0" ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" IsEnabled="{Binding IsIdle}"
+                                  HorizontalScrollBarVisibility="Auto">
+                            <DataGrid.RowStyle>
+                                <!-- No visible "dirty" indicator/column - just a quiet highlight on rows with an
+                                     edit not yet written to disk, so nothing needs explaining to use the grid. -->
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource Mono.DirtyHighlight}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <!-- Width="*" columns fill exactly the visible viewport and clip
+                                 overflow instead of scrolling - SizeToCells (plus a floor via
+                                 MinWidth) lets each column grow to fit its actual content, so a
+                                 long path or value genuinely overflows into the grid's own
+                                 horizontal scrollbar instead of being cut off with no way to
+                                 see the rest. -->
+                            <DataGrid.Columns>
+                                <!-- Export names are chrome (identifiers you read, not data you copy/compare
+                                     character-by-character) - back to the UI font, overriding the DataGridCell
+                                     style's default monospace that Property/Value keep. -->
+                                <DataGridTextColumn Header="EXPORT" Binding="{Binding ExportName}" IsReadOnly="True" Width="SizeToCells" MinWidth="120">
+                                    <DataGridTextColumn.CellStyle>
+                                        <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                            <Setter Property="FontFamily" Value="Segoe UI" />
+                                        </Style>
+                                    </DataGridTextColumn.CellStyle>
+                                </DataGridTextColumn>
+                                <DataGridTextColumn Header="PROPERTY" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="SizeToCells" MinWidth="150" />
+                                <DataGridTextColumn Header="VALUE" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="SizeToCells" MinWidth="200">
+                                    <DataGridTextColumn.CellStyle>
+                                        <!-- Reference and Unsupported rows have nowhere to write an edit to - disabling
+                                             the cell (rather than leaving it editable and silently doing nothing) makes
+                                             that visible instead of inviting an edit that will never take effect. -->
+                                        <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                            <Setter Property="IsEnabled" Value="False" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Kind}" Value="Property">
+                                                    <Setter Property="IsEnabled" Value="True" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </DataGridTextColumn.CellStyle>
+                                </DataGridTextColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
 
-            <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" />
-
-            <Grid Grid.Column="4" Background="{StaticResource Mono.Background}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
-                <GroupBox Header="Batch edit rules (applied to every asset in the loaded source matching the scope above)" Grid.Row="0" Margin="0,0,0,8" Padding="8">
-                    <StackPanel>
-                        <WrapPanel>
-                            <StackPanel Margin="4" Width="140">
-                                <TextBlock Text="Action:" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
-                                <ComboBox ItemsSource="{Binding RuleKindOptions}" SelectedValuePath="Value" SelectedValue="{Binding SelectedRuleKind}">
-                                    <ComboBox.ItemTemplate>
+                        <!-- Compact summary of already-added rules - the builder form itself lives in
+                             the Preview pane, matching the mockup's .rules-strip/.rule-chip. -->
+                        <Border Grid.Row="1" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,1,0,0" Padding="9,7">
+                            <StackPanel>
+                                <TextBlock Text="BATCH EDIT RULES" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" FontWeight="SemiBold" Margin="0,0,0,5" />
+                                <ItemsControl ItemsSource="{Binding Rules}" MaxHeight="90">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Label}" />
+                                            <Border Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1" CornerRadius="4" Padding="7,4" Margin="0,0,0,4">
+                                                <DockPanel LastChildFill="False">
+                                                    <TextBlock DockPanel.Dock="Left" Text="{Binding Description}" TextWrapping="Wrap" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" />
+                                                    <Button DockPanel.Dock="Right" Content="&#xD7;" Padding="4,0" Margin="6,0,0,0"
+                                                            Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="Remove this rule" />
+                                                </DockPanel>
+                                            </Border>
                                         </DataTemplate>
-                                    </ComboBox.ItemTemplate>
-                                </ComboBox>
-                                <TextBlock Text="{Binding SelectedRuleKindDescription}" TextWrapping="Wrap" FontStyle="Italic"
-                                           Foreground="{StaticResource Mono.Muted}" FontSize="10" Margin="0,2,0,0" />
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
                             </StackPanel>
-                            <StackPanel Margin="4" Width="140" Visibility="{Binding ShowRuleValue1, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{Binding RuleValue1Label}" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
-                                <TextBox Text="{Binding RuleValue1, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Margin="4" Width="140" Visibility="{Binding ShowRuleValue2, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="{Binding RuleValue2Label}" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
-                                <TextBox Text="{Binding RuleValue2, UpdateSourceTrigger=PropertyChanged}" />
-                            </StackPanel>
-                            <StackPanel Margin="4" Width="140" Visibility="{Binding ShowRuleOperation, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text="Operation:" Foreground="{StaticResource Mono.Muted}" FontSize="10" />
-                                <ComboBox ItemsSource="{Binding NumericOperations}" SelectedItem="{Binding RuleOperation}" />
-                            </StackPanel>
-                            <StackPanel Margin="4" VerticalAlignment="Top" Visibility="{Binding ShowRuleRegex, Converter={StaticResource BoolToVisibility}}">
-                                <TextBlock Text=" " FontSize="10" />
-                                <CheckBox Content="Regex" VerticalAlignment="Center" Margin="0,3,0,0" IsChecked="{Binding RuleIsRegex}" />
-                            </StackPanel>
-                        </WrapPanel>
-                        <WrapPanel>
-                            <CheckBox Content="Skip if current value" IsChecked="{Binding RuleUseSkip}" VerticalAlignment="Center" Margin="4" />
-                            <ComboBox ItemsSource="{Binding SkipComparisons}" SelectedItem="{Binding RuleSkipComparison}" Width="70" Margin="4" />
-                            <TextBox Text="{Binding RuleSkipValue, UpdateSourceTrigger=PropertyChanged}" Width="100" Margin="4" ToolTip="Skip comparison value" />
-                            <Button Content="Add rule" Command="{Binding AddRuleCommand}" Margin="12,4,4,4" Padding="8,2" />
-                        </WrapPanel>
-                        <ListBox x:Name="RulesListBox" ItemsSource="{Binding Rules}" Height="100" Margin="4">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel>
-                                        <Button Content="Remove" DockPanel.Dock="Right" Padding="6,0" Margin="4,0,0,0"
-                                                Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                CommandParameter="{Binding}" />
-                                        <TextBlock Text="{Binding Description}" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <WrapPanel>
-                            <Button Content="Preview" Command="{Binding PreviewCommand}" Margin="4" Padding="12,2" />
-                            <Button Content="Apply" Command="{Binding ApplyCommand}" Margin="4" Padding="12,2" Style="{StaticResource Mono.AccentButton}" />
-                            <Button Content="Cancel" Command="{Binding CancelCommand}" Margin="4" Padding="12,2"
-                                    Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
-                        </WrapPanel>
-                    </StackPanel>
+                        </Border>
+                    </Grid>
                 </GroupBox>
 
-                <GroupBox Header="Preview (old -&gt; new)" Grid.Row="1" Padding="6">
-                    <DataGrid ItemsSource="{Binding PreviewChanges}" AutoGenerateColumns="False" IsReadOnly="True">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Asset" Binding="{Binding AssetPath}" Width="2*" />
-                            <DataGridTextColumn Header="Property" Binding="{Binding PropertyPath}" Width="*" />
-                            <DataGridTextColumn Header="Rule" Binding="{Binding RuleDescription}" Width="*" />
-                            <DataGridTextColumn Header="Old" Binding="{Binding OldValue}" Width="*" />
-                            <DataGridTextColumn Header="New" Binding="{Binding NewValue}" Width="*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </GroupBox>
+                <!-- Floating "EDIT RULES" panel - overlays the results grid instead of
+                     squeezing it narrower, so the table's own width never changes based on
+                     whether this is open. Anchored to the right edge, flush against the
+                     always-visible toggle strip in the next column; offset below the results
+                     pane's own header row so "Search"/"Cancel"/"Promote to Rule" up there stay
+                     reachable while this is open, rather than sitting underneath it. -->
+                <Border Grid.Row="0" HorizontalAlignment="Right" Width="300" Margin="0,26,0,0" Panel.ZIndex="10"
+                        Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1,0,0,0"
+                        Visibility="{Binding IsRulesPaneExpanded, Converter={StaticResource BoolToVisibility}}"
+                        ToolTip="Applied to every asset in the loaded source matching the scope above">
+                    <Border.Effect>
+                        <DropShadowEffect Color="Black" Direction="180" ShadowDepth="2" BlurRadius="14" Opacity="0.5" />
+                    </Border.Effect>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="26" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Padding="9,0">
+                            <TextBlock Text="EDIT RULES" VerticalAlignment="Center" Foreground="{StaticResource Mono.Foreground}"
+                                       FontWeight="SemiBold" FontSize="{StaticResource Mono.Type.Caption}" />
+                        </Border>
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="4">
+                    <StackPanel>
+                        <!-- Single-column form instead of a WrapPanel that reflowed
+                             unpredictably at this panel's width - every field gets its own
+                             full-width row, so the whole thing reads top-to-bottom as one
+                             clear sequence instead of an irregular grid of mixed-width boxes. -->
+                        <TextBlock Text="Action" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+                        <ComboBox ItemsSource="{Binding RuleKindOptions}" SelectedValuePath="Value" SelectedValue="{Binding SelectedRuleKind}" Height="24" Margin="0,3,0,0" FontSize="{StaticResource Mono.Type.Caption}"
+                                  ToolTip="{Binding SelectedRuleKindDescription}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Label}" ToolTip="{Binding Description}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowRuleValue1, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding RuleValue1Label}" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+                            <TextBox Text="{Binding RuleValue1, UpdateSourceTrigger=PropertyChanged}" Height="24" Margin="0,3,0,0" FontSize="{StaticResource Mono.Type.Caption}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowRuleValue2, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="{Binding RuleValue2Label}" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+                            <TextBox Text="{Binding RuleValue2, UpdateSourceTrigger=PropertyChanged}" Height="24" Margin="0,3,0,0" FontSize="{StaticResource Mono.Type.Caption}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowRuleOperation, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Operation" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+                            <ComboBox ItemsSource="{Binding NumericOperations}" SelectedItem="{Binding RuleOperation}" Height="24" Margin="0,3,0,0" FontSize="{StaticResource Mono.Type.Caption}" />
+                        </StackPanel>
+                        <CheckBox Content="Regex" Margin="0,10,0,0" IsChecked="{Binding RuleIsRegex}" FontSize="{StaticResource Mono.Type.Caption}"
+                                  Visibility="{Binding ShowRuleRegex, Converter={StaticResource BoolToVisibility}}" />
+
+                        <Border BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Margin="0,14,0,14" />
+
+                        <!-- Skip condition: the comparison row only appears once it's actually
+                             relevant, instead of always showing two boxes that do nothing
+                             until the checkbox above them is ticked. -->
+                        <CheckBox Content="Skip if current value" IsChecked="{Binding RuleUseSkip}" FontSize="{StaticResource Mono.Type.Caption}" />
+                        <Grid Margin="0,8,0,0" Visibility="{Binding RuleUseSkip, Converter={StaticResource BoolToVisibility}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70" />
+                                <ColumnDefinition Width="8" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding SkipComparisons}" SelectedItem="{Binding RuleSkipComparison}" Height="24" FontSize="{StaticResource Mono.Type.Caption}" />
+                            <TextBox Grid.Column="2" Text="{Binding RuleSkipValue, UpdateSourceTrigger=PropertyChanged}" Height="24" FontSize="{StaticResource Mono.Type.Caption}" ToolTip="Skip comparison value" />
+                        </Grid>
+
+                        <Button Content="Add Rule" Command="{Binding AddRuleCommand}" HorizontalAlignment="Stretch" Margin="0,14,0,0" Padding="8,4" FontSize="{StaticResource Mono.Type.Caption}" />
+
+                        <Border BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Margin="0,14,0,14" />
+
+                        <!-- Batch actions - equal-width so the row reads as one deliberate
+                             group instead of left-packed buttons of mismatched sizes. -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Content="Preview" Command="{Binding PreviewCommand}" Padding="0,4" FontSize="{StaticResource Mono.Type.Caption}" />
+                            <Button Grid.Column="2" Content="Apply" Command="{Binding ApplyCommand}" Padding="0,4" FontSize="{StaticResource Mono.Type.Caption}" Style="{StaticResource Mono.AccentButton}" />
+                            <Button Grid.Column="4" Content="Cancel" Command="{Binding CancelCommand}" Padding="0,4" FontSize="{StaticResource Mono.Type.Caption}"
+                                    Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
+                        </Grid>
+
+                        <ItemsControl Margin="0,14,0,0" ItemsSource="{Binding PreviewChanges}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1" CornerRadius="4" Padding="7,5" Margin="0,0,0,5">
+                                        <StackPanel>
+                                            <!-- A batch can touch many assets at once, so which file a change
+                                                 belongs to matters here as much as the property path does. -->
+                                            <TextBlock Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" TextTrimming="CharacterEllipsis">
+                                                <Run Text="{Binding AssetPath, Mode=OneWay}" /><Run Text=" — " /><Run Text="{Binding ExportName, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding PropertyPath}" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,1,0,0" />
+                                            <DockPanel Margin="0,3,0,0" LastChildFill="False">
+                                                <TextBlock DockPanel.Dock="Left" Text="{Binding OldValue}" Foreground="{StaticResource Mono.Muted}" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" TextDecorations="Strikethrough" />
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding NewValue}" Foreground="{StaticResource Mono.Green}" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" />
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
             </Grid>
+
+            <!-- Always-visible toggle strip for the floating panel above - fixed width, so
+                 the Results column never resizes based on expand/collapse state. -->
+            <ToggleButton Grid.Column="3" IsChecked="{Binding IsRulesPaneExpanded}" Focusable="False" Cursor="Hand"
+                          ToolTip="Edit Rules - applied to every asset in the loaded source matching the scope above">
+                <ToggleButton.Template>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1,0,0,0">
+                            <DockPanel LastChildFill="False" Margin="0,10">
+                                <!-- Points right (>) when collapsed - "click to expand" - and left (<)
+                                     when expanded - "click to collapse". -->
+                                <Path x:Name="Chevron" DockPanel.Dock="Top" Width="8" Height="8" Stretch="Uniform" Margin="0,0,0,10"
+                                      HorizontalAlignment="Center" Stroke="{StaticResource Mono.Muted}" StrokeThickness="1.4"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Data="M 0,0 L 4,4 L 0,8" />
+                                <TextBlock DockPanel.Dock="Top" Text="EDIT RULES" Foreground="{StaticResource Mono.Foreground}" FontWeight="SemiBold"
+                                           FontSize="{StaticResource Mono.Type.Caption}" HorizontalAlignment="Center">
+                                    <TextBlock.LayoutTransform>
+                                        <RotateTransform Angle="90" />
+                                    </TextBlock.LayoutTransform>
+                                </TextBlock>
+                            </DockPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chevron" Property="Data" Value="M 4,0 L 0,4 L 4,8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </ToggleButton.Template>
+            </ToggleButton>
         </Grid>
 
         <!-- Status bar -->
-        <DockPanel Grid.Row="3" Margin="4,8,4,4">
-            <TextBlock Text="{Binding StatusMessage}" DockPanel.Dock="Left" VerticalAlignment="Center" />
-            <ProgressBar Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressCompleted}"
-                         Width="300" Height="16" DockPanel.Dock="Right" Margin="8,0,0,0"
-                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
-        </DockPanel>
-        </Grid>
+        <Border Grid.Row="5" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,1,0,0">
+            <DockPanel Margin="10,0" LastChildFill="False">
+                <Ellipse Width="7" Height="7" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,7,0">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{StaticResource Mono.Green}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                    <Setter Property="Fill" Value="{StaticResource Mono.Yellow}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding StatusMessage}" DockPanel.Dock="Left" VerticalAlignment="Center" FontSize="{StaticResource Mono.Type.Caption}" />
+                <ProgressBar Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressCompleted}"
+                             Width="220" Height="14" DockPanel.Dock="Right" Margin="8,0,0,0"
+                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+            </DockPanel>
+        </Border>
     </Grid>
 </Window>

@@ -20,6 +20,25 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>UAssetEditor.ico</ApplicationIcon>
+    <Version>1.0.0</Version>
+    <Product>UAssetEditor</Product>
+    <Description>A focused editor for Unreal Engine .uasset data - browse, search, batch-edit, and repack, without opening the engine.</Description>
   </PropertyGroup>
+
+  <!--
+    UAssetEditor.Core's own conditional DebugType=embedded (see its .csproj) doesn't
+    reliably take effect for this project when it's built as a ProjectReference during a
+    single-file publish - MSBuild's PublishSingleFile flows far enough to bundle Core's DLL
+    into the .exe, but not consistently far enough for its DebugType to follow, so
+    Core's .pdb can still land next to the .exe as a stray file even though App's own pdb
+    is correctly embedded. Deleting it after Publish is a direct fix for that specific
+    symptom rather than fighting MSBuild's project-reference property propagation further.
+  -->
+  <Target Name="RemoveStrayReferencedPdbs" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <_StrayPdb Include="$(PublishDir)*.pdb" Exclude="$(PublishDir)$(TargetName).pdb" />
+    </ItemGroup>
+    <Delete Files="@(_StrayPdb)" />
+  </Target>
 
 </Project>

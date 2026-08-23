@@ -87,17 +87,17 @@ public sealed class SearchService
                 if (asset.Exports[e] is not NormalExport export) continue;
                 var exportName = export.ObjectName.Value?.Value ?? "";
 
-                if (!ConditionMatcher.Matches(exportName, query.ExportNamePatterns, query.ExportNameLogic, query.ExportNameCompare))
+                if (!ConditionMatcher.Matches(exportName, query.ExportNameTerms, query.ExportNameCompare))
                     continue;
 
                 foreach (var node in PropertyWalker.Walk(export))
                 {
-                    if (!ConditionMatcher.Matches(node.Path, query.PropertyNamePatterns, query.PropertyNameLogic, query.PropertyNameCompare))
+                    if (!ConditionMatcher.Matches(node.Path, query.PropertyNameTerms, query.PropertyNameCompare))
                         continue;
 
                     var text = PropertyValueAccessor.AsSearchableString(node.Property, asset);
-                    if (query.ValuePatterns.Count > 0 &&
-                        (text == null || !ConditionMatcher.Matches(text, query.ValuePatterns, query.ValueLogic, query.ValueCompare)))
+                    if (query.ValueTerms.Count > 0 &&
+                        (text == null || !ConditionMatcher.Matches(text, query.ValueTerms, query.ValueCompare)))
                         continue;
 
                     yield return new SearchResult(assetPath, e, exportName, SearchMatchKind.Property, node.Path, text ?? "");
@@ -105,12 +105,12 @@ public sealed class SearchService
             }
         }
 
-        if (query.ReferencePatterns.Count > 0)
+        if (query.ReferenceTerms.Count > 0)
         {
             foreach (var import in asset.Imports)
             {
                 var full = ImportPathResolver.GetFullPath(import, asset);
-                if (ConditionMatcher.Matches(full, query.ReferencePatterns, query.ReferenceLogic, query.ReferenceCompare))
+                if (ConditionMatcher.Matches(full, query.ReferenceTerms, query.ReferenceCompare))
                     yield return new SearchResult(assetPath, -1, "", SearchMatchKind.Reference, null, full);
             }
         }

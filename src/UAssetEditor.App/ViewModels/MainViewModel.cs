@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.App.Views;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.PropertyAccess;
@@ -78,14 +79,26 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<AssetTreeItemViewModel> RootTreeItems { get; } = new();
 
-    [ObservableProperty] private string _exportNameConditionsText = "";
-    [ObservableProperty] private MatchLogic _exportNameLogic = MatchLogic.Or;
-    [ObservableProperty] private string _propertyNameConditionsText = "";
-    [ObservableProperty] private MatchLogic _propertyNameLogic = MatchLogic.Or;
-    [ObservableProperty] private string _valueConditionsText = "";
-    [ObservableProperty] private MatchLogic _valueLogic = MatchLogic.Or;
-    [ObservableProperty] private string _referenceConditionsText = "";
-    [ObservableProperty] private MatchLogic _referenceLogic = MatchLogic.Or;
+    /// <summary>Most-recently-opened source paths, newest first - see <see cref="AddRecentSource"/>.</summary>
+    public ObservableCollection<string> RecentSources { get; } = new();
+
+    /// <summary>Label for the toolbar's Recent chip - avoids an indexer binding (which throws on an empty collection) for the common "nothing opened yet" state.</summary>
+    public string RecentSourceLabel => RecentSources.Count == 0 ? "Recent: none yet" : $"Recent: {Path.GetFileName(RecentSources[0])}";
+
+    /// <summary>
+    /// Backing collections for the scope row's tag/chip inputs - mutated directly (Add/Remove)
+    /// by <see cref="Controls.TermsBox"/> rather than through commands, the same
+    /// direct-mutation pattern already used by <see cref="RecentSources"/>. Each term carries
+    /// its own AND/OR/NOT tag (see <see cref="ConditionTermViewModel"/>) rather than one
+    /// logic setting applying to the whole field.
+    /// </summary>
+    public ObservableCollection<ConditionTermViewModel> ExportNameTerms { get; } = new();
+    public ObservableCollection<ConditionTermViewModel> PropertyNameTerms { get; } = new();
+    public ObservableCollection<ConditionTermViewModel> ValueTerms { get; } = new();
+    public ObservableCollection<ConditionTermViewModel> ReferenceTerms { get; } = new();
+
+    /// <summary>Whether the floating Edit Rules panel is open - defaults to closed since it overlays the Search Results grid rather than resizing it, so it's opt-in per session rather than always in the way.</summary>
+    [ObservableProperty] private bool _isRulesPaneExpanded;
 
     [NotifyPropertyChangedFor(
         nameof(SelectedRuleKindDescription), nameof(ShowRuleValue1), nameof(RuleValue1Label),
@@ -171,7 +184,6 @@ public partial class MainViewModel : ObservableObject
         new(RuleKind.ReplaceReference, "Replace Reference", "Replace one object/asset reference with another, wherever it's used."),
     ];
 
-    public IReadOnlyList<MatchLogic> MatchLogics { get; } = Enum.GetValues<MatchLogic>();
     public IReadOnlyList<SkipComparison> SkipComparisons { get; } = Enum.GetValues<SkipComparison>();
     public IReadOnlyList<string> NumericOperations { get; } = new[] { "set", "add", "sub", "mul", "div" };
 
@@ -270,7 +282,7 @@ public partial class MainViewModel : ObservableObject
                 _currentSource = pakSource;
                 _currentPakSource = pakSource;
                 _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
-                RebuildTree(pakSource.ListAllEntries(), '/');
+                await RebuildTreeAsync(pakSource.ListAllEntries(), '/');
             }
             else
             {
@@ -359,7 +371,7 @@ public partial class MainViewModel : ObservableObject
         else if (File.Exists(SourcePath) && SourcePath.EndsWith(".pak", StringComparison.OrdinalIgnoreCase))
             await LoadPakAsync(SourcePath);
         else if (File.Exists(SourcePath) && SourcePath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
-            LoadSingleFile(SourcePath);
+            await LoadSingleFileAsync(SourcePath);
         else
             StatusMessage = "Enter or browse to a valid folder, .pak file, or .uasset file.";
     }
@@ -394,7 +406,8 @@ public partial class MainViewModel : ObservableObject
                 Directory.EnumerateFiles(folderPath, "*", SearchOption.AllDirectories)
                     .Select(p => Path.GetRelativePath(folderPath, p).Replace(Path.DirectorySeparatorChar, '/'))
                     .ToList());
-            RebuildTree(relativePaths, '/');
+            await RebuildTreeAsync(relativePaths, '/');
+            AddRecentSource(folderPath);
             StatusMessage = "Folder loaded.";
         }
         catch (Exception ex)
@@ -428,7 +441,8 @@ public partial class MainViewModel : ObservableObject
             _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
             IsPakBacked = true;
 
-            RebuildTree(pakSource.ListAllEntries(), '/');
+            await RebuildTreeAsync(pakSource.ListAllEntries(), '/');
+            AddRecentSource(pakPath);
             StatusMessage = $"Opened pak '{Path.GetFileName(pakPath)}' " +
                 (pakSource.IsLargePak ? "(large - entries extract on open)." : "(fully extracted).");
         }
@@ -443,23 +457,37 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Opens exactly one loose .uasset file - same tree/browse shape as a folder or pak, just rooted at that one file with no parent folders shown.</summary>
-    private void LoadSingleFile(string filePath)
+    private async Task LoadSingleFileAsync(string filePath)
     {
         if (!ConfirmDiscardDirtyEdits()) return;
 
-        DisposeCurrentSource();
-        _dirtyAssetPaths.Clear();
-        SearchResults.Clear();
-        _lastSearchQuery = null;
-        _lastOpenedExports = [];
+        IsBusy = true;
+        StatusMessage = $"Opening '{Path.GetFileName(filePath)}'...";
+        try
+        {
+            DisposeCurrentSource();
+            _dirtyAssetPaths.Clear();
+            SearchResults.Clear();
+            _lastSearchQuery = null;
+            _lastOpenedExports = [];
 
-        var source = new SingleFileAssetSource(filePath);
-        _currentSource = source;
-        _workspace = new AssetWorkspace(source, BuildVersionResolver());
-        IsPakBacked = false;
+            var source = new SingleFileAssetSource(filePath);
+            _currentSource = source;
+            _workspace = new AssetWorkspace(source, BuildVersionResolver());
+            IsPakBacked = false;
 
-        RebuildTree([Path.GetFileName(filePath)], '/');
-        StatusMessage = $"Opened '{Path.GetFileName(filePath)}'.";
+            await RebuildTreeAsync([Path.GetFileName(filePath)], '/');
+            AddRecentSource(filePath);
+            StatusMessage = $"Opened '{Path.GetFileName(filePath)}'.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Failed to open '{Path.GetFileName(filePath)}': {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     /// <summary>
@@ -691,6 +719,48 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Opens the Unpack .pak dialog, pre-filled with the currently-loaded pak (if any) and the current AES key field - unpacking itself runs inside the dialog, not here.</summary>
+    [RelayCommand]
+    private void UnpackPak()
+    {
+        var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex);
+        new UnpackPakWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
+    }
+
+    /// <summary>Opens the Pack Folder into .pak dialog, pre-filled with the currently-loaded pak's mount point (if any) so a mod folder built from an unpacked pak defaults to repacking back the same way.</summary>
+    [RelayCommand]
+    private void PackFolder()
+    {
+        var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex);
+        new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
+    }
+
+    [RelayCommand]
+    private void ShowAbout() => new AboutWindow { Owner = Application.Current.MainWindow }.ShowDialog();
+
+    [RelayCommand]
+    private void ViewOnGitHub() =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/gravenuance/UAssetEditor") { UseShellExecute = true });
+
+    /// <summary>Reopens a source from the Recent list - same auto-detect/load path as typing it into Source and clicking Load.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
+    private async Task OpenRecentAsync(string path)
+    {
+        SourcePath = path;
+        await LoadSourceAsync();
+    }
+
+    /// <summary>Tracks the most recently opened sources (newest first, deduplicated, capped) for the Recent dropdown, persisted immediately so it survives a restart even without an explicit Save Config.</summary>
+    private void AddRecentSource(string path)
+    {
+        RecentSources.Remove(path);
+        RecentSources.Insert(0, path);
+        while (RecentSources.Count > 8)
+            RecentSources.RemoveAt(RecentSources.Count - 1);
+        OnPropertyChanged(nameof(RecentSourceLabel));
+        SaveConfig();
+    }
+
     [RelayCommand]
     private void AddRule()
     {
@@ -718,13 +788,8 @@ public partial class MainViewModel : ObservableObject
         if (row?.PropertyPath == null) return;
 
         var leaf = row.PropertyPath.Split('.', '[')[^1].TrimEnd(']');
-        var existing = ParseLines(PropertyNameConditionsText);
-        if (!existing.Contains(leaf, StringComparer.OrdinalIgnoreCase))
-        {
-            PropertyNameConditionsText = string.IsNullOrEmpty(PropertyNameConditionsText)
-                ? leaf
-                : PropertyNameConditionsText + Environment.NewLine + leaf;
-        }
+        if (!PropertyNameTerms.Any(t => string.Equals(t.Text, leaf, StringComparison.OrdinalIgnoreCase)))
+            PropertyNameTerms.Add(new ConditionTermViewModel(leaf));
 
         SelectedRuleKind = RuleKind.SetValue;
         RuleValue1 = row.Value;
@@ -994,20 +1059,29 @@ public partial class MainViewModel : ObservableObject
         _currentPakSource = null;
     }
 
-    private void RebuildTree(IEnumerable<string> paths, char separator)
+    /// <summary>
+    /// Sorting/grouping every path into a <see cref="PathTreeNode"/> tree and wrapping each
+    /// node in an <see cref="AssetTreeItemViewModel"/> (built eagerly, recursively, for the
+    /// whole folder/file structure - see that type's own doc comment) is pure CPU work that
+    /// used to run straight on the UI thread after the actually-async I/O finished, which is
+    /// what froze the window on a large pak/folder. Both steps move into <see cref="Task.Run"/>
+    /// here; only handing the finished items to <see cref="RootTreeItems"/> stays on the UI
+    /// thread, since that collection is what the TreeView is actually bound to.
+    /// </summary>
+    private async Task RebuildTreeAsync(IEnumerable<string> paths, char separator)
     {
+        var items = await Task.Run(() =>
+        {
+            var root = PathTreeBuilder.Build(paths, separator);
+            return root.Children.Select(child => new AssetTreeItemViewModel(child)).ToList();
+        });
+
         RootTreeItems.Clear();
-        var root = PathTreeBuilder.Build(paths, separator);
-        foreach (var child in root.Children)
-            RootTreeItems.Add(new AssetTreeItemViewModel(child));
+        foreach (var item in items)
+            RootTreeItems.Add(item);
     }
 
-    private static byte[]? ParseAesKey(string hex)
-    {
-        hex = hex.Trim();
-        if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
-        return hex.Length == 0 ? null : Convert.FromHexString(hex);
-    }
+    private static byte[]? ParseAesKey(string hex) => PakAesKey.Parse(hex);
 
     private EngineVersionResolver BuildVersionResolver()
     {
@@ -1019,14 +1093,10 @@ public partial class MainViewModel : ObservableObject
 
     private SearchQuery BuildScope() => new()
     {
-        ExportNamePatterns = ParseLines(ExportNameConditionsText),
-        ExportNameLogic = ExportNameLogic,
-        PropertyNamePatterns = ParseLines(PropertyNameConditionsText),
-        PropertyNameLogic = PropertyNameLogic,
-        ValuePatterns = ParseLines(ValueConditionsText),
-        ValueLogic = ValueLogic,
-        ReferencePatterns = ParseLines(ReferenceConditionsText),
-        ReferenceLogic = ReferenceLogic,
+        ExportNameTerms = ExportNameTerms.Select(t => t.ToCore()).ToList(),
+        PropertyNameTerms = PropertyNameTerms.Select(t => t.ToCore()).ToList(),
+        ValueTerms = ValueTerms.Select(t => t.ToCore()).ToList(),
+        ReferenceTerms = ReferenceTerms.Select(t => t.ToCore()).ToList(),
     };
 
     private RuleSet BuildRuleSet() => new()
@@ -1048,6 +1118,7 @@ public partial class MainViewModel : ObservableObject
         CreateBackup = CreateBackup,
         Scope = BuildScope(),
         Rules = Rules.Select(r => r.Rule).ToList(),
+        RecentSources = RecentSources.ToList(),
     };
 
     private void ApplySession(EditorSession session)
@@ -1057,26 +1128,24 @@ public partial class MainViewModel : ObservableObject
         UsmapPath = session.UsmapPath;
         CreateBackup = session.CreateBackup;
 
-        ExportNameConditionsText = JoinLines(session.Scope.ExportNamePatterns);
-        ExportNameLogic = session.Scope.ExportNameLogic;
-        PropertyNameConditionsText = JoinLines(session.Scope.PropertyNamePatterns);
-        PropertyNameLogic = session.Scope.PropertyNameLogic;
-        ValueConditionsText = JoinLines(session.Scope.ValuePatterns);
-        ValueLogic = session.Scope.ValueLogic;
-        ReferenceConditionsText = JoinLines(session.Scope.ReferencePatterns);
-        ReferenceLogic = session.Scope.ReferenceLogic;
+        ExportNameTerms.Clear();
+        foreach (var term in session.Scope.ExportNameTerms) ExportNameTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
+        PropertyNameTerms.Clear();
+        foreach (var term in session.Scope.PropertyNameTerms) PropertyNameTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
+        ValueTerms.Clear();
+        foreach (var term in session.Scope.ValueTerms) ValueTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
+        ReferenceTerms.Clear();
+        foreach (var term in session.Scope.ReferenceTerms) ReferenceTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
 
         Rules.Clear();
         foreach (var rule in session.Rules)
             Rules.Add(new RuleListItem(Describe(rule), rule));
+
+        RecentSources.Clear();
+        foreach (var recent in session.RecentSources)
+            RecentSources.Add(recent);
+        OnPropertyChanged(nameof(RecentSourceLabel));
     }
-
-    private static List<string> ParseLines(string text) =>
-        text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(line => line.Length > 0)
-            .ToList();
-
-    private static string JoinLines(IReadOnlyList<string> lines) => string.Join(Environment.NewLine, lines);
 
     private static string Describe(EditRule rule) => rule switch
     {

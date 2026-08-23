@@ -13,4 +13,7 @@ public sealed class EditorSession
     public bool CreateBackup { get; init; } = true;
     public SearchQuery Scope { get; init; } = new();
     public List<EditRule> Rules { get; init; } = new();
+
+    /// <summary>Most-recently-opened source paths (folder/.pak/.uasset), newest first - see <see cref="MainViewModel.AddRecentSource"/>.</summary>
+    public List<string> RecentSources { get; init; } = new();
 }

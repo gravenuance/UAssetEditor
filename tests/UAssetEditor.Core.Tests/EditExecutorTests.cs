@@ -16,7 +16,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
@@ -39,7 +39,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
@@ -56,7 +56,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["NoSuchProperty"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["NoSuchProperty"] },
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
@@ -74,7 +74,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Tags"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Tags"] },
             Rules = { new RemoveTagRule { Tag = "Alpha" } },
         };
 
@@ -99,7 +99,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
             Rules = { new NumericAdjustRule { Operation = operation, TargetValue = target } },
         };
 
@@ -117,7 +117,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
             Rules = { new NumericAdjustRule { Operation = "div", TargetValue = "0" } },
         };
 
@@ -134,7 +134,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
             Rules = { new NumericAdjustRule { Operation = "add", TargetValue = "1", Skip = new SkipCondition { Comparison = SkipComparison.Eq, Value = "5" } } },
         };
 
@@ -151,7 +151,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["DisplayName"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["DisplayName"] },
             Rules = { new SetPropertyValueRule { NewValue = "Changed", Skip = new SkipCondition { Comparison = SkipComparison.Eq, Value = "Hello World" } } },
         };
 
@@ -168,7 +168,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count"] },
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
             Rules = { new SetPropertyValueRule { NewValue = "0" } },
         };
 
@@ -191,7 +191,7 @@ public class EditExecutorTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["Count", "DisplayName"], PropertyNameLogic = MatchLogic.Or },
+            Scope = new SearchQuery { PropertyNameTerms = [new ConditionTerm("Count", TermTag.Or), new ConditionTerm("DisplayName", TermTag.Or)] },
             Rules = { new RemovePropertyRule() },
         };
 
@@ -226,7 +226,7 @@ public class EditExecutorTests
         });
         var ruleSet = new RuleSet
         {
-            Scope = new SearchQuery { PropertyNamePatterns = ["["], PropertyNameCompare = TextCompare.Regex }, // unterminated character class
+            Scope = new SearchQuery { PropertyNameTerms = ["["], PropertyNameCompare = TextCompare.Regex }, // unterminated character class
             Rules = { new SetPropertyValueRule { NewValue = "x" } },
         };
 
