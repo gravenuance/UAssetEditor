@@ -14,6 +14,17 @@ public sealed class EditorSession
     public SearchQuery Scope { get; init; } = new();
     public List<EditRule> Rules { get; init; } = new();
 
-    /// <summary>Most-recently-opened source paths (folder/.pak/.uasset), newest first - see <see cref="MainViewModel.AddRecentSource"/>.</summary>
-    public List<string> RecentSources { get; init; } = new();
+    /// <summary>Most-recently-opened sources (folder/.pak/.uasset), newest first - see <see cref="MainViewModel.AddRecentSource"/>.</summary>
+    public List<RecentSourceEntry> RecentSources { get; init; } = new();
+}
+
+/// <summary>
+/// One Recent Sources entry - captures the engine version, AES key, and usmap that were in
+/// effect when this source was last opened alongside its path, since those are per-game/
+/// per-pak settings that would otherwise have to be re-typed by hand every time, defeating
+/// the point of "recent."
+/// </summary>
+public sealed record RecentSourceEntry(string SourcePath, EngineVersion EngineVersion, string AesKeyHex, string? UsmapPath)
+{
+    public string DisplayName => System.IO.Path.GetFileName(SourcePath);
 }

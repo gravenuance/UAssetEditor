@@ -58,10 +58,41 @@ public class PakUnpackerTests
         try
         {
             using (var source = new PakAssetSource(pakPath))
-                PakUnpacker.Unpack(source, destination, progress);
+                PakUnpacker.Unpack(source, destination, progress: progress);
 
             Assert.Equal((1, 2), progress.Values[0]);
             Assert.Equal((2, 2), progress.Values[1]);
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Unpack_WithEntryFilter_ExtractsOnlyMatchingEntries()
+    {
+        // The filter is what the Browse tree's "Extract Selected" (checked folders/assets)
+        // is built on - a subtree prefix check like this one is exactly that use case.
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        {
+            ["Content/Weapons/Rifle.uasset"] = Encoding.UTF8.GetBytes("rifle"),
+            ["Content/Weapons/Pistol.uasset"] = Encoding.UTF8.GetBytes("pistol"),
+            ["Content/Vehicles/Car.uasset"] = Encoding.UTF8.GetBytes("car"),
+        });
+        var destination = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Unpack_" + Guid.NewGuid());
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+            var result = PakUnpacker.Unpack(source, destination, entryFilter: e => e.StartsWith("Content/Weapons/", StringComparison.Ordinal));
+
+            Assert.Equal(2, result.SucceededCount);
+            Assert.Empty(result.FailedEntries);
+            Assert.True(File.Exists(Path.Combine(destination, "Content", "Weapons", "Rifle.uasset")));
+            Assert.True(File.Exists(Path.Combine(destination, "Content", "Weapons", "Pistol.uasset")));
+            Assert.False(File.Exists(Path.Combine(destination, "Content", "Vehicles", "Car.uasset")));
         }
         finally
         {

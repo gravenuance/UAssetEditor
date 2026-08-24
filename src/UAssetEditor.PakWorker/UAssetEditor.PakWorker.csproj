@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Hosts every direct call into UAssetAPI's embedded native `repak_bind.dll` (pak open/
+    read/write) in a separate process, so a native crash in that library (confirmed:
+    STATUS_STACK_BUFFER_OVERRUN on a specific real-world pak entry) kills only this worker,
+    not the whole app. See UAssetEditor.Core/AssetSources/PakWorker/ for the shared
+    protocol/framing code and the App-side client that spawns and talks to this process.
+    No UI dependency - deliberately plain net8.0, not net8.0-windows.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Same stray-pdb fix as UAssetEditor.App.csproj: Core's own conditional
+       DebugType=embedded doesn't reliably follow it through a ProjectReference during a
+       single-file publish. -->
+  <Target Name="RemoveStrayReferencedPdbs" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <_StrayPdb Include="$(PublishDir)*.pdb" Exclude="$(PublishDir)$(TargetName).pdb" />
+    </ItemGroup>
+    <Delete Files="@(_StrayPdb)" />
+  </Target>
+
+</Project>

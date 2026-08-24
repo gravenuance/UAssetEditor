@@ -12,7 +12,9 @@ public class PathTreeBuilderTests
         var content = Assert.Single(root.Children);
         Assert.Equal("Content", content.Name);
         Assert.False(content.IsLeaf);
-        Assert.Null(content.FullPath);
+        // Folder nodes carry their own accumulated path too, not just leaves - needed to
+        // scope an extraction to a checked folder's subtree (see AssetTreeItemViewModel).
+        Assert.Equal("Content", content.FullPath);
 
         Assert.Equal(2, content.Children.Count);
         var foo = Assert.Single(content.Children, c => c.Name == "Foo");

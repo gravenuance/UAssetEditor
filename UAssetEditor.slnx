@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/UAssetEditor.App/UAssetEditor.App.csproj" />
     <Project Path="src/UAssetEditor.Core/UAssetEditor.Core.csproj" />
+    <Project Path="src/UAssetEditor.PakWorker/UAssetEditor.PakWorker.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj" />

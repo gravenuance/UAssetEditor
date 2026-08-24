@@ -1,4 +1,5 @@
 using UAssetAPI;
+using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
@@ -46,6 +47,36 @@ public class EditExecutorTests
         await new EditExecutor().ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null);
 
         Assert.Equal(1, source.SaveCount);
+    }
+
+    [Fact]
+    public async Task StageAsync_MutatesWhateverOpenAssetReturnsButNeverSaves()
+    {
+        // Regression test: Apply used to open a fresh, throwaway UAsset per asset and save it
+        // immediately - bypassing whatever cache (e.g. AssetWorkspace) the caller uses to back
+        // an editable grid, so the grid kept showing stale pre-Apply values even though the
+        // file on disk was correctly updated. StageAsync instead mutates the exact instance its
+        // caller-supplied openAsset function hands back (standing in here for a workspace's
+        // GetOrOpen, which always returns the same cached instance for a path) and must never
+        // call SaveAsset itself - saving becomes the caller's own explicit, later decision.
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset); // Count = 5
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
+            Rules = { new SetPropertyValueRule { NewValue = "42" } },
+        };
+
+        var changeSets = await new EditExecutor().StageAsync(source, path => source.OpenAsset(path, EngineVersion.UNKNOWN, null), ruleSet);
+
+        Assert.Equal(0, source.SaveCount);
+        var change = Assert.Single(Assert.Single(changeSets).Changes);
+        Assert.Equal("5", change.OldValue);
+        Assert.Equal("42", change.NewValue);
+
+        var countNode = PropertyWalker.Walk(export).Single(n => n.Path == "Count");
+        Assert.Equal("42", PropertyValueAccessor.AsSearchableString(countNode.Property, asset));
     }
 
     [Fact]

@@ -28,7 +28,11 @@ public static class PathTreeBuilder
 
                 if (!lookup.TryGetValue(accumulated, out var node))
                 {
-                    node = new PathTreeNode(segments[i], isLeaf ? path : null, isLeaf);
+                    // FullPath is set for every node, not just leaves, now that folders need
+                    // their own accumulated path too (see AssetTreeItemViewModel.IsCheckable -
+                    // Folder nodes are checkable for extraction, which needs a real path to
+                    // scope the entry filter to).
+                    node = new PathTreeNode(segments[i], accumulated, isLeaf);
                     lookup[accumulated] = node;
                     current.Children.Add(node);
                 }

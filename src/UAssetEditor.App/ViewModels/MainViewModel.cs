@@ -51,6 +51,18 @@ public partial class MainViewModel : ObservableObject
     private readonly SearchService _searchService = new();
     private readonly HashSet<string> _dirtyAssetPaths = new();
 
+    /// <summary>
+    /// Pak-backed asset paths saved (via <see cref="SaveAllEditedAsync"/>) since the current
+    /// <see cref="PakAssetSource"/> was opened, but not yet folded into a real .pak by
+    /// <see cref="RepackAsync"/> - a pak-backed Save only writes to that source's private,
+    /// per-open temp extraction copy (see <see cref="PakAssetSource"/>'s own docs), so these
+    /// are silently lost the moment the source is discarded (reload, close, or app exit)
+    /// unless Repack ran first. Cleared in <see cref="DisposeCurrentSource"/> - the one place
+    /// that actually discards the source - and checked in <see cref="ConfirmDiscardDirtyEdits"/>
+    /// so every path that can discard the source warns about it first.
+    /// </summary>
+    private readonly HashSet<string> _unrepackedSavedPaths = new();
+
     private AssetWorkspace? _workspace;
     private IAssetSource? _currentSource;
     private PakAssetSource? _currentPakSource;
@@ -69,6 +81,15 @@ public partial class MainViewModel : ObservableObject
     private readonly DispatcherTimer _reloadDebounceTimer;
     private bool _pendingAesReload;
 
+    /// <summary>
+    /// Set while <see cref="OpenRecentAsync"/> is applying a Recent entry's saved engine
+    /// version/AES key/usmap ahead of the source switch it's about to perform - without this,
+    /// each setter's own change handler would kick off a reload of the *old* (about-to-be-
+    /// replaced) workspace first, popping a spurious discard-changes prompt and doing
+    /// throwaway work that <see cref="LoadSourceAsync"/> immediately supersedes.
+    /// </summary>
+    private bool _suppressReloadOnSettingsChange;
+
     /// <summary>A folder, a .pak archive, or a single loose .uasset - auto-detected when <see cref="LoadSourceCommand"/> runs.</summary>
     [ObservableProperty] private string _sourcePath = "";
     [ObservableProperty] private EngineVersion _defaultEngineVersion = EngineVersion.VER_UE4_27;
@@ -79,11 +100,11 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<AssetTreeItemViewModel> RootTreeItems { get; } = new();
 
-    /// <summary>Most-recently-opened source paths, newest first - see <see cref="AddRecentSource"/>.</summary>
-    public ObservableCollection<string> RecentSources { get; } = new();
+    /// <summary>Most-recently-opened sources, newest first - see <see cref="AddRecentSource"/>.</summary>
+    public ObservableCollection<RecentSourceEntry> RecentSources { get; } = new();
 
     /// <summary>Label for the toolbar's Recent chip - avoids an indexer binding (which throws on an empty collection) for the common "nothing opened yet" state.</summary>
-    public string RecentSourceLabel => RecentSources.Count == 0 ? "Recent: none yet" : $"Recent: {Path.GetFileName(RecentSources[0])}";
+    public string RecentSourceLabel => RecentSources.Count == 0 ? "Recent: none yet" : $"Recent: {RecentSources[0].DisplayName}";
 
     /// <summary>
     /// Backing collections for the scope row's tag/chip inputs - mutated directly (Add/Remove)
@@ -150,8 +171,8 @@ public partial class MainViewModel : ObservableObject
 
     [NotifyCanExecuteChangedFor(
         nameof(SearchCommand), nameof(PreviewCommand), nameof(ApplyCommand), nameof(SaveAllEditedCommand),
-        nameof(RepackCommand), nameof(LoadSourceCommand), nameof(CloseWorkspaceCommand),
-        nameof(OpenFromTreeCommand), nameof(LoadSelectedCommand))]
+        nameof(RevertEditsCommand), nameof(RepackCommand), nameof(LoadSourceCommand), nameof(CloseWorkspaceCommand),
+        nameof(OpenFromTreeCommand), nameof(LoadSelectedCommand), nameof(ExtractSelectedCommand), nameof(RepackSelectedCommand))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [ObservableProperty] private bool _isBusy;
 
@@ -165,7 +186,11 @@ public partial class MainViewModel : ObservableObject
     public bool IsIdle => !IsBusy;
 
     /// <summary>True only while a Search/Preview/Apply is actually in flight (i.e. <see cref="_cts"/> is live) - drives the Cancel buttons' visibility, so Cancel doesn't sit around offering to stop something that isn't cancelable (like loading a source, which doesn't use <see cref="_cts"/> at all).</summary>
+    [NotifyPropertyChangedFor(nameof(IsNotCancelable))]
     [ObservableProperty] private bool _isCancelable;
+
+    /// <summary>Drives Revert's visibility in the slot Cancel occupies while busy - the two are never meaningful at the same time, so they share a column instead of competing for space.</summary>
+    public bool IsNotCancelable => !IsCancelable;
 
     [ObservableProperty] private string _statusMessage = "Ready.";
     [ObservableProperty] private int _progressCompleted;
@@ -176,7 +201,7 @@ public partial class MainViewModel : ObservableObject
     public IReadOnlyList<RuleKindOption> RuleKindOptions { get; } =
     [
         new(RuleKind.SetValue, "Set Value", "Replace the property's value outright with a fixed new value."),
-        new(RuleKind.NumericAdjust, "Numeric Adjust", "Add, subtract, multiply, or divide the property's current numeric value (pick the operation)."),
+        new(RuleKind.NumericAdjust, "Numeric Adjust", "Add, subtract, multiply, or divide the property's numeric value."),
         new(RuleKind.ReplaceText, "Replace Text", "Find and replace a substring (or regex) within the property's text value."),
         new(RuleKind.RemoveProperty, "Remove Property", "Delete the property entirely from the export."),
         new(RuleKind.AddTag, "Add Tag", "Add a tag to a Tags array property."),
@@ -226,11 +251,20 @@ public partial class MainViewModel : ObservableObject
     [GeneratedRegex(@"^VER_UE(?<major>\d+)_(?<minor>\d+)(?<ea>EA)?$")]
     private static partial Regex EngineVersionNamePattern();
 
-    partial void OnDefaultEngineVersionChanged(EngineVersion value) => _ = ReloadContextAsync(aesKeyChanged: false);
+    partial void OnDefaultEngineVersionChanged(EngineVersion value)
+    {
+        if (!_suppressReloadOnSettingsChange) _ = ReloadContextAsync(aesKeyChanged: false);
+    }
 
-    partial void OnUsmapPathChanged(string? value) => ScheduleDebouncedReload(aesKeyChanged: false);
+    partial void OnUsmapPathChanged(string? value)
+    {
+        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload(aesKeyChanged: false);
+    }
 
-    partial void OnPakAesKeyHexChanged(string value) => ScheduleDebouncedReload(aesKeyChanged: true);
+    partial void OnPakAesKeyHexChanged(string value)
+    {
+        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload(aesKeyChanged: true);
+    }
 
     private void ScheduleDebouncedReload(bool aesKeyChanged)
     {
@@ -262,7 +296,7 @@ public partial class MainViewModel : ObservableObject
         if (_workspace == null) return; // nothing open yet - new settings apply automatically the next time something opens
         if (IsBusy) return; // don't interrupt in-flight work; settings still apply on the next explicit action
 
-        if (!ConfirmDiscardDirtyEdits("Changing the engine version, usmap, or AES key requires reloading already-open assets. Discard unsaved edits and reload now?"))
+        if (!ConfirmDiscardDirtyEdits("Reload now and discard unsaved edits?"))
             return;
 
         IsBusy = true;
@@ -443,8 +477,9 @@ public partial class MainViewModel : ObservableObject
 
             await RebuildTreeAsync(pakSource.ListAllEntries(), '/');
             AddRecentSource(pakPath);
-            StatusMessage = $"Opened pak '{Path.GetFileName(pakPath)}' " +
-                (pakSource.IsLargePak ? "(large - entries extract on open)." : "(fully extracted).");
+            StatusMessage = pakSource.IsLargePak
+                ? $"Opened pak '{Path.GetFileName(pakPath)}' - entries load on demand."
+                : $"Opened pak '{Path.GetFileName(pakPath)}' - fully extracted.";
         }
         catch (Exception ex)
         {
@@ -629,7 +664,11 @@ public partial class MainViewModel : ObservableObject
 
         void Collect(AssetTreeItemViewModel node)
         {
-            if (node.IsChecked && node.FullPath != null)
+            // Folder/Asset nodes are also checkable now (for ExtractSelectedCommand - see
+            // AssetTreeItemViewModel.IsCheckable), so this must filter to Export/Property
+            // explicitly rather than just "checked with a path" - otherwise a folder checked
+            // for extraction would also get swept in here as a bogus load target.
+            if (node.IsChecked && node.FullPath != null && node.Kind is TreeNodeKind.Export or TreeNodeKind.Property)
             {
                 toLoad.Add(node.Kind == TreeNodeKind.Export
                     ? new OpenedScope(node.FullPath, node.ExportIndex, null)
@@ -646,7 +685,7 @@ public partial class MainViewModel : ObservableObject
         var distinct = toLoad.Distinct().ToList();
         if (distinct.Count == 0)
         {
-            StatusMessage = "Check one or more exports or tables in the tree first (expand an asset's Exports node to see them).";
+            StatusMessage = "Check one or more exports or tables in the tree.";
             return;
         }
 
@@ -681,6 +720,198 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Extracts every checked Folder/Asset node's subtree to a chosen destination folder -
+    /// the FModel-style "check what you want, extract it" workflow, layered entirely on
+    /// <see cref="PakUnpacker"/>'s entry filter (pak-backed sources) with no new native
+    /// surface of its own. A loose-folder-backed source needs no pak/worker involvement at
+    /// all - it's a plain recursive file copy.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
+    private async Task ExtractSelectedAsync()
+    {
+        if (_currentSource == null)
+        {
+            StatusMessage = "Load a folder, .pak file, or .uasset file first.";
+            return;
+        }
+
+        var prefixes = CollectSelectedPrefixes();
+        if (prefixes.Count == 0)
+        {
+            StatusMessage = "Check one or more folders or assets in the tree first.";
+            return;
+        }
+
+        var dialog = new OpenFolderDialog { Title = "Extract selected to..." };
+        if (dialog.ShowDialog() != true) return;
+        var destination = dialog.FolderName;
+
+        IsBusy = true;
+        StatusMessage = "Extracting...";
+        try
+        {
+            if (_currentPakSource != null)
+            {
+                var pakSource = _currentPakSource;
+                var result = await Task.Run(() =>
+                    PakUnpacker.Unpack(pakSource, destination, entryFilter: entry => MatchesAnySelectedPrefix(entry, prefixes)));
+
+                StatusMessage = result.HasFailures
+                    ? $"Extracted {result.SucceededCount} file(s) to {destination} - {result.FailedEntries.Count} failed."
+                    : $"Extracted {result.SucceededCount} file(s) to {destination}.";
+            }
+            else
+            {
+                var sourceRoot = SourcePath;
+                var count = await Task.Run(() => CopySelectedLooseFiles(sourceRoot, destination, prefixes));
+                StatusMessage = $"Extracted {count} file(s) to {destination}.";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Extract failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Builds a new .pak containing only the checked Folder/Asset subtrees, at the source
+    /// pak's own version and mount point - the "ship a partial combination of my mod's
+    /// changes without hand-extracting and repacking" workflow: reuses the exact same
+    /// checkbox selection as <see cref="ExtractSelectedCommand"/>, just handed to
+    /// <see cref="PakRepacker"/>'s entry filter instead of <see cref="PakUnpacker"/>'s, so a
+    /// user who edited features A, B, and C can produce an "A+C only" pak (say) without ever
+    /// leaving the app.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
+    private async Task RepackSelectedAsync()
+    {
+        if (_currentPakSource == null)
+        {
+            StatusMessage = "Open a .pak first.";
+            return;
+        }
+
+        var prefixes = CollectSelectedPrefixes();
+        if (prefixes.Count == 0)
+        {
+            StatusMessage = "Check one or more folders or assets in the tree first.";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Repack selected to...",
+            Filter = "Pak files (*.pak)|*.pak",
+            FileName = Path.GetFileName(_currentPakSource.PakPath),
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        var source = _currentPakSource;
+        var outputPath = dialog.FileName;
+
+        IsBusy = true;
+        StatusMessage = "Repacking selected...";
+        try
+        {
+            var aesKey = ParseAesKey(PakAesKeyHex);
+            var result = await Task.Run(() =>
+                PakRepacker.Build(source, outputPath, aesKey: aesKey, entryFilter: entry => MatchesAnySelectedPrefix(entry, prefixes)));
+
+            // Unlike a full Repack, this only ever bakes in the selected subset - only
+            // remove those specific paths from the at-risk set, so anything still
+            // saved-but-unrepacked outside the selection keeps warning correctly.
+            if (!result.HasFailures)
+                foreach (var path in source.ListAllEntries().Where(e => MatchesAnySelectedPrefix(e, prefixes)))
+                    _unrepackedSavedPaths.Remove(path);
+
+            StatusMessage = result.HasFailures
+                ? $"Repack failed: {result.FailedEntries[0].Reason}"
+                : $"Repacked {result.SucceededCount} selected file(s) to {outputPath}.";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Repack failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Every checked Folder/Asset node's FullPath, shared by <see cref="ExtractSelectedCommand"/>
+    /// and <see cref="RepackSelectedCommand"/>. For a pak-backed source, a checked .uasset leaf
+    /// also pulls in its .uexp/.ubulk companion entries (see
+    /// <see cref="PakAssetSource.CompanionExtensions"/>) - those hold the asset's actual
+    /// exported/bulk data and aren't separately checkable nodes in the tree, but leaving them
+    /// out produces a broken asset in the output.
+    /// </summary>
+    private List<string> CollectSelectedPrefixes()
+    {
+        var prefixes = new List<string>();
+        void Collect(AssetTreeItemViewModel node)
+        {
+            if (node.IsChecked && node.FullPath != null && node.Kind is TreeNodeKind.Folder or TreeNodeKind.Asset)
+            {
+                prefixes.Add(node.FullPath);
+
+                if (_currentPakSource != null && node.Kind == TreeNodeKind.Asset && node.FullPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                {
+                    var baseNoExt = node.FullPath[..^".uasset".Length];
+                    foreach (var companionExt in PakAssetSource.CompanionExtensions)
+                    {
+                        var companionPath = baseNoExt + companionExt;
+                        if (_currentPakSource.ListAllEntries().Contains(companionPath))
+                            prefixes.Add(companionPath);
+                    }
+                }
+            }
+
+            foreach (var child in node.Children)
+                Collect(child);
+        }
+        foreach (var root in RootTreeItems)
+            Collect(root);
+        return prefixes;
+    }
+
+    private static bool MatchesAnySelectedPrefix(string entry, List<string> prefixes) =>
+        prefixes.Any(p => entry.Equals(p, StringComparison.OrdinalIgnoreCase) || entry.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase));
+
+    private static int CopySelectedLooseFiles(string sourceRoot, string destination, List<string> prefixes)
+    {
+        var count = 0;
+        foreach (var prefix in prefixes)
+        {
+            var sourcePath = Path.Combine(sourceRoot, prefix.Replace('/', Path.DirectorySeparatorChar));
+
+            if (File.Exists(sourcePath))
+            {
+                var destPath = Path.Combine(destination, prefix.Replace('/', Path.DirectorySeparatorChar));
+                Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+                File.Copy(sourcePath, destPath, overwrite: true);
+                count++;
+            }
+            else if (Directory.Exists(sourcePath))
+            {
+                foreach (var file in Directory.EnumerateFiles(sourcePath, "*", SearchOption.AllDirectories))
+                {
+                    var relative = Path.GetRelativePath(sourceRoot, file);
+                    var destPath = Path.Combine(destination, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(destPath)!);
+                    File.Copy(file, destPath, overwrite: true);
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task RepackAsync()
     {
@@ -706,8 +937,17 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var aesKey = ParseAesKey(PakAesKeyHex);
-            await Task.Run(() => PakRepacker.Build(source, outputPath, aesKey: aesKey));
-            StatusMessage = $"Repacked to {outputPath}.";
+            var result = await Task.Run(() => PakRepacker.Build(source, outputPath, aesKey: aesKey));
+
+            // A failed Repack discards its partial output entirely (see PakRepacker) - so
+            // only a clean run actually folded every saved-but-unrepacked edit into a real
+            // .pak; anything short of that leaves them exactly as at-risk as before.
+            if (!result.HasFailures)
+                _unrepackedSavedPaths.Clear();
+
+            StatusMessage = result.HasFailures
+                ? $"Repack failed: {result.FailedEntries[0].Reason}"
+                : $"Repacked to {outputPath}.";
         }
         catch (Exception ex)
         {
@@ -731,7 +971,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void PackFolder()
     {
-        var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex);
+        var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex,
+            mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version);
         new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
@@ -742,19 +983,41 @@ public partial class MainViewModel : ObservableObject
     private void ViewOnGitHub() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/gravenuance/UAssetEditor") { UseShellExecute = true });
 
-    /// <summary>Reopens a source from the Recent list - same auto-detect/load path as typing it into Source and clicking Load.</summary>
+    /// <summary>
+    /// Reopens a source from the Recent list, restoring the engine version/AES key/usmap that
+    /// were in effect when it was last opened (not just the path) - same auto-detect/load path
+    /// as typing it into Source and clicking Load, just with the per-game settings pre-filled
+    /// instead of whatever's currently in those fields.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
-    private async Task OpenRecentAsync(string path)
+    private async Task OpenRecentAsync(RecentSourceEntry entry)
     {
-        SourcePath = path;
+        _reloadDebounceTimer.Stop();
+        _pendingAesReload = false;
+        _suppressReloadOnSettingsChange = true;
+        try
+        {
+            SourcePath = entry.SourcePath;
+            DefaultEngineVersion = entry.EngineVersion;
+            PakAesKeyHex = entry.AesKeyHex;
+            UsmapPath = entry.UsmapPath;
+        }
+        finally
+        {
+            _suppressReloadOnSettingsChange = false;
+        }
+
         await LoadSourceAsync();
     }
 
-    /// <summary>Tracks the most recently opened sources (newest first, deduplicated, capped) for the Recent dropdown, persisted immediately so it survives a restart even without an explicit Save Config.</summary>
+    /// <summary>Tracks the most recently opened sources (newest first, deduplicated by path, capped) for the Recent dropdown, persisted immediately so it survives a restart even without an explicit Save Config.</summary>
     private void AddRecentSource(string path)
     {
-        RecentSources.Remove(path);
-        RecentSources.Insert(0, path);
+        var existing = RecentSources.FirstOrDefault(r => r.SourcePath == path);
+        if (existing != null)
+            RecentSources.Remove(existing);
+
+        RecentSources.Insert(0, new RecentSourceEntry(path, DefaultEngineVersion, PakAesKeyHex, UsmapPath));
         while (RecentSources.Count > 8)
             RecentSources.RemoveAt(RecentSources.Count - 1);
         OnPropertyChanged(nameof(RecentSourceLabel));
@@ -864,11 +1127,68 @@ public partial class MainViewModel : ObservableObject
                 row.IsDirty = false;
 
             _dirtyAssetPaths.Clear();
-            StatusMessage = $"Saved {dirtyPaths.Count} asset(s).";
+
+            // A pak-backed Save only reaches that pak's own private temp extraction copy,
+            // not the real .pak on disk - track it as still-at-risk until an actual Repack
+            // folds it in, so ConfirmDiscardDirtyEdits can warn before it's lost.
+            if (IsPakBacked)
+                foreach (var path in dirtyPaths)
+                    _unrepackedSavedPaths.Add(path);
+
+            StatusMessage = IsPakBacked
+                ? $"Saved {dirtyPaths.Count} asset(s) to the pak's temp copy."
+                : $"Saved {dirtyPaths.Count} asset(s).";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Discards every unsaved edit (from Apply's staged rule matches, or manual grid-cell
+    /// edits) and reloads its last-saved (or original, if never saved this session) value
+    /// from disk. Cheap by construction: an unsaved edit only ever lives on the workspace's
+    /// in-memory cached instance - see <see cref="ApplyAsync"/> and <see cref="SearchResultRow"/>
+    /// - so discarding it is just evicting that instance and letting the next access re-parse
+    /// the untouched bytes underneath. Deliberately scoped to <see cref="_dirtyAssetPaths"/>
+    /// only: an already-saved-but-unrepacked pak edit is a different, harder-to-undo state
+    /// (see <see cref="_unrepackedSavedPaths"/>) that this does not touch.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
+    private async Task RevertEditsAsync()
+    {
+        if (_workspace == null || _dirtyAssetPaths.Count == 0)
+        {
+            StatusMessage = "Nothing to revert.";
+            return;
+        }
+
+        var dirtyPaths = _dirtyAssetPaths.ToList();
+        var result = MessageBox.Show(
+            $"Discard {dirtyPaths.Count} unsaved edit(s) and reload their last-saved value?",
+            "Revert changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+
+        IsBusy = true;
+        StatusMessage = "Reverting...";
+        try
+        {
+            foreach (var path in dirtyPaths)
+                _workspace.Close(path);
+            _dirtyAssetPaths.Clear();
+
+            await RefreshOpenContentAsync();
+
+            StatusMessage = $"Reverted {dirtyPaths.Count} asset(s).";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Revert failed: {ex.Message}";
         }
         finally
         {
@@ -946,17 +1266,26 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Runs the batch edit rules and stages the results directly on the workspace's live,
+    /// already-cached asset instances - the same objects a manual grid-cell edit mutates -
+    /// instead of opening a fresh throwaway copy and saving it immediately. Nothing is
+    /// written to disk here: touched assets are just marked dirty (same highlight/tracking
+    /// as a manual cell edit) so the user can review the grid and choose to Save All Edited
+    /// (or discard by reloading) rather than have a batch of hundreds of edits committed to
+    /// disk in one irreversible step.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task ApplyAsync()
     {
-        if (_currentSource == null)
+        if (_currentSource == null || _workspace == null)
         {
             StatusMessage = "Load a folder, .pak file, or .uasset file first.";
             return;
         }
 
         var source = _currentSource;
-        var versions = BuildVersionResolver();
+        var workspace = _workspace;
         var ruleSet = BuildRuleSet();
 
         IsBusy = true;
@@ -971,8 +1300,30 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var changeSets = await _editExecutor.ApplyAsync(source, versions, ruleSet, CreateBackup, backupFolder: null, progress: progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
-            StatusMessage = $"Applied changes to {changeSets.Count} asset(s).";
+            var changeSets = await _editExecutor.StageAsync(source, workspace.GetOrOpen, ruleSet, progress: progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
+            var touchedPaths = changeSets.Select(c => c.AssetPath).ToHashSet();
+
+            foreach (var path in touchedPaths)
+                _dirtyAssetPaths.Add(path);
+
+            await RefreshOpenContentAsync();
+
+            foreach (var row in SearchResults.Where(r => touchedPaths.Contains(r.AssetPath)))
+                row.IsDirty = true;
+
+            // StageAsync opens every asset in the source (to check whether the rules'
+            // scope matches it), not just the ones that end up touched - left as-is, a
+            // large source would leave its entire contents resident in the workspace
+            // cache after one Apply. Only the touched (now dirty) and any pre-existing
+            // dirty paths need to stay open; everything else served no further purpose
+            // once checked, so it's dropped rather than held onto for free.
+            foreach (var path in source.EnumerateAssetPaths())
+                if (!touchedPaths.Contains(path) && !_dirtyAssetPaths.Contains(path))
+                    workspace.Close(path);
+
+            StatusMessage = changeSets.Count == 0
+                ? "Applied: no changes matched."
+                : $"Applied changes to {changeSets.Count} asset(s) - not saved yet.";
             SaveConfig();
         }
         catch (OperationCanceledException)
@@ -1043,12 +1394,23 @@ public partial class MainViewModel : ObservableObject
 
     private void OnResultRowDirty(SearchResultRow row) => _dirtyAssetPaths.Add(row.AssetPath);
 
-    private bool ConfirmDiscardDirtyEdits(string message = "The current workspace has unsaved edits. Discard them and continue?")
+    private bool ConfirmDiscardDirtyEdits(string message = "Discard unsaved edits and continue?")
     {
-        if (_dirtyAssetPaths.Count == 0) return true;
+        if (_dirtyAssetPaths.Count > 0)
+        {
+            var result = MessageBox.Show(message, "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return false;
+        }
 
-        var result = MessageBox.Show(message, "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        return result == MessageBoxResult.Yes;
+        if (_unrepackedSavedPaths.Count > 0)
+        {
+            var result = MessageBox.Show(
+                $"Continue and lose {_unrepackedSavedPaths.Count} unrepacked asset(s)?",
+                "Unrepacked changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return false;
+        }
+
+        return true;
     }
 
     private void DisposeCurrentSource()
@@ -1057,6 +1419,7 @@ public partial class MainViewModel : ObservableObject
             disposable.Dispose();
         _currentSource = null;
         _currentPakSource = null;
+        _unrepackedSavedPaths.Clear();
     }
 
     /// <summary>

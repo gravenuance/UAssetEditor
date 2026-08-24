@@ -22,6 +22,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+    <!-- Not used directly by test code - referenced only so `dotnet test` always builds the
+         worker executable PakWorkerProcess's dev fallback path discovery expects to find
+         alongside this project's own output. See PakWorkerProcess.TryFindDevBuildOutput. -->
+    <ProjectReference Include="..\..\src\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj" />
   </ItemGroup>
 
 </Project>

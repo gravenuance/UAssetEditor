@@ -1,13 +1,20 @@
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.Core.AssetSources.PakWorker;
 
 namespace UAssetEditor.Core.AssetSources;
 
 /// <summary>
 /// Reads (and, through <see cref="Editing.EditExecutor"/>/<see cref="AssetWorkspace"/>,
-/// edits) .uasset entries packed inside a legacy .pak archive, via UAssetAPI's embedded
-/// `repak` bindings (<see cref="PakBuilder"/>/<see cref="PakReader"/>). Entries are never
+/// edits) .uasset entries packed inside a legacy .pak archive. Every actual call into
+/// UAssetAPI's embedded native `repak` bindings happens out-of-process, via
+/// <see cref="PakReaderHandle"/>/<see cref="PakWorkerProcess.Shared"/> - a confirmed,
+/// reproducible native crash in that library (STATUS_STACK_BUFFER_OVERRUN on a specific
+/// real-world pak entry) otherwise takes the whole app down with it. A dead worker for one
+/// entry is recovered transparently (see <see cref="PakReaderHandle"/>); a
+/// <see cref="PakWorkerCrashedException"/> surfaces to the caller for that one failed
+/// call exactly like any other exception this class could already throw. Entries are never
 /// written back into the original .pak directly - editing an entry writes to a private
 /// temp extraction copy, and <see cref="AssetSources.PakRepacker"/> is what later bundles
 /// the (possibly edited) files into a new .pak.
@@ -22,10 +29,10 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
 {
     public const long LargePakThresholdBytes = 1_000_000_000; // 1 GB
 
-    private static readonly string[] CompanionExtensions = [".uexp", ".ubulk"];
+    /// <summary>A .uasset's exported/bulk payload lives in these separate sibling pak entries - anything that selects a .uasset by itself (e.g. a partial-repack entry filter) needs to pull these along too, or the asset is broken in the output.</summary>
+    public static readonly string[] CompanionExtensions = [".uexp", ".ubulk"];
 
-    private readonly FileStream _stream;
-    private readonly PakReader _reader;
+    private readonly PakReaderHandle _reader;
     private readonly HashSet<string> _allEntries;
     private readonly List<string> _uassetEntries;
     private readonly Dictionary<string, string> _extractedPaths = new();
@@ -39,14 +46,15 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
         TempExtractionDirectory = Path.Combine(Path.GetTempPath(), "UAssetEditor_Pak_" + Guid.NewGuid());
         Directory.CreateDirectory(TempExtractionDirectory);
 
-        _stream = File.Open(pakPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        // Blocking on the async open is safe here: every current caller already constructs
+        // a PakAssetSource from inside Task.Run (never the UI thread), and this constructor
+        // must stay synchronous - it's part of this class's public surface.
+        _reader = new PakReaderHandle(PakWorkerProcess.Shared, pakPath, aesKey);
+        _reader.OpenAsync().GetAwaiter().GetResult();
 
-        var builder = new PakBuilder();
-        if (aesKey != null) builder = builder.Key(aesKey);
-        _reader = builder.Reader(_stream);
-
-        MountPoint = _reader.GetMountPoint();
-        _allEntries = new HashSet<string>(_reader.Files(), StringComparer.Ordinal);
+        MountPoint = _reader.MountPoint;
+        Version = _reader.Version;
+        _allEntries = new HashSet<string>(_reader.Entries, StringComparer.Ordinal);
         _uassetEntries = _allEntries.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)).ToList();
 
         if (!IsLargePak)
@@ -58,6 +66,10 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
 
     public string PakPath { get; }
     public string MountPoint { get; }
+
+    /// <summary>The pak's own format version, as read from its header - <see cref="PakRepacker"/> defaults to writing the new pak back out at this same version rather than an unrelated hardcoded one, since the game the original pak came from expects its own version, not whatever this tool's own default happens to be.</summary>
+    public PakVersion Version { get; }
+
     public string TempExtractionDirectory { get; }
     public bool IsLargePak { get; }
 
@@ -90,7 +102,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     public byte[] ReadOriginalBytes(string internalPath)
     {
         lock (_lock)
-            return _reader.Get(_stream, internalPath);
+            return _reader.ReadEntryAsync(internalPath).GetAwaiter().GetResult();
     }
 
     /// <summary>Extracts (or returns the already-cached temp copy of) one entry. Internal-only escape hatch beyond <see cref="OpenAsset"/>/<see cref="SaveAsset"/> - lets tests simulate "this entry was opened/edited" without needing UAssetAPI-parseable bytes, since this step is pure byte-copying and doesn't parse anything.</summary>
@@ -127,7 +139,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     private void WriteEntry(string internalPath, string tempPath)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
-        File.WriteAllBytes(tempPath, _reader.Get(_stream, internalPath));
+        File.WriteAllBytes(tempPath, _reader.ReadEntryAsync(internalPath).GetAwaiter().GetResult());
     }
 
     public void Dispose()
@@ -136,7 +148,6 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
         _disposed = true;
 
         _reader.Dispose();
-        _stream.Dispose();
 
         try
         {

@@ -56,18 +56,26 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     public bool PropertiesLoaded { get; private set; }
 
     /// <summary>
+    /// The checkbox means one of two things depending on node kind, never both at once for
+    /// the same node - there's no ambiguity in practice since a node is either "loadable
+    /// into the results grid" or "extractable to disk," never a candidate for both:
+    /// <list type="bullet">
+    /// <item>Export/Property nodes: included in <c>LoadSelectedCommand</c>'s multi-selection.
     /// Export nodes are always checkable - by the time one exists, its asset has already
     /// been parsed (expanding "Exports" is what loads them), so checking it can never
     /// trigger a surprise parse. A Property node is checkable only if it has editable
     /// content somewhere in its own subtree (see <see cref="PropertyTreeItem.HasEditableContent"/>) -
     /// a table that only serves to hold other (in turn empty) tables has nothing of its
-    /// own worth loading alongside other checked entries. An Asset node is deliberately
-    /// never checkable: selecting its exports means actually looking at what's there
-    /// first, not blindly grabbing everything sight-unseen.
+    /// own worth loading alongside other checked entries.</item>
+    /// <item>Folder/Asset nodes: included in <c>ExtractSelectedCommand</c>'s multi-selection -
+    /// extracting a whole file or subtree to disk doesn't require having looked at its
+    /// contents first the way loading properties into the edit grid does, so these are
+    /// always checkable.</item>
+    /// </list>
     /// </summary>
     public bool IsCheckable { get; private init; }
 
-    /// <summary>Checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c>, independent of the TreeView's own single-item selection highlight.</summary>
+    /// <summary>Checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c> (Export/Property nodes) or <c>ExtractSelectedCommand</c> (Folder/Asset nodes), independent of the TreeView's own single-item selection highlight.</summary>
     [ObservableProperty] private bool _isChecked;
 
     private AssetTreeItemViewModel(string name, string? fullPath, TreeNodeKind kind)
@@ -85,6 +93,7 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         if (!node.IsLeaf)
         {
             Kind = TreeNodeKind.Folder;
+            IsCheckable = true;
             foreach (var child in node.Children)
                 Children.Add(new AssetTreeItemViewModel(child));
             return;
@@ -93,6 +102,7 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         if (node.FullPath != null && node.FullPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
         {
             Kind = TreeNodeKind.Asset;
+            IsCheckable = true;
             var exportsGroup = new AssetTreeItemViewModel("Exports", null, TreeNodeKind.ExportsGroup) { AssetPath = node.FullPath };
             exportsGroup.Children.Add(LoadingPlaceholder);
             Children.Add(exportsGroup);

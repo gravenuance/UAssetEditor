@@ -41,4 +41,55 @@
     <Delete Files="@(_StrayPdb)" />
   </Target>
 
+  <!--
+    Publishes UAssetEditor.PakWorker (a separate process that hosts every call into the
+    native repak_bind.dll, so a crash there can't take this app down with it - see
+    UAssetEditor.Core/AssetSources/PakWorker/) and embeds the resulting single .exe as a
+    resource in THIS assembly, so the app stays a single downloadable file even though a
+    real companion process exists at runtime. PakWorkerProcess (Core) extracts this resource
+    to LocalAppData on first use and launches it from there.
+
+    Runs as an out-of-process `dotnet publish` (Exec), not an in-process <MSBuild> task call,
+    specifically to avoid this project's own global properties (TargetFramework=
+    net8.0-windows, RuntimeIdentifier, PublishDir, ...) bleeding into the worker's build,
+    which targets plain net8.0 and has its own PublishDir - an in-process MSBuild task call
+    inherits ambient global properties in ways that are easy to get subtly wrong across a
+    TargetFramework/RID boundary like this one.
+
+    BeforeTargets="BeforeCompile" (not just "Publish"): EmbeddedResource items must be known
+    before CoreCompile embeds resources into the assembly, and BeforeCompile is the
+    documented SDK extensibility point that runs early enough for that.
+  -->
+  <PropertyGroup>
+    <_PakWorkerProject>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj</_PakWorkerProject>
+    <_PakWorkerPublishExe>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net8.0\publish\win-x64\UAssetEditor.PakWorker.exe</_PakWorkerPublishExe>
+  </PropertyGroup>
+
+  <!--
+    Split into two independent halves on purpose:
+    1. A target that just makes the worker .exe exist on disk (a side effect - ordering only
+       needs to land before CoreCompile actually reads the file's bytes, so BeforeTargets=
+       CoreCompile is enough here).
+    2. A plain top-level EmbeddedResource item (below), evaluated once at project-load time
+       like any other item in this file - it does NOT need the referenced file to exist yet
+       at evaluation time, only by the time csc actually embeds it, which target #1 already
+       guarantees. Originally tried building both the file *and* wiring the item from inside
+       one target (BeforeTargets="BeforeCompile", later "AssignTargetPath") - neither
+       reliably got a dynamically-added EmbeddedResource item to actually reach csc.exe's
+       /resource: arguments, confirmed by grepping the compiler invocation. Splitting the
+       "produce the file" step from the "declare the item" step sidesteps that fragility
+       entirely instead of chasing the exact right hook name.
+  -->
+  <Target Name="PublishPakWorker" BeforeTargets="CoreCompile" Condition="'$(PublishSingleFile)' == 'true'">
+    <Exec Command="dotnet publish &quot;$(_PakWorkerProject)&quot; -p:PublishProfile=SingleFileRelease -v:q" />
+    <Error Condition="!Exists('$(_PakWorkerPublishExe)')" Text="PakWorker publish did not produce the expected exe at $(_PakWorkerPublishExe)" />
+  </Target>
+
+  <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net8.0\publish\win-x64\UAssetEditor.PakWorker.exe">
+      <LogicalName>UAssetEditor.PakWorker.exe</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

@@ -54,4 +54,31 @@ public class PakPackerTests
             if (File.Exists(outputPath)) File.Delete(outputPath);
         }
     }
+
+    [Fact]
+    public void Build_EmptyMountPoint_BakesTheFolderStructureIntoEachEntryInstead()
+    {
+        // Regression test for the "point at the mod's root folder, no separate mount point"
+        // usage pattern - the same result UnrealPak.exe's own -create filelist produces when
+        // no -Mount= is passed: the full relative path (here "BendGame/Content/...") ends up
+        // stored on every entry itself rather than split out into the pak's header.
+        var sourceFolder = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Pack_" + Guid.NewGuid());
+        Directory.CreateDirectory(Path.Combine(sourceFolder, "BendGame", "Content"));
+        File.WriteAllBytes(Path.Combine(sourceFolder, "BendGame", "Content", "Foo.uasset"), Encoding.UTF8.GetBytes("foo"));
+        var outputPath = sourceFolder + ".pak";
+
+        try
+        {
+            PakPacker.Build(sourceFolder, outputPath, mountPoint: "");
+
+            using var check = new PakAssetSource(outputPath);
+            Assert.Equal("", check.MountPoint);
+            Assert.Equal(new[] { "BendGame/Content/Foo.uasset" }, check.ListAllEntries());
+        }
+        finally
+        {
+            Directory.Delete(sourceFolder, recursive: true);
+            if (File.Exists(outputPath)) File.Delete(outputPath);
+        }
+    }
 }

@@ -7,7 +7,7 @@
         xmlns:controls="clr-namespace:UAssetEditor.App.Controls"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
-        Title="UAssetEditor" Height="900" Width="1400" MinWidth="1000" MinHeight="650"
+        Title="UAssetEditor" Height="900" Width="1400" MinWidth="1100" MinHeight="650"
         Icon="UAssetEditor.ico"
         Background="{StaticResource Mono.Background}"
         d:DataContext="{d:DesignInstance vm:MainViewModel}">
@@ -67,6 +67,8 @@
                             <MenuItem Header="Open .pak / .uasset...   Ctrl+O" Command="{Binding BrowseSourceFileCommand}" />
                             <Separator />
                             <MenuItem Header="Save All Edited   Ctrl+S" Command="{Binding SaveAllEditedCommand}" />
+                            <MenuItem Header="Revert Unsaved Edits" Command="{Binding RevertEditsCommand}"
+                                      ToolTip="Discard unsaved edits and reload their last-saved value" />
                             <MenuItem Header="Close Workspace" Command="{Binding CloseWorkspaceCommand}" />
                             <Separator />
                             <MenuItem Header="Back Up Before Saving" IsCheckable="True" IsChecked="{Binding CreateBackup}" />
@@ -100,65 +102,87 @@
 
         <!-- Asset source toolbar: a flat 40px strip (no GroupBox/header, no outer margin) -
              every field is "label beside field" inline within one row, matching the
-             redesign mockup's .toolbar/.field-group exactly, not stacked captions. -->
+             redesign mockup's .toolbar/.field-group exactly, not stacked captions. A Grid
+             (not the DockPanel this used to be) so the three text fields can shrink under
+             MinWidth as the window narrows, rather than holding their full fixed width and
+             pushing Recent/Load off the edge - every label/button stays Auto-sized (always
+             fully visible/clickable) and only the *-weighted text fields give up space. -->
         <Border Grid.Row="2" Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1">
-            <DockPanel Margin="10,0" LastChildFill="False">
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <TextBlock Text="Source" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
-                    <TextBox Text="{Binding SourcePath, UpdateSourceTrigger=PropertyChanged}" Width="300" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" />
-                    <Button x:Name="BrowseSourceButton" Content="Browse..." Click="OpenAttachedContextMenu_Click" Height="24" Padding="10,0" Margin="6,0,0,0"
-                            ToolTip="Pick a folder, .pak file, or .uasset file">
-                        <Button.ContextMenu>
-                            <!-- A ContextMenu is a separate popup root and doesn't inherit DataContext through
-                                 the visual tree like normal children do - rebind it explicitly via the
-                                 PlacementTarget (set to this Button in code-behind) so its MenuItem commands
-                                 can still reach the MainViewModel. -->
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem Header="Folder..." Command="{Binding BrowseSourceFolderCommand}" />
-                                <MenuItem Header="File (.pak/.uasset)..." Command="{Binding BrowseSourceFileCommand}" />
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
+            <Grid Margin="10,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="100" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="50" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MinWidth="70" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
 
-                    <Border Width="1" Height="20" Background="{StaticResource Mono.Border}" Margin="14,0" />
+                <TextBlock Grid.Column="0" Text="Source" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                <TextBox Grid.Column="1" Text="{Binding SourcePath, UpdateSourceTrigger=PropertyChanged}" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" VerticalAlignment="Center" />
+                <Button x:Name="BrowseSourceButton" Grid.Column="2" Content="Browse..." Click="OpenAttachedContextMenu_Click" Height="24" Padding="10,0" Margin="6,0,0,0" VerticalAlignment="Center"
+                        ToolTip="Pick a folder, .pak file, or .uasset file">
+                    <Button.ContextMenu>
+                        <!-- A ContextMenu is a separate popup root and doesn't inherit DataContext through
+                             the visual tree like normal children do - rebind it explicitly via the
+                             PlacementTarget (set to this Button in code-behind) so its MenuItem commands
+                             can still reach the MainViewModel. -->
+                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <MenuItem Header="Folder..." Command="{Binding BrowseSourceFolderCommand}" />
+                            <MenuItem Header="File (.pak/.uasset)..." Command="{Binding BrowseSourceFileCommand}" />
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
 
-                    <TextBlock Text="AES key" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
-                    <TextBox Text="{Binding PakAesKeyHex, UpdateSourceTrigger=PropertyChanged}" Width="110" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" Margin="0,0,14,0" />
+                <Border Grid.Column="3" Width="1" Height="20" Background="{StaticResource Mono.Border}" Margin="14,0" VerticalAlignment="Center" />
 
-                    <TextBlock Text="Engine" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
-                    <ComboBox ItemsSource="{Binding EngineVersionOptions}" SelectedValuePath="Value"
-                              SelectedValue="{Binding DefaultEngineVersion}" Width="150" Height="24" FontSize="{StaticResource Mono.Type.Caption}" Margin="0,0,14,0">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Label}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                <TextBlock Grid.Column="4" Text="AES key" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                <TextBox Grid.Column="5" Text="{Binding PakAesKeyHex, UpdateSourceTrigger=PropertyChanged}" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" VerticalAlignment="Center" Margin="0,0,14,0" />
 
-                    <TextBlock Text="Usmap" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
-                    <TextBox Text="{Binding UsmapPath, UpdateSourceTrigger=PropertyChanged}" Width="150" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" />
-                    <Button Content="Browse..." Command="{Binding BrowseUsmapCommand}" Height="24" Padding="10,0" Margin="6,0,0,0" />
-                </StackPanel>
+                <TextBlock Grid.Column="6" Text="Engine" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                <ComboBox Grid.Column="7" ItemsSource="{Binding EngineVersionOptions}" SelectedValuePath="Value"
+                          SelectedValue="{Binding DefaultEngineVersion}" Width="150" Height="24" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,14,0">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
-                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
-                    <Button x:Name="RecentButton" Content="{Binding RecentSourceLabel}" Style="{StaticResource Mono.ChipButton}" Click="OpenAttachedContextMenu_Click" Margin="0,0,8,0"
-                            ToolTip="Reopen a recently used source">
-                        <Button.ContextMenu>
-                            <ContextMenu ItemsSource="{Binding RecentSources}">
-                                <ContextMenu.ItemContainerStyle>
-                                    <Style TargetType="MenuItem">
-                                        <Setter Property="Header" Value="{Binding}" />
-                                        <Setter Property="Command" Value="{Binding PlacementTarget.DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <Setter Property="CommandParameter" Value="{Binding}" />
-                                    </Style>
-                                </ContextMenu.ItemContainerStyle>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Button Content="Load" Command="{Binding LoadSourceCommand}" Style="{StaticResource Mono.AccentButton}" Height="24" Padding="14,0"
-                            ToolTip="Load the source above - folder, .pak, or .uasset is auto-detected" />
-                </StackPanel>
-            </DockPanel>
+                <TextBlock Grid.Column="8" Text="Usmap" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
+                <TextBox Grid.Column="9" Text="{Binding UsmapPath, UpdateSourceTrigger=PropertyChanged}" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" VerticalAlignment="Center" />
+                <Button Grid.Column="10" Content="Browse..." Command="{Binding BrowseUsmapCommand}" Height="24" Padding="10,0" Margin="6,0,14,0" VerticalAlignment="Center" />
+
+                <Button x:Name="RecentButton" Grid.Column="11" Style="{StaticResource Mono.ChipButton}" Click="OpenAttachedContextMenu_Click" Margin="0,0,8,0" VerticalAlignment="Center"
+                        ToolTip="Reopen a recently used source">
+                    <!-- A plain Content binding here would size the chip to the full recent
+                         filename, which can easily be wider than every other element in this
+                         row combined - capped and ellipsis-trimmed so one long filename can't
+                         push Load off the edge at a narrow window width. -->
+                    <TextBlock Text="{Binding RecentSourceLabel}" MaxWidth="130" TextTrimming="CharacterEllipsis" />
+                    <Button.ContextMenu>
+                        <ContextMenu ItemsSource="{Binding RecentSources}">
+                            <ContextMenu.ItemContainerStyle>
+                                <Style TargetType="MenuItem">
+                                    <Setter Property="Header" Value="{Binding DisplayName}" />
+                                    <Setter Property="ToolTip" Value="{Binding SourcePath}" />
+                                    <Setter Property="Command" Value="{Binding PlacementTarget.DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                    <Setter Property="CommandParameter" Value="{Binding}" />
+                                </Style>
+                            </ContextMenu.ItemContainerStyle>
+                        </ContextMenu>
+                    </Button.ContextMenu>
+                </Button>
+                <Button Grid.Column="12" Content="Load" Command="{Binding LoadSourceCommand}" Style="{StaticResource Mono.AccentButton}" Height="24" Padding="14,0" VerticalAlignment="Center"
+                        ToolTip="Loads the folder, .pak, or .uasset detected above" />
+            </Grid>
         </Border>
 
         <!-- Search / edit scope: condensed to one compact row per condition (inline label +
@@ -169,20 +193,23 @@
              the small colored badge to cycle) instead of one AND/OR setting for the whole
              field. -->
         <Border Grid.Row="3" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Padding="10,6">
+            <!-- Bottom margin on every group (not just horizontal gaps between them) matters
+                 once the window gets narrow enough for WrapPanel to actually wrap - without it,
+                 a wrapped second line sits with zero vertical gap against the line above. -->
             <WrapPanel Orientation="Horizontal">
-                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
                     <TextBlock Text="Export name contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <controls:TermsBox Terms="{Binding ExportNameTerms}" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
                     <TextBlock Text="Property name contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <controls:TermsBox Terms="{Binding PropertyNameTerms}" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
                     <TextBlock Text="Value contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <controls:TermsBox Terms="{Binding ValueTerms}" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
                     <TextBlock Text="Reference contains" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,6,0" />
                     <controls:TermsBox Terms="{Binding ReferenceTerms}" />
                 </StackPanel>
@@ -194,20 +221,31 @@
              mockup's 230px / 1fr / 300px column split exactly. -->
         <Grid Grid.Row="4" Background="{StaticResource Mono.Background}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="230" />
+                <!-- MinWidth/MaxWidth bound what the GridSplitter below can do to the tree
+                     column - without them a drag (or two pointers fighting over the same
+                     splitter) can collapse it to nothing or balloon it over the results pane. -->
+                <ColumnDefinition Width="320" MinWidth="160" MaxWidth="500" />
                 <ColumnDefinition Width="2" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" MinWidth="300" />
                 <ColumnDefinition Width="26" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="BROWSE" Grid.Column="0" ToolTip="Expand an asset's Exports node, then check the exports and/or tables you want (a table only shows a checkbox if it actually holds editable data) and click Load Selected - or double-click one to open it alone">
+            <GroupBox Header="BROWSE" Grid.Column="0" ToolTip="Check items, then Load, Extract, or Repack the selection">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <Button Grid.Row="0" Content="Load Selected" Command="{Binding LoadSelectedCommand}"
-                            HorizontalAlignment="Left" Margin="0,0,0,4" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}" />
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4">
+                        <Button Content="Load Selected" Command="{Binding LoadSelectedCommand}"
+                                Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}" />
+                        <Button Content="Extract Selected..." Command="{Binding ExtractSelectedCommand}"
+                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
+                                ToolTip="Writes every checked file to a chosen folder, preserving paths" />
+                        <Button Content="Repack Selected..." Command="{Binding RepackSelectedCommand}"
+                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
+                                ToolTip="Builds a new .pak from just the checked items" />
+                    </StackPanel>
                     <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}" FontSize="{StaticResource Mono.Type.Caption}"
                               MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
                         <TreeView.ItemTemplate>
@@ -258,7 +296,7 @@
                 </Grid.RowDefinitions>
 
                 <GroupBox Grid.Row="0"
-                          ToolTip="Edited rows are highlighted until you click Save All Edited, which writes every edit to disk at once.">
+                          ToolTip="Edited rows stay highlighted until you click Save All Edited">
                     <GroupBox.Header>
                         <DockPanel LastChildFill="False">
                             <TextBlock DockPanel.Dock="Left" Text="SEARCH RESULTS — DIRECTLY EDITABLE" VerticalAlignment="Center" />
@@ -363,7 +401,7 @@
                 <Border Grid.Row="0" HorizontalAlignment="Right" Width="300" Margin="0,26,0,0" Panel.ZIndex="10"
                         Background="{StaticResource Mono.Surface}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1,0,0,0"
                         Visibility="{Binding IsRulesPaneExpanded, Converter={StaticResource BoolToVisibility}}"
-                        ToolTip="Applied to every asset in the loaded source matching the scope above">
+                        ToolTip="Applied to every asset matching the scope above">
                     <Border.Effect>
                         <DropShadowEffect Color="Black" Direction="180" ShadowDepth="2" BlurRadius="14" Opacity="0.5" />
                     </Border.Effect>
@@ -428,7 +466,9 @@
                         <Border BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Margin="0,14,0,14" />
 
                         <!-- Batch actions - equal-width so the row reads as one deliberate
-                             group instead of left-packed buttons of mismatched sizes. -->
+                             group instead of left-packed buttons of mismatched sizes. Cancel
+                             and Revert share the last column: only ever one operation is
+                             in flight at a time, and there's nothing to revert while one is. -->
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -441,6 +481,9 @@
                             <Button Grid.Column="2" Content="Apply" Command="{Binding ApplyCommand}" Padding="0,4" FontSize="{StaticResource Mono.Type.Caption}" Style="{StaticResource Mono.AccentButton}" />
                             <Button Grid.Column="4" Content="Cancel" Command="{Binding CancelCommand}" Padding="0,4" FontSize="{StaticResource Mono.Type.Caption}"
                                     Visibility="{Binding IsCancelable, Converter={StaticResource BoolToVisibility}}" ToolTip="Cancel the operation currently in progress" />
+                            <Button Grid.Column="4" Content="Revert" Command="{Binding RevertEditsCommand}" Padding="0,4" FontSize="{StaticResource Mono.Type.Caption}"
+                                    Visibility="{Binding IsNotCancelable, Converter={StaticResource BoolToVisibility}}"
+                                    ToolTip="Discard unsaved edits and reload their last-saved value" />
                         </Grid>
 
                         <ItemsControl Margin="0,14,0,0" ItemsSource="{Binding PreviewChanges}">
@@ -477,7 +520,7 @@
             <!-- Always-visible toggle strip for the floating panel above - fixed width, so
                  the Results column never resizes based on expand/collapse state. -->
             <ToggleButton Grid.Column="3" IsChecked="{Binding IsRulesPaneExpanded}" Focusable="False" Cursor="Hand"
-                          ToolTip="Edit Rules - applied to every asset in the loaded source matching the scope above">
+                          ToolTip="Applied to every asset matching the scope above">
                 <ToggleButton.Template>
                     <ControlTemplate TargetType="ToggleButton">
                         <Border Background="{StaticResource Mono.SurfaceRaised}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="1,0,0,0">

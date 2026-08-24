@@ -31,7 +31,7 @@ public sealed class EditExecutor
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
-        => RunAsync(source, versions, ruleSet, apply: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+        => RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
 
     public Task<IReadOnlyList<AssetChangeSet>> ApplyAsync(
         IAssetSource source,
@@ -42,13 +42,29 @@ public sealed class EditExecutor
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
-        => RunAsync(source, versions, ruleSet, apply: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
+        => RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
+
+    /// <summary>
+    /// Computes and applies rule matches against whatever <paramref name="openAsset"/> returns
+    /// - e.g. an <see cref="AssetSources.AssetWorkspace"/>'s GetOrOpen - so a touched asset stays
+    /// resident and mutated in memory (same as a manual grid-cell edit) instead of being parsed
+    /// fresh and thrown away. Never saves: unlike <see cref="ApplyAsync"/>, the caller decides
+    /// if/when the changes actually get written, exactly like it already does for manual edits.
+    /// </summary>
+    public Task<IReadOnlyList<AssetChangeSet>> StageAsync(
+        IAssetSource source,
+        Func<string, UAsset> openAsset,
+        RuleSet ruleSet,
+        IProgress<EditProgress>? progress = null,
+        int? maxDegreeOfParallelism = null,
+        CancellationToken cancellationToken = default)
+        => RunAsync(source, openAsset, ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
 
     private async Task<IReadOnlyList<AssetChangeSet>> RunAsync(
         IAssetSource source,
-        EngineVersionResolver versions,
+        Func<string, UAsset> openAsset,
         RuleSet ruleSet,
-        bool apply,
+        bool save,
         bool createBackup,
         string? backupFolder,
         IProgress<EditProgress>? progress,
@@ -61,7 +77,7 @@ public sealed class EditExecutor
 
         await ThrottledParallel.ForEachAsync(paths, maxDegreeOfParallelism, (path, _) =>
         {
-            var changeSet = ProcessAsset(source, versions, ruleSet, path, apply, createBackup, backupFolder);
+            var changeSet = ProcessAsset(source, openAsset, ruleSet, path, save, createBackup, backupFolder);
             if (changeSet != null)
                 results.Add(changeSet);
 
@@ -76,17 +92,17 @@ public sealed class EditExecutor
 
     private AssetChangeSet? ProcessAsset(
         IAssetSource source,
-        EngineVersionResolver versions,
+        Func<string, UAsset> openAsset,
         RuleSet ruleSet,
         string path,
-        bool apply,
+        bool save,
         bool createBackup,
         string? backupFolder)
     {
         UAsset asset;
         try
         {
-            asset = source.OpenAsset(path, versions.Resolve(path), versions.Mappings);
+            asset = openAsset(path);
         }
         catch
         {
@@ -135,7 +151,7 @@ public sealed class EditExecutor
 
             if (changes.Count == 0) return null;
 
-            if (apply)
+            if (save)
                 source.SaveAsset(asset, path, createBackup, backupFolder);
 
             return new AssetChangeSet(path, changes);

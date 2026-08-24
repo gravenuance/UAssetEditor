@@ -52,14 +52,16 @@ public sealed partial class UnpackPakViewModel : ObservableObject
             var destination = DestinationFolder;
             var progress = new Progress<(int Done, int Total)>(p => { ProgressDone = p.Done; ProgressTotal = p.Total; });
 
-            await Task.Run(() =>
+            var result = await Task.Run(() =>
             {
                 using var source = new PakAssetSource(sourcePath, aesKey);
                 ProgressTotal = source.ListAllEntries().Count;
-                PakUnpacker.Unpack(source, destination, progress, _cts.Token);
+                return PakUnpacker.Unpack(source, destination, progress: progress, cancellationToken: _cts.Token);
             }, _cts.Token);
 
-            Status = $"Unpacked {ProgressTotal} file(s) to {destination}.";
+            Status = result.HasFailures
+                ? $"Unpacked {result.SucceededCount} file(s) to {destination} - {result.FailedEntries.Count} failed."
+                : $"Unpacked {result.SucceededCount} file(s) to {destination}.";
             IsDone = true;
         }
         catch (OperationCanceledException)

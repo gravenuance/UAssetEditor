@@ -41,7 +41,12 @@
 
         <StackPanel Grid.Row="2" Margin="0,0,0,8">
             <TextBlock Text="Mount point" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
-            <TextBox Text="{Binding MountPoint, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,0" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
+            <DockPanel Margin="0,2,0,0">
+                <Button Content="Detect from .pak..." DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2"
+                        Command="{Binding DetectMountPointCommand}" IsEnabled="{Binding IsNotRunning}"
+                        ToolTip="Reads the mount point and version from an existing pak" />
+                <TextBox Text="{Binding MountPoint, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
+            </DockPanel>
         </StackPanel>
 
         <WrapPanel Grid.Row="3" Margin="0,0,0,8">
@@ -51,7 +56,13 @@
             </StackPanel>
             <StackPanel Width="180">
                 <TextBlock Text="Compression" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
-                <ComboBox ItemsSource="{Binding Compressions}" SelectedValuePath="Value" SelectedValue="{Binding Compression}" DisplayMemberPath="Label" Margin="0,2,0,0" IsEnabled="{Binding IsNotRunning}" />
+                <ComboBox ItemsSource="{Binding Compressions}" SelectedValuePath="Value" SelectedValue="{Binding Compression}" Margin="0,2,0,0" IsEnabled="{Binding IsNotRunning}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
             </StackPanel>
         </WrapPanel>
 
