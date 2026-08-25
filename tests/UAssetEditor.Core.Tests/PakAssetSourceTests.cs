@@ -96,9 +96,9 @@ public class PakAssetSourceTests
             Assert.True(source.IsLargePak);
             Assert.False(source.TryGetExtractedPath("Content/Foo.uasset", out _));
 
-            var bytes = source.ReadOriginalBytes("Content/Foo.uasset");
+            using var rented = source.ReadOriginalBytes("Content/Foo.uasset");
 
-            Assert.Equal(new byte[] { 1, 2, 3 }, bytes);
+            Assert.Equal(new byte[] { 1, 2, 3 }, rented.ToArray());
             Assert.False(source.TryGetExtractedPath("Content/Foo.uasset", out _)); // reading original bytes doesn't cache/extract
         }
         finally

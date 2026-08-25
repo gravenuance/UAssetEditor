@@ -50,11 +50,15 @@ public static class PakRepacker
                 if (entryFilter != null && !entryFilter(entry))
                     continue;
 
-                var bytes = source.TryGetExtractedPath(entry, out var tempPath)
-                    ? File.ReadAllBytes(tempPath)
-                    : source.ReadOriginalBytes(entry);
-
-                writer.WriteFileAsync(entry, bytes).GetAwaiter().GetResult();
+                if (source.TryGetExtractedPath(entry, out var tempPath))
+                {
+                    writer.WriteFileAsync(entry, File.ReadAllBytes(tempPath)).GetAwaiter().GetResult();
+                }
+                else
+                {
+                    using var rented = source.ReadOriginalBytes(entry);
+                    writer.WriteFileAsync(entry, rented.Memory).GetAwaiter().GetResult();
+                }
                 count++;
             }
 

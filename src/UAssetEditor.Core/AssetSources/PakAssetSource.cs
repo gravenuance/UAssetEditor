@@ -104,8 +104,8 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
             return _extractedPaths.TryGetValue(internalPath, out tempPath!);
     }
 
-    /// <summary>Reads an entry's bytes straight from the pak, without caching a temp copy - for the repacker to pass through untouched entries one at a time.</summary>
-    public byte[] ReadOriginalBytes(string internalPath)
+    /// <summary>Reads an entry's bytes straight from the pak, without caching a temp copy - for the repacker to pass through untouched entries one at a time. Returns a pooled buffer (see <see cref="RentedBuffer"/>) - callers must dispose it once they're done with the bytes.</summary>
+    public RentedBuffer ReadOriginalBytes(string internalPath)
     {
         lock (_lock)
             return _reader.ReadEntryAsync(internalPath).GetAwaiter().GetResult();
@@ -145,7 +145,8 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     private void WriteEntry(string internalPath, string tempPath)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
-        File.WriteAllBytes(tempPath, _reader.ReadEntryAsync(internalPath).GetAwaiter().GetResult());
+        using var rented = _reader.ReadEntryAsync(internalPath).GetAwaiter().GetResult();
+        File.WriteAllBytes(tempPath, rented.Span);
     }
 
     public void Dispose()

@@ -42,7 +42,7 @@ public sealed class PakWriterHandle : IDisposable
         _opened = true;
     }
 
-    public async Task WriteFileAsync(string entryPath, byte[] bytes, CancellationToken cancellationToken = default)
+    public async Task WriteFileAsync(string entryPath, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken = default)
     {
         if (!_opened) throw new InvalidOperationException("PakWriterHandle.OpenAsync must be called first.");
 

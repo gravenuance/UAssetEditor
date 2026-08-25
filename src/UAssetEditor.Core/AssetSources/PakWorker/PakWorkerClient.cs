@@ -25,4 +25,22 @@ public sealed class PakWorkerClient(PakWorkerProcess process)
             throw new PakWorkerCrashedException($"The pak worker process crashed{suffix}.", operation, process.LastExitCode, ex);
         }
     }
+
+    /// <summary>Same as <see cref="SendAsync"/>, but the response payload comes back as a pooled <see cref="RentedBuffer"/> - see <see cref="PakWorkerFraming.ReadPooledMessageAsync{THeader}"/>. Used for <see cref="PakWorkerOpcode.ReadEntry"/>, where the payload is pak entry bytes that can be large and are read once per entry.</summary>
+    public async Task<(PakWorkerResponse Response, RentedBuffer Payload)> SendPooledAsync(
+        PakWorkerRequest request, string? operation = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var pipe = await process.EnsureAsync(cancellationToken).ConfigureAwait(false);
+            await PakWorkerFraming.WriteMessageAsync(pipe, request, ReadOnlyMemory<byte>.Empty, cancellationToken).ConfigureAwait(false);
+            return await PakWorkerFraming.ReadPooledMessageAsync<PakWorkerResponse>(pipe, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException or ObjectDisposedException)
+        {
+            process.MarkDead();
+            var suffix = operation != null ? $" while {operation}" : "";
+            throw new PakWorkerCrashedException($"The pak worker process crashed{suffix}.", operation, process.LastExitCode, ex);
+        }
+    }
 }

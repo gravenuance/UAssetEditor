@@ -52,16 +52,22 @@ public sealed class PakReaderHandle : IDisposable
         _opened = true;
     }
 
-    public async Task<byte[]> ReadEntryAsync(string entryPath, CancellationToken cancellationToken = default)
+    /// <summary>Returns a pooled buffer (see <see cref="RentedBuffer"/>) - callers must dispose it once they're done with the entry's bytes.</summary>
+    public async Task<RentedBuffer> ReadEntryAsync(string entryPath, CancellationToken cancellationToken = default)
     {
         if (!_opened) throw new InvalidOperationException("PakReaderHandle.OpenAsync must be called first.");
 
         try
         {
             var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, SessionId = _sessionId, EntryPath = entryPath };
-            var (response, payload) = await _client.SendAsync(request, operation: $"reading '{entryPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
+            var (response, payload) = await _client.SendPooledAsync(request, operation: $"reading '{entryPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
             if (!response.Success)
+            {
+                // A failure response never actually carries a payload today, but don't rely
+                // on that staying true - whatever was rented here still needs to go back.
+                payload.Dispose();
                 throw new InvalidOperationException(response.Error ?? $"Failed to read '{entryPath}'.");
+            }
             return payload;
         }
         catch (PakWorkerCrashedException)

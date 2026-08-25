@@ -59,7 +59,10 @@ public class PakRepackerTests
             using var check = new PakAssetSource(outputPath);
             Assert.Equal(files.Keys.OrderBy(k => k, StringComparer.Ordinal), check.ListAllEntries().OrderBy(k => k, StringComparer.Ordinal));
             foreach (var (path, expectedBytes) in files)
-                Assert.Equal(expectedBytes, check.ReadOriginalBytes(path));
+            {
+                using var rented = check.ReadOriginalBytes(path);
+                Assert.Equal(expectedBytes, rented.ToArray());
+            }
         }
         finally
         {
@@ -136,8 +139,10 @@ public class PakRepackerTests
             }
 
             using var check = new PakAssetSource(outputPath, largePakThresholdBytes: long.MaxValue);
-            Assert.Equal(editedBytes, check.ReadOriginalBytes("Content/Edited.uasset"));
-            Assert.Equal(untouchedBytes, check.ReadOriginalBytes("Content/Untouched.uasset"));
+            using (var rented = check.ReadOriginalBytes("Content/Edited.uasset"))
+                Assert.Equal(editedBytes, rented.ToArray());
+            using (var rented = check.ReadOriginalBytes("Content/Untouched.uasset"))
+                Assert.Equal(untouchedBytes, rented.ToArray());
         }
         finally
         {

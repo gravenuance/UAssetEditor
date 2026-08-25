@@ -38,7 +38,8 @@ public static class PakUnpacker
             {
                 var outputPath = Path.Combine(destinationFolder, entry.Replace('/', Path.DirectorySeparatorChar));
                 Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-                File.WriteAllBytes(outputPath, source.ReadOriginalBytes(entry));
+                using (var rented = source.ReadOriginalBytes(entry))
+                    File.WriteAllBytes(outputPath, rented.Span);
                 succeeded++;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

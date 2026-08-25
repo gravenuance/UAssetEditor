@@ -47,11 +47,11 @@ public class PakWorkerCrashRecoveryTests
         // The crashed call triggered a transparent respawn-and-reopen (see
         // PakReaderHandle.ReadEntryAsync) - a completely different entry, read right after,
         // must work normally without the caller reopening the pak by hand.
-        var fooBytes = source.ReadOriginalBytes("Foo.uasset");
-        Assert.Equal("foo-bytes", Encoding.UTF8.GetString(fooBytes));
+        using var fooBytes = source.ReadOriginalBytes("Foo.uasset");
+        Assert.Equal("foo-bytes", Encoding.UTF8.GetString(fooBytes.Span));
 
-        var barBytes = source.ReadOriginalBytes("Bar.uasset");
-        Assert.Equal("bar-bytes", Encoding.UTF8.GetString(barBytes));
+        using var barBytes = source.ReadOriginalBytes("Bar.uasset");
+        Assert.Equal("bar-bytes", Encoding.UTF8.GetString(barBytes.Span));
     }
 
     [Fact]

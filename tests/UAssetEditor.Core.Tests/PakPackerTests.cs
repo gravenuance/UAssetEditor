@@ -23,8 +23,10 @@ public class PakPackerTests
             Assert.Equal(
                 new[] { "Foo.uasset", "Sub/Bar.uasset" },
                 check.ListAllEntries().OrderBy(e => e, StringComparer.Ordinal));
-            Assert.Equal(Encoding.UTF8.GetBytes("foo-uasset"), check.ReadOriginalBytes("Foo.uasset"));
-            Assert.Equal(Encoding.UTF8.GetBytes("bar-uasset"), check.ReadOriginalBytes("Sub/Bar.uasset"));
+            using (var rented = check.ReadOriginalBytes("Foo.uasset"))
+                Assert.Equal(Encoding.UTF8.GetBytes("foo-uasset"), rented.ToArray());
+            using (var rented = check.ReadOriginalBytes("Sub/Bar.uasset"))
+                Assert.Equal(Encoding.UTF8.GetBytes("bar-uasset"), rented.ToArray());
         }
         finally
         {
