@@ -16,6 +16,11 @@ public partial class MainWindow : Window
     // didn't reliably render over a WindowChrome-customized background in this configuration.
     private const int DwmwaUseImmersiveDarkMode = 20;
 
+    // DefaultDllImportSearchPaths pins resolution to System32 (where dwmapi.dll actually
+    // lives) instead of the default probing order, which includes the application's own
+    // directory - without it, a same-named malicious DLL dropped next to the exe would be
+    // loaded instead (CA5392/DLL planting).
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);
 

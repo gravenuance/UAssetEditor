@@ -29,6 +29,8 @@ public sealed class SingleFileAssetSource : IAssetSource
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+
         if (createBackup)
             File.Copy(_filePath, BackupPathResolver.Resolve(_filePath, backupFolder), overwrite: true);
 

@@ -7,12 +7,18 @@ using UAssetEditor.Core.AssetSources.PakWorker;
 
 namespace UAssetEditor.App;
 
+// CA1724: "App" colliding with the UAssetEditor.App namespace is the WPF project template's
+// own standard shape (App.xaml's x:Class is generated from the project name) - every WPF
+// app has this; renaming it would fight the SDK's own codegen, not fix anything.
+#pragma warning disable CA1724
 public partial class App : Application
+#pragma warning restore CA1724
 {
     private ServiceProvider? _services;
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        ArgumentNullException.ThrowIfNull(e);
         base.OnStartup(e);
 
         var collection = new ServiceCollection();

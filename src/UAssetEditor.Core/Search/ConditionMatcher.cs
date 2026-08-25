@@ -12,6 +12,9 @@ public static class ConditionMatcher
     /// </summary>
     public static bool Matches(string text, IReadOnlyList<ConditionTerm> terms, TextCompare compare)
     {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(terms);
+
         if (terms.Count == 0) return true;
 
         var sawOr = false;

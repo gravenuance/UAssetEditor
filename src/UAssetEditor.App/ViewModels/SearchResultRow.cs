@@ -30,6 +30,8 @@ public partial class SearchResultRow : ObservableObject
 
     public SearchResultRow(SearchResult source, AssetWorkspace workspace, Action<SearchResultRow> onDirty)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
         Source = source;
         _workspace = workspace;
         _onDirty = onDirty;

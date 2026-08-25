@@ -91,7 +91,7 @@ public sealed class AssetWorkspace
             progress?.Report(new SearchProgress(done, paths.Count, path));
 
             return Task.CompletedTask;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
 
         return results.ToList();
     }
@@ -99,6 +99,8 @@ public sealed class AssetWorkspace
     /// <summary>Saves only the requested (presumably dirty) already-open assets; paths that were never opened are ignored.</summary>
     public void SaveAll(IEnumerable<string> assetPaths, bool createBackup, string? backupFolder)
     {
+        ArgumentNullException.ThrowIfNull(assetPaths);
+
         foreach (var path in assetPaths)
         {
             if (!_openAssets.TryGetValue(path, out var lazyAsset) || !lazyAsset.IsValueCreated) continue;

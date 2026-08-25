@@ -26,6 +26,9 @@ public enum TermTag
 public sealed record ConditionTerm(string Text, TermTag Tag = TermTag.And)
 {
     public static implicit operator ConditionTerm(string text) => new(text);
+
+    /// <summary>Named alternate for the implicit string conversion above (CA2225) - equivalent, for callers that prefer not to rely on an implicit operator.</summary>
+    public static ConditionTerm FromString(string text) => new(text);
 }
 
 /// <summary>

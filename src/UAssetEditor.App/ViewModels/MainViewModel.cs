@@ -39,7 +39,7 @@ public sealed record EngineVersionOption(EngineVersion Value, string Label);
 /// <summary>What a tree-driven "open"/"load" populated the results grid with - a whole export (PropertyPath null) or just one table's own subtree, so a later refresh (UE version/usmap/AES change) can replay exactly that, not more.</summary>
 public sealed record OpenedScope(string AssetPath, int ExportIndex, string? PropertyPath);
 
-public partial class MainViewModel : ObservableObject, IDisposable
+public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -585,6 +585,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task LoadExportsAsync(AssetTreeItemViewModel exportsGroup)
     {
+        ArgumentNullException.ThrowIfNull(exportsGroup);
+
         if (exportsGroup.ExportsLoaded || exportsGroup.AssetPath == null || _workspace == null) return;
 
         var workspace = _workspace;
@@ -614,6 +616,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task LoadPropertiesAsync(AssetTreeItemViewModel node)
     {
+        ArgumentNullException.ThrowIfNull(node);
+
         if (node.PropertiesLoaded || node.AssetPath == null || _workspace == null) return;
         if (node.Kind is not (TreeNodeKind.Export or TreeNodeKind.Property)) return;
 
@@ -1474,7 +1478,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private RuleSet BuildRuleSet() => new()
     {
         Scope = BuildScope(),
-        Rules = Rules.Select(r => r.Rule).ToList(),
+        Rules = new Collection<EditRule>(Rules.Select(r => r.Rule).ToList()),
     };
 
     private SkipCondition? BuildSkipCondition() =>
@@ -1489,8 +1493,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UsmapPath = UsmapPath,
         CreateBackup = CreateBackup,
         Scope = BuildScope(),
-        Rules = Rules.Select(r => r.Rule).ToList(),
-        RecentSources = RecentSources.ToList(),
+        Rules = new Collection<EditRule>(Rules.Select(r => r.Rule).ToList()),
+        RecentSources = new Collection<RecentSourceEntry>(RecentSources.ToList()),
     };
 
     private void ApplySession(EditorSession session)

@@ -14,21 +14,27 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// </summary>
 public static class PropertyValueAccessor
 {
-    public static string? AsSearchableString(PropertyData prop, UAsset asset) => prop switch
+    public static string? AsSearchableString(PropertyData prop, UAsset asset)
     {
-        BoolPropertyData b => b.Value.ToString(),
-        IntPropertyData i => i.Value.ToString(CultureInfo.InvariantCulture),
-        Int64PropertyData i64 => i64.Value.ToString(CultureInfo.InvariantCulture),
-        FloatPropertyData f => f.Value.ToString(CultureInfo.InvariantCulture),
-        DoublePropertyData d => d.Value.ToString(CultureInfo.InvariantCulture),
-        StrPropertyData s => s.Value?.Value,
-        NamePropertyData n => n.Value?.Value?.Value,
-        TextPropertyData t => t.Value?.Value ?? t.CultureInvariantString?.Value,
-        ObjectPropertyData o => DescribeObjectReference(o.Value, asset),
-        SoftObjectPropertyData so => DescribeSoftObjectPath(so.Value),
-        SoftObjectPathPropertyData sop => sop.Path?.Value,
-        _ => null,
-    };
+        ArgumentNullException.ThrowIfNull(prop);
+        ArgumentNullException.ThrowIfNull(asset);
+
+        return prop switch
+        {
+            BoolPropertyData b => b.Value.ToString(),
+            IntPropertyData i => i.Value.ToString(CultureInfo.InvariantCulture),
+            Int64PropertyData i64 => i64.Value.ToString(CultureInfo.InvariantCulture),
+            FloatPropertyData f => f.Value.ToString(CultureInfo.InvariantCulture),
+            DoublePropertyData d => d.Value.ToString(CultureInfo.InvariantCulture),
+            StrPropertyData s => s.Value?.Value,
+            NamePropertyData n => n.Value?.Value?.Value,
+            TextPropertyData t => t.Value?.Value ?? t.CultureInvariantString?.Value,
+            ObjectPropertyData o => DescribeObjectReference(o.Value, asset),
+            SoftObjectPropertyData so => DescribeSoftObjectPath(so.Value),
+            SoftObjectPathPropertyData sop => sop.Path?.Value,
+            _ => null,
+        };
+    }
 
     public static bool TrySetStringValue(PropertyData prop, string newValue, UAsset asset)
     {
@@ -72,6 +78,8 @@ public static class PropertyValueAccessor
     /// </summary>
     public static void UpdateIsZeroFlag(PropertyData prop)
     {
+        ArgumentNullException.ThrowIfNull(prop);
+
         prop.IsZero = prop switch
         {
             BoolPropertyData b => !b.Value,

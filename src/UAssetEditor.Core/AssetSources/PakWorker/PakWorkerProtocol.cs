@@ -36,7 +36,15 @@ public sealed class PakWorkerRequest
     public string? EntryPath { get; init; }
     public string? MountPoint { get; init; }
     public PakVersion? Version { get; init; }
+
+    // CA1819 (properties shouldn't return arrays) doesn't apply here: this is an init-only
+    // wire DTO built fresh per request and never shared/mutated after construction, and
+    // UAssetAPI's own PakBuilder.Compression(PakCompression[]) demands an actual array on
+    // the receiving end anyway - an IReadOnlyList<T> here would just mean converting back
+    // to an array right before that call, for no benefit.
+#pragma warning disable CA1819
     public PakCompression[]? Compression { get; init; }
+#pragma warning restore CA1819
 }
 
 /// <summary>
@@ -69,6 +77,8 @@ public static class PakWorkerFraming
 {
     public static async Task WriteMessageAsync<THeader>(Stream stream, THeader header, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(stream);
+
         var json = JsonSerializer.SerializeToUtf8Bytes(header);
         await WriteFrameAsync(stream, json, cancellationToken).ConfigureAwait(false);
         await WriteFrameAsync(stream, payload, cancellationToken).ConfigureAwait(false);

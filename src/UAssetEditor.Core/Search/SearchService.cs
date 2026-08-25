@@ -20,6 +20,8 @@ public static class SearchService
     /// </summary>
     public static IEnumerable<SearchResult> AllProperties(UAsset asset, string assetPath)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+
         for (var e = 0; e < asset.Exports.Count; e++)
             foreach (var result in PropertiesForExport(asset, assetPath, e))
                 yield return result;
@@ -33,6 +35,8 @@ public static class SearchService
     /// </summary>
     public static IEnumerable<SearchResult> PropertiesForExport(UAsset asset, string assetPath, int exportIndex)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+
         var export = asset.Exports[exportIndex];
         var exportName = export.ObjectName.Value?.Value ?? "";
 
@@ -62,6 +66,8 @@ public static class SearchService
     /// </summary>
     public static IEnumerable<SearchResult> PropertiesUnder(UAsset asset, string assetPath, int exportIndex, string propertyPath)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+
         if (asset.Exports[exportIndex] is not NormalExport normalExport) yield break;
         var exportName = normalExport.ObjectName.Value?.Value ?? "";
 
@@ -80,6 +86,9 @@ public static class SearchService
     /// <summary>Searches every export's property tree (and, if requested, the import table) of a single already-opened asset.</summary>
     public static IEnumerable<SearchResult> SearchAsset(UAsset asset, string assetPath, SearchQuery query)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(query);
+
         if (query.HasPropertyCriteria)
         {
             for (var e = 0; e < asset.Exports.Count; e++)
@@ -129,6 +138,8 @@ public static class SearchService
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
         var paths = source.EnumerateAssetPaths().ToList();
         var results = new ConcurrentBag<SearchResult>();
         var completed = 0;
@@ -152,7 +163,7 @@ public static class SearchService
             progress?.Report(new SearchProgress(done, paths.Count, path));
 
             return Task.CompletedTask;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
 
         return results.ToList();
     }

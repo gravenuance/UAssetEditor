@@ -18,6 +18,8 @@ public static class PropertyWalker
 {
     public static IEnumerable<PropertyNode> Walk(NormalExport export)
     {
+        ArgumentNullException.ThrowIfNull(export);
+
         var asset = export.Asset;
         return export is DataTableExport dataTable
             ? WalkRows(dataTable.Table.Data, asset)

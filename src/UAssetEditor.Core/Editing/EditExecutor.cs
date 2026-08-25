@@ -29,7 +29,12 @@ public static class EditExecutor
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
-        => RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(versions);
+
+        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+    }
 
     public static Task<IReadOnlyList<AssetChangeSet>> ApplyAsync(
         IAssetSource source,
@@ -40,7 +45,12 @@ public static class EditExecutor
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
-        => RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(versions);
+
+        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
+    }
 
     /// <summary>
     /// Computes and applies rule matches against whatever <paramref name="openAsset"/> returns
@@ -56,7 +66,11 @@ public static class EditExecutor
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
-        => RunAsync(source, openAsset, ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        return RunAsync(source, openAsset, ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+    }
 
     private static async Task<IReadOnlyList<AssetChangeSet>> RunAsync(
         IAssetSource source,
@@ -83,7 +97,7 @@ public static class EditExecutor
             progress?.Report(new EditProgress(done, paths.Count, path));
 
             return Task.CompletedTask;
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
 
         return results.ToList();
     }
@@ -229,7 +243,7 @@ public static class EditExecutor
                 if (oldValue.Length == 0) return null;
                 var replaced = textRule.IsRegex
                     ? Regex.Replace(oldValue, textRule.Pattern, textRule.Replacement)
-                    : oldValue.Replace(textRule.Pattern, textRule.Replacement);
+                    : oldValue.Replace(textRule.Pattern, textRule.Replacement, StringComparison.Ordinal);
                 if (replaced == oldValue) return null;
                 if (!PropertyValueAccessor.TrySetStringValue(node.Property, replaced, asset))
                     return null;
@@ -285,7 +299,13 @@ public static class EditExecutor
 
     private static bool TryApplyNumericOperation(string operation, double current, double target, out double result)
     {
+        // CA1308 prefers ToUpperInvariant, but the "set"/"add"/"sub"/"mul"/"div" operation
+        // keywords are already lowercase everywhere else they appear (MainViewModel's
+        // NumericOperations list, RuleSet JSON, tests) - normalizing to lowercase here is
+        // what actually matches them, not a casualness that needs fixing.
+#pragma warning disable CA1308
         switch (operation.Trim().ToLowerInvariant())
+#pragma warning restore CA1308
         {
             case "set": result = target; return true;
             case "add": result = current + target; return true;

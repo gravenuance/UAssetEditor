@@ -21,6 +21,17 @@
     <Version>1.0.0</Version>
     <Product>UAssetEditor</Product>
     <Description>A focused editor for Unreal Engine .uasset data - browse, search, batch-edit, and repack, without opening the engine.</Description>
+
+    <!-- CA2007 ("consider ConfigureAwait") is wrong advice throughout this WPF project's own
+         code: ViewModel/View async methods deliberately keep the default ConfigureAwait(true)
+         so their continuations resume on the UI dispatcher thread, where they touch bound
+         ObservableCollections/properties directly - ConfigureAwait(false) here would risk a
+         cross-thread access exception, not just be a style nit. (UAssetEditor.Core, which has
+         no UI thread to return to, keeps CA2007 enabled and fixed.)
+         CA1515 ("consider making public types internal") doesn't fit an EXE: nothing outside
+         this assembly ever references UAssetEditor.App.dll as a library, so every ViewModel/
+         View being public is already exactly as encapsulated as it needs to be. -->
+    <NoWarn>$(NoWarn);CA2007;CA1515</NoWarn>
   </PropertyGroup>
 
   <!--

@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace UAssetEditor.Core.AssetSources;
 
 /// <summary>One node in a browsable tree built from a flat list of separator-delimited paths.</summary>
@@ -10,5 +12,5 @@ public sealed class PathTreeNode(string name, string? fullPath, bool isLeaf)
 
     public bool IsLeaf { get; } = isLeaf;
 
-    public List<PathTreeNode> Children { get; } = new();
+    public Collection<PathTreeNode> Children { get; } = new();
 }

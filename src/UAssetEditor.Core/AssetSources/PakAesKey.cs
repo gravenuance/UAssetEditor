@@ -5,6 +5,8 @@ public static class PakAesKey
 {
     public static byte[]? Parse(string hex)
     {
+        ArgumentNullException.ThrowIfNull(hex);
+
         hex = hex.Trim();
         if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
         return hex.Length == 0 ? null : Convert.FromHexString(hex);

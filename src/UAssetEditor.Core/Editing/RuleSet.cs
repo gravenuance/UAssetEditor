@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using UAssetEditor.Core.Search;
 
 namespace UAssetEditor.Core.Editing;
@@ -7,5 +8,5 @@ public sealed class RuleSet
 {
     public string Name { get; init; } = "";
     public required SearchQuery Scope { get; init; }
-    public List<EditRule> Rules { get; init; } = new();
+    public Collection<EditRule> Rules { get; init; } = new();
 }

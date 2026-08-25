@@ -9,6 +9,8 @@ public static class SkipEvaluator
     /// <summary>Returns false (never skip) if <see cref="SkipCondition.Value"/> isn't itself numeric.</summary>
     public static bool ShouldSkipNumeric(SkipCondition skip, double currentValue)
     {
+        ArgumentNullException.ThrowIfNull(skip);
+
         if (!double.TryParse(skip.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var skipValue))
             return false;
 
@@ -24,7 +26,11 @@ public static class SkipEvaluator
     }
 
     /// <summary>Non-numeric properties only support equality; any other comparison never skips.</summary>
-    public static bool ShouldSkipText(SkipCondition skip, string currentValue) =>
-        skip.Comparison == SkipComparison.Eq &&
-        string.Equals(currentValue, skip.Value, StringComparison.OrdinalIgnoreCase);
+    public static bool ShouldSkipText(SkipCondition skip, string currentValue)
+    {
+        ArgumentNullException.ThrowIfNull(skip);
+
+        return skip.Comparison == SkipComparison.Eq &&
+            string.Equals(currentValue, skip.Value, StringComparison.OrdinalIgnoreCase);
+    }
 }

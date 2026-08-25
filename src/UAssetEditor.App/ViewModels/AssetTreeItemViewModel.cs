@@ -87,6 +87,8 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
 
     public AssetTreeItemViewModel(PathTreeNode node)
     {
+        ArgumentNullException.ThrowIfNull(node);
+
         Name = node.Name;
         FullPath = node.FullPath;
 
@@ -116,6 +118,8 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     /// <summary>Replaces the dummy placeholder with one real node per export, once (re-expanding doesn't reload). Every export node gets its own dummy placeholder in turn, so its top-level properties are likewise only loaded once the user expands that particular export.</summary>
     public void MarkExportsLoaded(IReadOnlyList<string> exportNames)
     {
+        ArgumentNullException.ThrowIfNull(exportNames);
+
         if (ExportsLoaded) return;
         ExportsLoaded = true;
 
@@ -139,6 +143,8 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     /// </summary>
     public void MarkPropertiesLoaded(IReadOnlyList<PropertyTreeItem> items)
     {
+        ArgumentNullException.ThrowIfNull(items);
+
         if (PropertiesLoaded) return;
         PropertiesLoaded = true;
 

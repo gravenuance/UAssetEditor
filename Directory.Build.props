@@ -7,15 +7,26 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
 
-    <!-- Stricter-than-default Roslyn analysis: "Recommended" turns on the analyzer rules
-         Microsoft recommends beyond the SDK's default subset, and EnforceCodeStyleInBuild
-         runs .editorconfig style rules (IDE****) as build-time warnings too, not just in
-         the editor. Left as warnings rather than errors so the analyzers are actually
+    <!-- Stricter-than-default Roslyn analysis: "All" turns on every analyzer rule the SDK
+         ships (not just the Recommended/Default subset), and EnforceCodeStyleInBuild runs
+         .editorconfig style rules (IDE****) as build-time warnings too, not just in the
+         editor. Left as warnings rather than errors so the analyzers are actually
          actionable during development instead of blocking every build on day one. -->
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>
-    <AnalysisMode>Recommended</AnalysisMode>
+    <AnalysisMode>All</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- CA1031 ("catch a more specific exception") fires on every deliberate boundary
+         catch-all in this solution: a top-level UI command reporting failure via
+         StatusMessage instead of crashing, or a batch operation (search/edit/pack/unpack)
+         skipping one bad asset/entry so the rest of the batch still completes. Narrowing
+         these to specific exception types would mean enumerating every exception any
+         downstream call (native repak bindings, file I/O, JSON, regex, UAssetAPI parsing)
+         might throw, which defeats the point of a boundary that's meant to catch anything
+         and keep going - suppressed solution-wide rather than pragma'd at each of the ~25
+         call sites that share this same intentional shape. -->
+    <NoWarn>$(NoWarn);CA1031</NoWarn>
   </PropertyGroup>
 
 </Project>

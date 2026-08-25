@@ -11,6 +11,8 @@ public static class ImportPathResolver
 {
     public static string GetFullPath(Import import, UAsset asset)
     {
+        ArgumentNullException.ThrowIfNull(import);
+
         var parts = new List<string> { import.ObjectName.Value?.Value ?? "" };
 
         var outer = import.OuterIndex;

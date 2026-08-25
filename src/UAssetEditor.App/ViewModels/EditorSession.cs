@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.Search;
@@ -12,10 +13,10 @@ public sealed class EditorSession
     public string? UsmapPath { get; init; }
     public bool CreateBackup { get; init; } = true;
     public SearchQuery Scope { get; init; } = new();
-    public List<EditRule> Rules { get; init; } = new();
+    public Collection<EditRule> Rules { get; init; } = new();
 
     /// <summary>Most-recently-opened sources (folder/.pak/.uasset), newest first - see <see cref="MainViewModel.AddRecentSource"/>.</summary>
-    public List<RecentSourceEntry> RecentSources { get; init; } = new();
+    public Collection<RecentSourceEntry> RecentSources { get; init; } = new();
 }
 
 /// <summary>

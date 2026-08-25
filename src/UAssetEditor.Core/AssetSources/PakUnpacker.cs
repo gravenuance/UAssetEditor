@@ -23,6 +23,8 @@ public static class PakUnpacker
         IProgress<(int Done, int Total)>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
         var entries = source.ListAllEntries().Where(e => entryFilter?.Invoke(e) ?? true).ToList();
         var failures = new List<(string Entry, string Reason)>();
         var succeeded = 0;

@@ -25,11 +25,17 @@ public sealed class LooseFolderAssetSource : IAssetSource
         Directory.EnumerateFiles(_rootPath, "*.uasset", SearchOption.AllDirectories)
             .Select(ToRelativePath);
 
-    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings) =>
-        ResilientAssetLoader.Open(ToAbsolutePath(assetPath), engineVersion, mappings);
+    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings)
+    {
+        ArgumentNullException.ThrowIfNull(assetPath);
+        return ResilientAssetLoader.Open(ToAbsolutePath(assetPath), engineVersion, mappings);
+    }
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(assetPath);
+
         var absolutePath = ToAbsolutePath(assetPath);
 
         if (createBackup)

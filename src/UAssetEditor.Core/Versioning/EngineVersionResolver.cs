@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.IO.Enumeration;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
@@ -22,7 +23,7 @@ public sealed class EngineVersionResolver
     /// <summary>Mappings file for games using unversioned properties. Optional.</summary>
     public Usmap? Mappings { get; set; }
 
-    public List<EngineVersionOverride> Overrides { get; } = new();
+    public Collection<EngineVersionOverride> Overrides { get; } = new();
 
     public EngineVersion Resolve(string assetPath)
     {

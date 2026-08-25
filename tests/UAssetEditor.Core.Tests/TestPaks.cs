@@ -10,8 +10,9 @@ internal static class TestPaks
         var pakPath = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
 
         using (var stream = File.Create(pakPath))
+        using (var builder = new PakBuilder())
+        using (var writer = builder.Writer(stream, version, mountPoint, 0))
         {
-            var writer = new PakBuilder().Writer(stream, version, mountPoint, 0);
             foreach (var (path, bytes) in files)
                 writer.WriteFile(path, bytes);
             writer.WriteIndex();

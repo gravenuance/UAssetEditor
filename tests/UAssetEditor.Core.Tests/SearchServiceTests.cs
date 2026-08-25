@@ -28,7 +28,7 @@ public class SearchServiceTests
         Assert.Equal("BrokenExport", unsupported.ExportName);
         Assert.Equal(1, unsupported.ExportIndex);
         Assert.Null(unsupported.PropertyPath);
-        Assert.Contains("4 raw byte", unsupported.MatchedText);
+        Assert.Contains("4 raw byte", unsupported.MatchedText, StringComparison.Ordinal);
 
         Assert.Contains(results, r => r.Kind == SearchMatchKind.Property && r.PropertyPath == "Count");
     }

@@ -9,12 +9,12 @@ using UAssetEditor.Core.AssetSources.PakWorker;
 // closes or the process is killed.
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("UAssetEditor.PakWorker: expected a pipe name argument.");
+    await Console.Error.WriteLineAsync("UAssetEditor.PakWorker: expected a pipe name argument.").ConfigureAwait(false);
     return 1;
 }
 
 using var pipe = new NamedPipeClientStream(".", args[0], PipeDirection.InOut, PipeOptions.Asynchronous);
-await pipe.ConnectAsync(10_000);
+await pipe.ConnectAsync(10_000).ConfigureAwait(false);
 
 var readerSessions = new Dictionary<int, (FileStream Stream, PakReader Reader)>();
 var writerSessions = new Dictionary<int, (FileStream Stream, PakWriter Writer)>();
@@ -28,7 +28,7 @@ try
         byte[] requestPayload;
         try
         {
-            (request, requestPayload) = await PakWorkerFraming.ReadMessageAsync<PakWorkerRequest>(pipe);
+            (request, requestPayload) = await PakWorkerFraming.ReadMessageAsync<PakWorkerRequest>(pipe).ConfigureAwait(false);
         }
         catch (EndOfStreamException)
         {
@@ -45,9 +45,9 @@ try
                 case PakWorkerOpcode.OpenReader:
                 {
                     var stream = File.Open(request.PakPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    var builder = new PakBuilder();
+                    using var builder = new PakBuilder();
                     if (!string.IsNullOrEmpty(request.AesKeyHex))
-                        builder = builder.Key(Convert.FromHexString(request.AesKeyHex));
+                        builder.Key(Convert.FromHexString(request.AesKeyHex));
                     var reader = builder.Reader(stream);
 
                     var sessionId = nextSessionId++;
@@ -89,7 +89,7 @@ try
                     if (readerSessions.Remove(request.SessionId, out var session))
                     {
                         session.Reader.Dispose();
-                        session.Stream.Dispose();
+                        await session.Stream.DisposeAsync().ConfigureAwait(false);
                     }
                     response = new PakWorkerResponse { Success = true, SessionId = request.SessionId };
                     break;
@@ -98,11 +98,11 @@ try
                 case PakWorkerOpcode.OpenWriter:
                 {
                     var stream = File.Create(request.PakPath!);
-                    var builder = new PakBuilder();
+                    using var builder = new PakBuilder();
                     if (!string.IsNullOrEmpty(request.AesKeyHex))
-                        builder = builder.Key(Convert.FromHexString(request.AesKeyHex));
+                        builder.Key(Convert.FromHexString(request.AesKeyHex));
                     if (request.Compression != null)
-                        builder = builder.Compression(request.Compression);
+                        builder.Compression(request.Compression);
                     var writer = builder.Writer(stream, request.Version ?? PakVersion.V11, request.MountPoint ?? "", pathHashSeed: 0);
 
                     var sessionId = nextSessionId++;
@@ -142,7 +142,7 @@ try
                     if (writerSessions.Remove(request.SessionId, out var wsession))
                     {
                         wsession.Writer.Dispose();
-                        wsession.Stream.Dispose();
+                        await wsession.Stream.DisposeAsync().ConfigureAwait(false);
                     }
                     response = new PakWorkerResponse { Success = true, SessionId = request.SessionId };
                     break;
@@ -158,7 +158,7 @@ try
             response = new PakWorkerResponse { Success = false, Error = ex.Message, SessionId = request.SessionId };
         }
 
-        await PakWorkerFraming.WriteMessageAsync(pipe, response, responsePayload);
+        await PakWorkerFraming.WriteMessageAsync(pipe, response, responsePayload).ConfigureAwait(false);
     }
 }
 finally
@@ -166,12 +166,12 @@ finally
     foreach (var (stream, reader) in readerSessions.Values)
     {
         reader.Dispose();
-        stream.Dispose();
+        await stream.DisposeAsync().ConfigureAwait(false);
     }
     foreach (var (stream, writer) in writerSessions.Values)
     {
         writer.Dispose();
-        stream.Dispose();
+        await stream.DisposeAsync().ConfigureAwait(false);
     }
 }
 

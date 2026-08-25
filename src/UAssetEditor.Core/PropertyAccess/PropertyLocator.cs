@@ -8,6 +8,8 @@ public static class PropertyLocator
 {
     public static PropertyNode? Locate(UAsset asset, int exportIndex, string? propertyPath)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+
         if (propertyPath == null || exportIndex < 0 || exportIndex >= asset.Exports.Count) return null;
         if (asset.Exports[exportIndex] is not NormalExport export) return null;
         return PropertyWalker.Walk(export).FirstOrDefault(n => n.Path == propertyPath);

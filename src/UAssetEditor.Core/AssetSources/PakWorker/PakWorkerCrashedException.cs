@@ -19,6 +19,23 @@ public sealed class PakWorkerCrashedException : Exception
 
     public const int StatusStackBufferOverrun = unchecked((int)0xC0000409);
 
+    /// <summary>CA1032's standard parameterless constructor - real callers always go through the (message, operation, exitCode, inner) constructor below; this exists only so the type follows the conventional exception shape.</summary>
+    public PakWorkerCrashedException()
+    {
+    }
+
+    /// <summary>CA1032's standard (message) constructor - see the parameterless constructor's remarks.</summary>
+    public PakWorkerCrashedException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>CA1032's standard (message, innerException) constructor - see the parameterless constructor's remarks.</summary>
+    public PakWorkerCrashedException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+
     public PakWorkerCrashedException(string message, string? operation, int? exitCode, Exception? inner = null)
         : base(message, inner)
     {

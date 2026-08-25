@@ -23,11 +23,17 @@ public partial class TermsBox : UserControl
     public static readonly DependencyProperty TermsProperty =
         DependencyProperty.Register(nameof(Terms), typeof(ObservableCollection<ConditionTermViewModel>), typeof(TermsBox));
 
+    // CA2227 wants this read-only, but it's a DependencyProperty CLR wrapper - WPF's binding
+    // system requires a public setter here to assign the bound collection via SetValue; there's
+    // no "read-only DependencyProperty with a mutable collection" alternative that still works
+    // with a plain two-way XAML binding like this one's callers use.
+#pragma warning disable CA2227
     public ObservableCollection<ConditionTermViewModel> Terms
     {
         get => (ObservableCollection<ConditionTermViewModel>)GetValue(TermsProperty);
         set => SetValue(TermsProperty, value);
     }
+#pragma warning restore CA2227
 
     public TermsBox() => InitializeComponent();
 

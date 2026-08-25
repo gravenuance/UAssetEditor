@@ -37,6 +37,8 @@ public static class PakRepacker
         byte[]? aesKey = null,
         Func<string, bool>? entryFilter = null)
     {
+        ArgumentNullException.ThrowIfNull(source);
+
         using var writer = new PakWriterHandle(PakWorkerProcess.Shared);
         try
         {

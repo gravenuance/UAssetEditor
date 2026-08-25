@@ -78,11 +78,17 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
 
     public IEnumerable<string> EnumerateAssetPaths() => _uassetEntries;
 
-    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings) =>
-        ResilientAssetLoader.Open(ExtractEntry(assetPath), engineVersion, mappings);
+    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings)
+    {
+        ArgumentNullException.ThrowIfNull(assetPath);
+        return ResilientAssetLoader.Open(ExtractEntry(assetPath), engineVersion, mappings);
+    }
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)
     {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(assetPath);
+
         var tempPath = ExtractEntry(assetPath);
 
         if (createBackup)
