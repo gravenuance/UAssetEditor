@@ -16,7 +16,7 @@ public sealed class AdaptiveConcurrencyLimiter : IDisposable
     private readonly Timer _timer;
     private readonly int _minDegree;
     private readonly int _maxDegree;
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private int _currentDegree;
 
     /// <summary>

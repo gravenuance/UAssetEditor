@@ -10,7 +10,7 @@ namespace UAssetEditor.App.ViewModels;
 public sealed record CompressionOption(PakCompression? Value, string Label);
 
 /// <summary>Backs the Pack Folder into .pak dialog - builds a brand-new .pak from a chosen loose folder via <see cref="PakPacker"/>, off the UI thread, with live progress.</summary>
-public sealed partial class PackFolderViewModel : ObservableObject
+public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
 {
     [ObservableProperty] private string _sourceFolder;
     [ObservableProperty] private string _outputPakPath = "";
@@ -131,12 +131,19 @@ public sealed partial class PackFolderViewModel : ObservableObject
         finally
         {
             IsRunning = false;
+            _cts?.Dispose();
             _cts = null;
         }
     }
 
     [RelayCommand(CanExecute = nameof(IsRunning))]
     private void Cancel() => _cts?.Cancel();
+
+    public void Dispose()
+    {
+        _cts?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     private bool CanRun() => !IsRunning && !string.IsNullOrWhiteSpace(SourceFolder) && !string.IsNullOrWhiteSpace(OutputPakPath);
 

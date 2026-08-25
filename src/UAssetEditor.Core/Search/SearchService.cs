@@ -8,7 +8,7 @@ using UAssetEditor.Core.Versioning;
 
 namespace UAssetEditor.Core.Search;
 
-public sealed class SearchService
+public static class SearchService
 {
     /// <summary>
     /// Walks every export's property tree unconditionally - no <see cref="SearchQuery"/>
@@ -18,7 +18,7 @@ public sealed class SearchService
     /// surfaced as a single informational, non-editable row rather than silently omitted,
     /// so the export's existence stays visible even though its content isn't.
     /// </summary>
-    public IEnumerable<SearchResult> AllProperties(UAsset asset, string assetPath)
+    public static IEnumerable<SearchResult> AllProperties(UAsset asset, string assetPath)
     {
         for (var e = 0; e < asset.Exports.Count; e++)
             foreach (var result in PropertiesForExport(asset, assetPath, e))
@@ -31,7 +31,7 @@ public sealed class SearchService
     /// wanting every export's properties at once (which, for an asset with many exports,
     /// can be tens of thousands of rows).
     /// </summary>
-    public IEnumerable<SearchResult> PropertiesForExport(UAsset asset, string assetPath, int exportIndex)
+    public static IEnumerable<SearchResult> PropertiesForExport(UAsset asset, string assetPath, int exportIndex)
     {
         var export = asset.Exports[exportIndex];
         var exportName = export.ObjectName.Value?.Value ?? "";
@@ -60,7 +60,7 @@ public sealed class SearchService
     /// so this is how their values are actually reached: re-walk the export fresh (paths
     /// aren't cached) and keep only the node for the table itself plus everything under it.
     /// </summary>
-    public IEnumerable<SearchResult> PropertiesUnder(UAsset asset, string assetPath, int exportIndex, string propertyPath)
+    public static IEnumerable<SearchResult> PropertiesUnder(UAsset asset, string assetPath, int exportIndex, string propertyPath)
     {
         if (asset.Exports[exportIndex] is not NormalExport normalExport) yield break;
         var exportName = normalExport.ObjectName.Value?.Value ?? "";
@@ -78,7 +78,7 @@ public sealed class SearchService
     }
 
     /// <summary>Searches every export's property tree (and, if requested, the import table) of a single already-opened asset.</summary>
-    public IEnumerable<SearchResult> SearchAsset(UAsset asset, string assetPath, SearchQuery query)
+    public static IEnumerable<SearchResult> SearchAsset(UAsset asset, string assetPath, SearchQuery query)
     {
         if (query.HasPropertyCriteria)
         {
@@ -121,7 +121,7 @@ public sealed class SearchService
     /// that fail to open (unsupported version, corrupt file, missing mappings, etc.) are
     /// skipped rather than aborting the whole batch.
     /// </summary>
-    public async Task<IReadOnlyList<SearchResult>> SearchAllAsync(
+    public static async Task<IReadOnlyList<SearchResult>> SearchAllAsync(
         IAssetSource source,
         EngineVersionResolver versions,
         SearchQuery query,

@@ -18,7 +18,6 @@ public sealed class AssetWorkspace
 {
     private readonly IAssetSource _source;
     private EngineVersionResolver _versions;
-    private readonly SearchService _search = new();
 
     // Lazy<UAsset> rather than UAsset directly: ConcurrentDictionary.GetOrAdd can invoke
     // its factory more than once for the same key under concurrent access (only one
@@ -80,7 +79,7 @@ public sealed class AssetWorkspace
             try
             {
                 var asset = GetOrOpen(path);
-                foreach (var result in _search.SearchAsset(asset, path, query))
+                foreach (var result in SearchService.SearchAsset(asset, path, query))
                     results.Add(result);
             }
             catch

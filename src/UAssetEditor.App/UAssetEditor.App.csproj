@@ -10,14 +10,12 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>UAssetEditor.ico</ApplicationIcon>
     <Version>1.0.0</Version>
@@ -51,8 +49,8 @@
 
     Runs as an out-of-process `dotnet publish` (Exec), not an in-process <MSBuild> task call,
     specifically to avoid this project's own global properties (TargetFramework=
-    net8.0-windows, RuntimeIdentifier, PublishDir, ...) bleeding into the worker's build,
-    which targets plain net8.0 and has its own PublishDir - an in-process MSBuild task call
+    net10.0-windows, RuntimeIdentifier, PublishDir, ...) bleeding into the worker's build,
+    which targets plain net10.0 and has its own PublishDir - an in-process MSBuild task call
     inherits ambient global properties in ways that are easy to get subtly wrong across a
     TargetFramework/RID boundary like this one.
 
@@ -62,7 +60,7 @@
   -->
   <PropertyGroup>
     <_PakWorkerProject>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj</_PakWorkerProject>
-    <_PakWorkerPublishExe>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net8.0\publish\win-x64\UAssetEditor.PakWorker.exe</_PakWorkerPublishExe>
+    <_PakWorkerPublishExe>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net10.0\publish\win-x64\UAssetEditor.PakWorker.exe</_PakWorkerPublishExe>
   </PropertyGroup>
 
   <!--
@@ -86,7 +84,7 @@
   </Target>
 
   <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
-    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net8.0\publish\win-x64\UAssetEditor.PakWorker.exe">
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net10.0\publish\win-x64\UAssetEditor.PakWorker.exe">
       <LogicalName>UAssetEditor.PakWorker.exe</LogicalName>
       <Visible>false</Visible>
     </EmbeddedResource>

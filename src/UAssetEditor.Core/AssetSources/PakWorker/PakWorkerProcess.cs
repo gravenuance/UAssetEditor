@@ -24,6 +24,17 @@ public sealed class PakWorkerProcess : IDisposable
     private Process? _process;
     private NamedPipeServerStream? _pipe;
 
+    /// <summary>
+    /// Serializes <see cref="EnsureAsync"/> against itself - <see cref="Shared"/> is one
+    /// static instance whose <see cref="_pipe"/>/<see cref="_process"/>/<see cref="IsDead"/>
+    /// two concurrent callers both observing a dead/absent pipe could otherwise both spawn
+    /// a worker and stomp on each other's Process/pipe fields. Current callers happen to
+    /// already serialize themselves (the UI only ever runs one busy operation at a time, and
+    /// each <see cref="PakAssetSource"/> serializes its own reads via its own lock), but
+    /// nothing here should rely on that staying true.
+    /// </summary>
+    private readonly SemaphoreSlim _ensureLock = new(1, 1);
+
     /// <summary>True once this instance's worker process has exited or its pipe has broken - the next <see cref="Ensure"/> call spawns a fresh one.</summary>
     public bool IsDead { get; private set; }
 
@@ -32,39 +43,49 @@ public sealed class PakWorkerProcess : IDisposable
     {
         if (_pipe != null && !IsDead) return _pipe;
 
-        Cleanup();
-        IsDead = false;
-
-        var exePath = ResolveWorkerExecutable();
-        var pipeName = $"UAssetEditor.PakWorker.{Environment.ProcessId}.{Guid.NewGuid():N}";
-
-        _pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-
-        _process = new Process
-        {
-            StartInfo = new ProcessStartInfo(exePath, pipeName)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = false,
-                RedirectStandardError = false,
-            },
-            EnableRaisingEvents = true,
-        };
-        _process.Exited += (_, _) => IsDead = true;
-        _process.Start();
-
+        await _ensureLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            IsDead = true;
-            throw;
-        }
+            if (_pipe != null && !IsDead) return _pipe; // a concurrent caller may have already respawned it while this one waited
 
-        return _pipe;
+            Cleanup();
+            IsDead = false;
+
+            var exePath = ResolveWorkerExecutable();
+            var pipeName = $"UAssetEditor.PakWorker.{Environment.ProcessId}.{Guid.NewGuid():N}";
+
+            _pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+
+            _process = new Process
+            {
+                StartInfo = new ProcessStartInfo(exePath, pipeName)
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false,
+                },
+                EnableRaisingEvents = true,
+            };
+            _process.Exited += (_, _) => IsDead = true;
+            _process.Start();
+
+            try
+            {
+                await _pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                IsDead = true;
+                throw;
+            }
+
+            return _pipe;
+        }
+        finally
+        {
+            _ensureLock.Release();
+        }
     }
 
     /// <summary>Marks the current worker/pipe as dead so the next <see cref="EnsureAsync"/> call spawns a fresh one - called by <see cref="PakWorkerClient"/> when a pipe I/O call fails or the process is observed to have exited.</summary>
@@ -172,5 +193,9 @@ public sealed class PakWorkerProcess : IDisposable
         _process = null;
     }
 
-    public void Dispose() => Cleanup();
+    public void Dispose()
+    {
+        Cleanup();
+        _ensureLock.Dispose();
+    }
 }

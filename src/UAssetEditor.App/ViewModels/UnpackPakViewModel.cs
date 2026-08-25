@@ -6,7 +6,7 @@ using UAssetEditor.Core.AssetSources;
 namespace UAssetEditor.App.ViewModels;
 
 /// <summary>Backs the Unpack .pak dialog - extracts every entry of a chosen .pak to a chosen folder via <see cref="PakUnpacker"/>, off the UI thread, with live progress.</summary>
-public sealed partial class UnpackPakViewModel : ObservableObject
+public sealed partial class UnpackPakViewModel : ObservableObject, IDisposable
 {
     [ObservableProperty] private string _sourcePakPath;
     [ObservableProperty] private string _destinationFolder = "";
@@ -75,12 +75,19 @@ public sealed partial class UnpackPakViewModel : ObservableObject
         finally
         {
             IsRunning = false;
+            _cts?.Dispose();
             _cts = null;
         }
     }
 
     [RelayCommand(CanExecute = nameof(IsRunning))]
     private void Cancel() => _cts?.Cancel();
+
+    public void Dispose()
+    {
+        _cts?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     private bool CanRun() => !IsRunning && !string.IsNullOrWhiteSpace(SourcePakPath) && !string.IsNullOrWhiteSpace(DestinationFolder);
 

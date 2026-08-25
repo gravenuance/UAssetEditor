@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using UAssetEditor.App.ViewModels;
+using UAssetEditor.Core.AssetSources.PakWorker;
 
 namespace UAssetEditor.App;
 
@@ -43,8 +44,16 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _services?.GetService<MainViewModel>()?.Cleanup();
+        _services?.GetService<MainViewModel>()?.Dispose();
         _services?.Dispose();
+
+        // PakWorkerProcess.Shared owns a live child process (see its own doc comment) and is
+        // never disposed by anything upstream of here - without this, the worker only notices
+        // its pipe broke (and exits) once the OS gets around to closing this process's handles
+        // during teardown, which is neither prompt nor guaranteed to run before the OS itself
+        // considers this process gone. Disposing explicitly kills it deterministically instead.
+        PakWorkerProcess.Shared.Dispose();
+
         base.OnExit(e);
     }
 }

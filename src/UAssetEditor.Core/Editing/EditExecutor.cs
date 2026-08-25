@@ -20,11 +20,9 @@ namespace UAssetEditor.Core.Editing;
 /// <see cref="ApplyAsync"/> does the same work and then saves each modified asset (optionally
 /// after backing up the original file).
 /// </summary>
-public sealed class EditExecutor
+public static class EditExecutor
 {
-    private readonly SearchService _search = new();
-
-    public Task<IReadOnlyList<AssetChangeSet>> PreviewAsync(
+    public static Task<IReadOnlyList<AssetChangeSet>> PreviewAsync(
         IAssetSource source,
         EngineVersionResolver versions,
         RuleSet ruleSet,
@@ -33,7 +31,7 @@ public sealed class EditExecutor
         CancellationToken cancellationToken = default)
         => RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
 
-    public Task<IReadOnlyList<AssetChangeSet>> ApplyAsync(
+    public static Task<IReadOnlyList<AssetChangeSet>> ApplyAsync(
         IAssetSource source,
         EngineVersionResolver versions,
         RuleSet ruleSet,
@@ -51,7 +49,7 @@ public sealed class EditExecutor
     /// fresh and thrown away. Never saves: unlike <see cref="ApplyAsync"/>, the caller decides
     /// if/when the changes actually get written, exactly like it already does for manual edits.
     /// </summary>
-    public Task<IReadOnlyList<AssetChangeSet>> StageAsync(
+    public static Task<IReadOnlyList<AssetChangeSet>> StageAsync(
         IAssetSource source,
         Func<string, UAsset> openAsset,
         RuleSet ruleSet,
@@ -60,7 +58,7 @@ public sealed class EditExecutor
         CancellationToken cancellationToken = default)
         => RunAsync(source, openAsset, ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
 
-    private async Task<IReadOnlyList<AssetChangeSet>> RunAsync(
+    private static async Task<IReadOnlyList<AssetChangeSet>> RunAsync(
         IAssetSource source,
         Func<string, UAsset> openAsset,
         RuleSet ruleSet,
@@ -90,7 +88,7 @@ public sealed class EditExecutor
         return results.ToList();
     }
 
-    private AssetChangeSet? ProcessAsset(
+    private static AssetChangeSet? ProcessAsset(
         IAssetSource source,
         Func<string, UAsset> openAsset,
         RuleSet ruleSet,
@@ -113,7 +111,7 @@ public sealed class EditExecutor
         try
         {
             var changes = new List<PropertyChange>();
-            var propertyMatches = _search.SearchAsset(asset, path, ruleSet.Scope)
+            var propertyMatches = SearchService.SearchAsset(asset, path, ruleSet.Scope)
                 .Where(r => r.Kind == SearchMatchKind.Property)
                 .ToList();
 

@@ -39,7 +39,7 @@ public sealed record EngineVersionOption(EngineVersion Value, string Label);
 /// <summary>What a tree-driven "open"/"load" populated the results grid with - a whole export (PropertyPath null) or just one table's own subtree, so a later refresh (UE version/usmap/AES change) can replay exactly that, not more.</summary>
 public sealed record OpenedScope(string AssetPath, int ExportIndex, string? PropertyPath);
 
-public partial class MainViewModel : ObservableObject
+public partial class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -47,8 +47,6 @@ public partial class MainViewModel : ObservableObject
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    private readonly EditExecutor _editExecutor = new();
-    private readonly SearchService _searchService = new();
     private readonly HashSet<string> _dirtyAssetPaths = new();
 
     /// <summary>
@@ -359,8 +357,8 @@ public partial class MainViewModel : ObservableObject
                 {
                     var asset = workspace.GetOrOpen(scope.AssetPath);
                     return scope.PropertyPath == null
-                        ? _searchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
-                        : _searchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
+                        ? SearchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
+                        : SearchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
                 });
                 foreach (var result in results)
                     SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
@@ -558,8 +556,8 @@ public partial class MainViewModel : ObservableObject
             {
                 var asset = workspace.GetOrOpen(fullPath);
                 return propertyPath == null
-                    ? _searchService.PropertiesForExport(asset, fullPath, exportIndex).ToList()
-                    : _searchService.PropertiesUnder(asset, fullPath, exportIndex, propertyPath).ToList();
+                    ? SearchService.PropertiesForExport(asset, fullPath, exportIndex).ToList()
+                    : SearchService.PropertiesUnder(asset, fullPath, exportIndex, propertyPath).ToList();
             });
 
             SearchResults.Clear();
@@ -700,8 +698,8 @@ public partial class MainViewModel : ObservableObject
                 {
                     var asset = workspace.GetOrOpen(scope.AssetPath);
                     return scope.PropertyPath == null
-                        ? _searchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
-                        : _searchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
+                        ? SearchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
+                        : SearchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
                 });
                 foreach (var result in results)
                     SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
@@ -963,7 +961,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void UnpackPak()
     {
-        var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex);
+        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex);
         new UnpackPakWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
@@ -971,16 +969,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void PackFolder()
     {
-        var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex,
+        using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex,
             mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version);
         new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
     [RelayCommand]
-    private void ShowAbout() => new AboutWindow { Owner = Application.Current.MainWindow }.ShowDialog();
+    private static void ShowAbout() => new AboutWindow { Owner = Application.Current.MainWindow }.ShowDialog();
 
     [RelayCommand]
-    private void ViewOnGitHub() =>
+    private static void ViewOnGitHub() =>
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/gravenuance/UAssetEditor") { UseShellExecute = true });
 
     /// <summary>
@@ -1102,6 +1100,7 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
             IsCancelable = false;
+            _cts?.Dispose();
             _cts = null;
         }
     }
@@ -1216,6 +1215,14 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Called from App shutdown so a pak-backed workspace's temp extraction folder and native handles don't leak past the process.</summary>
     public void Cleanup() => DisposeCurrentSource();
 
+    /// <summary>Satisfies CA1001 (owns a disposable <see cref="_cts"/> field) - <see cref="Cleanup"/> stays the primary shutdown entry point App.xaml.cs already calls, this just also releases whatever cancellation source is live at the time.</summary>
+    public void Dispose()
+    {
+        _cts?.Dispose();
+        Cleanup();
+        GC.SuppressFinalize(this);
+    }
+
     [RelayCommand]
     private void Cancel() => _cts?.Cancel();
 
@@ -1245,7 +1252,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var changeSets = await _editExecutor.PreviewAsync(source, versions, ruleSet, progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
+            var changeSets = await EditExecutor.PreviewAsync(source, versions, ruleSet, progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
             foreach (var change in changeSets.SelectMany(c => c.Changes))
                 PreviewChanges.Add(change);
             StatusMessage = $"Preview: {changeSets.Count} asset(s), {PreviewChanges.Count} change(s).";
@@ -1262,6 +1269,7 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
             IsCancelable = false;
+            _cts?.Dispose();
             _cts = null;
         }
     }
@@ -1300,7 +1308,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            var changeSets = await _editExecutor.StageAsync(source, workspace.GetOrOpen, ruleSet, progress: progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
+            var changeSets = await EditExecutor.StageAsync(source, workspace.GetOrOpen, ruleSet, progress: progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
             var touchedPaths = changeSets.Select(c => c.AssetPath).ToHashSet();
 
             foreach (var path in touchedPaths)
@@ -1338,6 +1346,7 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = false;
             IsCancelable = false;
+            _cts?.Dispose();
             _cts = null;
         }
     }

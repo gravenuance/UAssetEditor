@@ -22,7 +22,7 @@ public class SearchServiceTests
         };
         asset.Exports.Add(rawExport);
 
-        var results = new SearchService().AllProperties(asset, "Fake/Path.uasset").ToList();
+        var results = SearchService.AllProperties(asset, "Fake/Path.uasset").ToList();
 
         var unsupported = Assert.Single(results, r => r.Kind == SearchMatchKind.Unsupported);
         Assert.Equal("BrokenExport", unsupported.ExportName);
@@ -40,7 +40,7 @@ public class SearchServiceTests
         TestAssets.CreateSampleExport(asset, exportName: "First");
         TestAssets.CreateSampleExport(asset, exportName: "Second");
 
-        var results = new SearchService().PropertiesForExport(asset, "Fake/Path.uasset", 1).ToList();
+        var results = SearchService.PropertiesForExport(asset, "Fake/Path.uasset", 1).ToList();
 
         Assert.NotEmpty(results);
         Assert.All(results, r => Assert.Equal("Second", r.ExportName));
@@ -57,7 +57,7 @@ public class SearchServiceTests
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
 
-        var results = new SearchService().PropertiesUnder(asset, "Fake/Path.uasset", 0, "Location").ToList();
+        var results = SearchService.PropertiesUnder(asset, "Fake/Path.uasset", 0, "Location").ToList();
         var paths = results.Select(r => r.PropertyPath).ToList();
 
         Assert.Contains("Location", paths);
@@ -75,9 +75,8 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
-        var results = service.AllProperties(asset, "Fake/Path.uasset").ToList();
+        var results = SearchService.AllProperties(asset, "Fake/Path.uasset").ToList();
 
         var paths = results.Select(r => r.PropertyPath).ToList();
         Assert.Contains("bEnabled", paths);
@@ -93,9 +92,8 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
-        var results = service.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { PropertyNameTerms = ["Count"] }).ToList();
+        var results = SearchService.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { PropertyNameTerms = ["Count"] }).ToList();
 
         var result = Assert.Single(results);
         Assert.Equal("Count", result.PropertyPath);
@@ -107,9 +105,8 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
-        var results = service.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { ValueTerms = ["Alpha"] }).ToList();
+        var results = SearchService.SearchAsset(asset, "Fake/Path.uasset", new SearchQuery { ValueTerms = ["Alpha"] }).ToList();
 
         var result = Assert.Single(results);
         Assert.Equal("Tags[0]", result.PropertyPath);
@@ -120,9 +117,8 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
-        var noMatch = service.SearchAsset(asset, "p", new SearchQuery { PropertyNameTerms = ["Count"], ValueTerms = ["Alpha"] });
+        var noMatch = SearchService.SearchAsset(asset, "p", new SearchQuery { PropertyNameTerms = ["Count"], ValueTerms = ["Alpha"] });
 
         Assert.Empty(noMatch);
     }
@@ -133,9 +129,8 @@ public class SearchServiceTests
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset, exportName: "Match_Me");
         TestAssets.CreateSampleExport(asset, exportName: "SkipThis");
-        var service = new SearchService();
 
-        var results = service.SearchAsset(asset, "p", new SearchQuery
+        var results = SearchService.SearchAsset(asset, "p", new SearchQuery
         {
             ExportNameTerms = ["Match_Me"],
             PropertyNameTerms = ["Count"],
@@ -150,9 +145,8 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
-        var results = service.SearchAsset(asset, "p", new SearchQuery
+        var results = SearchService.SearchAsset(asset, "p", new SearchQuery
         {
             PropertyNameTerms = [new ConditionTerm("Count", TermTag.Or), new ConditionTerm("DisplayName", TermTag.Or)],
         }).ToList();
@@ -165,11 +159,10 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
         // No single property path contains both substrings, so AND should yield nothing,
         // while the same patterns tagged Or would match "Location" and "Location.X"/"Location.Y".
-        var andResults = service.SearchAsset(asset, "p", new SearchQuery
+        var andResults = SearchService.SearchAsset(asset, "p", new SearchQuery
         {
             PropertyNameTerms = [new ConditionTerm("Location", TermTag.And), new ConditionTerm("DisplayName", TermTag.And)],
         }).ToList();
@@ -182,11 +175,10 @@ public class SearchServiceTests
     {
         var asset = TestAssets.CreateAsset();
         TestAssets.CreateSampleExport(asset);
-        var service = new SearchService();
 
         // "Location" alone would match "Location", "Location.X", "Location.Y" - the Not
         // term for "Location.X" should exclude just that one, regardless of the Or match.
-        var results = service.SearchAsset(asset, "p", new SearchQuery
+        var results = SearchService.SearchAsset(asset, "p", new SearchQuery
         {
             PropertyNameTerms = [new ConditionTerm("Location", TermTag.Or), new ConditionTerm("Location.X", TermTag.Not)],
         }).ToList();
@@ -204,9 +196,8 @@ public class SearchServiceTests
 
         var source = new ThrowingThenGoodAssetSource("bad.uasset", "good.uasset", goodAsset);
         var versions = new EngineVersionResolver();
-        var service = new SearchService();
 
-        var results = await service.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] });
+        var results = await SearchService.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] });
 
         Assert.Single(results);
         Assert.Equal("good.uasset", results[0].AssetPath);
@@ -223,7 +214,7 @@ public class SearchServiceTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAssetAPI.UAsset> { ["a.uasset"] = asset });
         var query = new SearchQuery { PropertyNameTerms = ["["], PropertyNameCompare = TextCompare.Regex };
 
-        var exception = await Record.ExceptionAsync(() => new SearchService().SearchAllAsync(source, new EngineVersionResolver(), query));
+        var exception = await Record.ExceptionAsync(() => SearchService.SearchAllAsync(source, new EngineVersionResolver(), query));
 
         Assert.Null(exception);
     }

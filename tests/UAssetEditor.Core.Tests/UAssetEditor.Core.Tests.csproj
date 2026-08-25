@@ -1,19 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <TargetFramework>net10.0</TargetFramework>
 
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+
+    <!-- Analyzer rules that fight xUnit convention rather than catching real defects here:
+         CA1707 (underscores in identifiers) is how this suite's own Arrange_Act_Assert-style
+         test names read best; CA1711 flags PakTestCollection for ending in "Collection", which
+         is xUnit's own required naming pattern for a [CollectionDefinition]; CA1861 (hoist a
+         literal array to a static field) targets hot-path allocation, not a one-shot array
+         built once per Assert.Equal call in a test that runs once. -->
+    <NoWarn>$(NoWarn);CA1707;CA1711;CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
-    <PackageReference Include="xunit" Version="2.5.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>
 
   <ItemGroup>

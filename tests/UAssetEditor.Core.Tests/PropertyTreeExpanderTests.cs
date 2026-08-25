@@ -13,9 +13,9 @@ public class PropertyTreeExpanderTests
         var root = PropertyTreeExpander.GetExportRoot(export, asset);
         var names = root.Select(i => i.DisplayName).ToList();
 
-        Assert.DoesNotContain(names, n => n.StartsWith("bEnabled"));
-        Assert.DoesNotContain(names, n => n.StartsWith("Count"));
-        Assert.DoesNotContain(names, n => n.StartsWith("DisplayName"));
+        Assert.DoesNotContain(names, n => n.StartsWith("bEnabled", StringComparison.Ordinal));
+        Assert.DoesNotContain(names, n => n.StartsWith("Count", StringComparison.Ordinal));
+        Assert.DoesNotContain(names, n => n.StartsWith("DisplayName", StringComparison.Ordinal));
         Assert.Contains(root, i => i.Path == "Location" && i.DisplayName == "Location (2)");
         Assert.Contains(root, i => i.Path == "Tags" && i.DisplayName == "Tags (2)");
     }

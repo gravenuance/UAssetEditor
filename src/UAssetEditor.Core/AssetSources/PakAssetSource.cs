@@ -36,7 +36,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     private readonly HashSet<string> _allEntries;
     private readonly List<string> _uassetEntries;
     private readonly Dictionary<string, string> _extractedPaths = new();
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private bool _disposed;
 
     public PakAssetSource(string pakPath, byte[]? aesKey = null, long largePakThresholdBytes = LargePakThresholdBytes)
