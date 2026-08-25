@@ -18,6 +18,15 @@ public enum TreeNodeKind
 
     /// <summary>A non-.uasset leaf file (.uexp, .ubulk, etc.) - shown, but not openable.</summary>
     OtherFile,
+
+    /// <summary>
+    /// One chunk listed from a raw, not-yet-converted IoStore container (see
+    /// <see cref="MainViewModel.LoadIoStoreAsync"/>) - still Zen-format bytes, not directly
+    /// openable/parseable by anything in this app (that's what conversion is for), but
+    /// checkable so the user can select entries for <c>ConvertSelectedCommand</c> the same
+    /// way <see cref="Folder"/>/<see cref="Asset"/> nodes are checkable for extraction.
+    /// </summary>
+    ZenAsset,
 }
 
 /// <summary>
@@ -85,7 +94,13 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         Kind = kind;
     }
 
-    public AssetTreeItemViewModel(PathTreeNode node)
+    /// <param name="asZenEntries">
+    /// True for a raw, not-yet-converted IoStore container's tree (see
+    /// <see cref="MainViewModel.LoadIoStoreAsync"/>): every leaf becomes a checkable
+    /// <see cref="TreeNodeKind.ZenAsset"/> instead of the usual Asset/OtherFile split, since
+    /// none of them are openable/parseable pre-conversion regardless of name.
+    /// </param>
+    public AssetTreeItemViewModel(PathTreeNode node, bool asZenEntries = false)
     {
         ArgumentNullException.ThrowIfNull(node);
 
@@ -97,11 +112,16 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
             Kind = TreeNodeKind.Folder;
             IsCheckable = true;
             foreach (var child in node.Children)
-                Children.Add(new AssetTreeItemViewModel(child));
+                Children.Add(new AssetTreeItemViewModel(child, asZenEntries));
             return;
         }
 
-        if (node.FullPath != null && node.FullPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+        if (asZenEntries)
+        {
+            Kind = TreeNodeKind.ZenAsset;
+            IsCheckable = true;
+        }
+        else if (node.FullPath != null && node.FullPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
         {
             Kind = TreeNodeKind.Asset;
             IsCheckable = true;

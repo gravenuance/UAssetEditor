@@ -101,4 +101,21 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!--
+    retoc.exe (converts between Unreal's IoStore/Zen container format and legacy .pak - see
+    UAssetEditor.Core/AssetSources/IoStore/RetocProcess.cs) is a vendored third-party binary,
+    not built from this repo's own source, so unlike PakWorker.exe above there's no publish
+    step to produce it first - just embed the file that's already checked in at vendor/.
+    Still scoped to PublishSingleFile only (not every plain `dotnet build`), so a normal dev
+    loop doesn't pay to embed a ~7MB binary into the assembly on every build; RetocProcess's
+    own dev fallback (EmbeddedToolLocator.FindUnderSrcSibling) finds this same vendored file
+    directly by path outside of a single-file publish. See THIRD_PARTY_NOTICES.md.
+  -->
+  <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)vendor\retoc.exe">
+      <LogicalName>retoc.exe</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

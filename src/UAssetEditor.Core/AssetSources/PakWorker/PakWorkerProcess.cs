@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Reflection;
-using System.Security.Cryptography;
 
 namespace UAssetEditor.Core.AssetSources.PakWorker;
 
@@ -94,90 +92,26 @@ public sealed class PakWorkerProcess : IDisposable
     /// <summary>The exit code of the most recently spawned worker process, if it has exited - used to tell a known repak crash (0xC0000409) apart from any other exit reason in status/log text.</summary>
     public int? LastExitCode => _process is { HasExited: true } p ? p.ExitCode : null;
 
-    private static string ResolveWorkerExecutable()
-    {
-        var overridePath = Environment.GetEnvironmentVariable(EnvVarOverride);
-        if (!string.IsNullOrWhiteSpace(overridePath) && File.Exists(overridePath))
-            return overridePath;
-
-        var embedded = TryExtractEmbeddedWorker();
-        if (embedded != null) return embedded;
-
-        var devFallback = TryFindDevBuildOutput();
-        if (devFallback != null) return devFallback;
-
-        throw new FileNotFoundException(
-            $"Could not locate {EmbeddedResourceName} via {EnvVarOverride}, an embedded resource, or a dev build output folder.");
-    }
-
-    /// <summary>
-    /// Looks for the worker exe embedded as a resource in the process's entry assembly (only
-    /// present in a real single-file publish of UAssetEditor.App - see its
-    /// PublishAndEmbedPakWorker target). Extracts it once per content hash into LocalAppData
-    /// and reuses that copy on subsequent runs/launches, so a normal launch after the first
-    /// never pays the extraction cost again. The hash-qualified folder (rather than an app
-    /// version number) means an updated embedded worker is picked up automatically and never
-    /// collides with a same-version copy that's still locked by a running previous instance.
-    /// </summary>
-    private static string? TryExtractEmbeddedWorker()
-    {
-        var entryAssembly = Assembly.GetEntryAssembly();
-        using var resourceStream = entryAssembly?.GetManifestResourceStream(EmbeddedResourceName);
-        if (resourceStream == null) return null;
-
-        using var buffered = new MemoryStream();
-        resourceStream.CopyTo(buffered);
-        var bytes = buffered.ToArray();
-        var hash = Convert.ToHexString(SHA256.HashData(bytes))[..16];
-
-        var targetDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "UAssetEditor", "PakWorker", hash);
-        var targetPath = Path.Combine(targetDir, EmbeddedResourceName);
-
-        if (File.Exists(targetPath)) return targetPath;
-
-        Directory.CreateDirectory(targetDir);
-        var tempPath = targetPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        File.WriteAllBytes(tempPath, bytes);
-        File.Move(tempPath, targetPath, overwrite: true);
-        return targetPath;
-    }
+    private static string ResolveWorkerExecutable() =>
+        EmbeddedToolLocator.Resolve(EmbeddedResourceName, EnvVarOverride, TryFindDevBuildOutput);
 
     /// <summary>
     /// Dev/test fallback: looks for the worker's own build output in a sibling folder,
     /// relative to whatever assembly is currently executing (works for both
     /// UAssetEditor.App run from bin\Debug and UAssetEditor.Core.Tests run via `dotnet
     /// test`, since both sit under a `src\` or `tests\` sibling of `src\UAssetEditor.PakWorker\`
-    /// in this repo's known layout). Walks up looking for a directory named "src", then
-    /// descends into UAssetEditor.PakWorker's own bin output for the current configuration.
+    /// in this repo's known layout) - descends into UAssetEditor.PakWorker's own bin output
+    /// for the current configuration and picks the most recently built exe there.
     /// </summary>
-    private static string? TryFindDevBuildOutput()
+    private static string? TryFindDevBuildOutput() => EmbeddedToolLocator.FindUnderSrcSibling(srcDir =>
     {
-        var searchRoot = AppContext.BaseDirectory;
-        var dir = new DirectoryInfo(searchRoot);
+        var workerBin = Path.Combine(srcDir.FullName, "UAssetEditor.PakWorker", "bin");
+        if (!Directory.Exists(workerBin)) return null;
 
-        while (dir != null)
-        {
-            var candidateSrc = dir.Parent?.EnumerateDirectories("src", SearchOption.TopDirectoryOnly).FirstOrDefault()
-                ?? (dir.Name == "src" ? dir : null);
-            if (candidateSrc != null)
-            {
-                var workerBin = Path.Combine(candidateSrc.FullName, "UAssetEditor.PakWorker", "bin");
-                if (Directory.Exists(workerBin))
-                {
-                    var exe = Directory.EnumerateFiles(workerBin, EmbeddedResourceName, SearchOption.AllDirectories)
-                        .OrderByDescending(File.GetLastWriteTimeUtc)
-                        .FirstOrDefault();
-                    if (exe != null) return exe;
-                }
-            }
-
-            dir = dir.Parent;
-        }
-
-        return null;
-    }
+        return Directory.EnumerateFiles(workerBin, EmbeddedResourceName, SearchOption.AllDirectories)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+    });
 
     private void Cleanup()
     {

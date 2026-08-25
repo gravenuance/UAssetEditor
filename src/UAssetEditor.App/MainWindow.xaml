@@ -86,6 +86,7 @@
                             <MenuItem Header="Pack Folder into .pak..." Command="{Binding PackFolderCommand}" />
                             <Separator />
                             <MenuItem Header="Repack Loaded .pak..." Command="{Binding RepackCommand}" />
+                            <MenuItem Header="Repack to IoStore (.utoc)..." Command="{Binding RepackToIoStoreCommand}" />
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
@@ -245,6 +246,9 @@
                         <Button Content="Repack Selected..." Command="{Binding RepackSelectedCommand}"
                                 Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
                                 ToolTip="Builds a new .pak from just the checked items" />
+                        <Button Content="Convert Selected..." Command="{Binding ConvertSelectedCommand}"
+                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
+                                ToolTip="Converts checked IoStore entries to legacy format and opens them for editing" />
                     </StackPanel>
                     <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}" FontSize="{StaticResource Mono.Type.Caption}"
                               MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
@@ -273,6 +277,14 @@
                                                         <Setter Property="Visibility" Value="Visible" />
                                                         <Setter Property="Data" Value="M1,2 L11,2 L11,10 L1,10 Z M1,6 L11,6 M6,2 L6,10" />
                                                         <Setter Property="Stroke" Value="{StaticResource Mono.Purple}" />
+                                                    </DataTrigger>
+                                                    <!-- A raw, not-yet-converted IoStore chunk - a small padlock-ish
+                                                         shape distinct from Asset's page icon, signaling "not directly
+                                                         editable, check it and Convert first". -->
+                                                    <DataTrigger Binding="{Binding Kind}" Value="ZenAsset">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                        <Setter Property="Data" Value="M3,5 L3,3.3 A2.7,2.7 0 0 1 8.7,3.3 L8.7,5 M2,5 L9.7,5 L9.7,10.3 L2,10.3 Z" />
+                                                        <Setter Property="Stroke" Value="{StaticResource Mono.Orange}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
