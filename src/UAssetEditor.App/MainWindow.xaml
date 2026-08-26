@@ -64,7 +64,7 @@
                     <Button.ContextMenu>
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                             <MenuItem Header="Open Folder..." Command="{Binding BrowseSourceFolderCommand}" />
-                            <MenuItem Header="Open .pak / .uasset...   Ctrl+O" Command="{Binding BrowseSourceFileCommand}" />
+                            <MenuItem Header="Open .pak / .uasset / .utoc...   Ctrl+O" Command="{Binding BrowseSourceFileCommand}" />
                             <Separator />
                             <MenuItem Header="Save All Edited   Ctrl+S" Command="{Binding SaveAllEditedCommand}" />
                             <MenuItem Header="Revert Unsaved Edits" Command="{Binding RevertEditsCommand}"
@@ -129,7 +129,7 @@
                 <TextBlock Grid.Column="0" Text="Source" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center" Margin="0,0,5,0" />
                 <TextBox Grid.Column="1" Text="{Binding SourcePath, UpdateSourceTrigger=PropertyChanged}" Height="24" Padding="7,3" FontFamily="{StaticResource Mono.Type.DataFont}" FontSize="{StaticResource Mono.Type.Caption}" VerticalContentAlignment="Center" VerticalAlignment="Center" />
                 <Button x:Name="BrowseSourceButton" Grid.Column="2" Content="Browse..." Click="OpenAttachedContextMenu_Click" Height="24" Padding="10,0" Margin="6,0,0,0" VerticalAlignment="Center"
-                        ToolTip="Pick a folder, .pak file, or .uasset file">
+                        ToolTip="Pick a folder, .pak file, .uasset file, or .utoc file">
                     <Button.ContextMenu>
                         <!-- A ContextMenu is a separate popup root and doesn't inherit DataContext through
                              the visual tree like normal children do - rebind it explicitly via the
@@ -137,7 +137,7 @@
                              can still reach the MainViewModel. -->
                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                             <MenuItem Header="Folder..." Command="{Binding BrowseSourceFolderCommand}" />
-                            <MenuItem Header="File (.pak/.uasset)..." Command="{Binding BrowseSourceFileCommand}" />
+                            <MenuItem Header="File (.pak/.uasset/.utoc)..." Command="{Binding BrowseSourceFileCommand}" />
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
@@ -182,7 +182,7 @@
                     </Button.ContextMenu>
                 </Button>
                 <Button Grid.Column="12" Content="Load" Command="{Binding LoadSourceCommand}" Style="{StaticResource Mono.AccentButton}" Height="24" Padding="14,0" VerticalAlignment="Center"
-                        ToolTip="Loads the folder, .pak, or .uasset detected above" />
+                        ToolTip="Loads the folder, .pak, .uasset, or .utoc detected above" />
             </Grid>
         </Border>
 
@@ -237,18 +237,26 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
+                    <!-- One action dropdown + a single Run button, instead of a separate always-visible
+                         button per action (Load/Extract/Repack/Convert Selected) - that row kept growing
+                         a new button every time a new checkbox-selection action was added. The dropdown
+                         remembers whichever action was last picked (SelectedTreeAction, persisted the same
+                         way every other per-user preference is - see BuildSession/ApplySession), so a
+                         workflow the user repeats stays one click on Run instead of a re-pick every time. -->
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,4">
-                        <Button Content="Load Selected" Command="{Binding LoadSelectedCommand}"
-                                Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}" />
-                        <Button Content="Extract Selected..." Command="{Binding ExtractSelectedCommand}"
+                        <ComboBox ItemsSource="{Binding TreeSelectionActionOptions}" SelectedValuePath="Value"
+                                  SelectedValue="{Binding SelectedTreeAction}" Width="150" Height="24"
+                                  FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Center"
+                                  ToolTip="Which action Run performs on the checked tree items">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Content="Run" Command="{Binding RunSelectedTreeActionCommand}"
                                 Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
-                                ToolTip="Writes every checked file to a chosen folder, preserving paths" />
-                        <Button Content="Repack Selected..." Command="{Binding RepackSelectedCommand}"
-                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
-                                ToolTip="Builds a new .pak from just the checked items" />
-                        <Button Content="Convert Selected..." Command="{Binding ConvertSelectedCommand}"
-                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
-                                ToolTip="Converts checked IoStore entries to legacy format and opens them for editing" />
+                                ToolTip="Runs the selected action above on the checked tree items" />
                     </StackPanel>
                     <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}" FontSize="{StaticResource Mono.Type.Caption}"
                               MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">

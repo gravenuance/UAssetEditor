@@ -40,6 +40,23 @@ public sealed record EngineVersionOption(EngineVersion Value, string Label);
 /// <summary>What a tree-driven "open"/"load" populated the results grid with - a whole export (PropertyPath null) or just one table's own subtree, so a later refresh (UE version/usmap/AES change) can replay exactly that, not more.</summary>
 public sealed record OpenedScope(string AssetPath, int ExportIndex, string? PropertyPath);
 
+/// <summary>
+/// The tree's checkbox-driven actions - previously four separate always-visible buttons, now
+/// one dropdown plus a single Run button (see <see cref="MainViewModel.RunSelectedTreeActionCommand"/>)
+/// so the toolbar doesn't grow a new button every time a new checkbox-selection action is
+/// added (as happened with <see cref="ConvertSelected"/>).
+/// </summary>
+public enum TreeSelectionAction
+{
+    LoadSelected,
+    ExtractSelected,
+    RepackSelected,
+    ConvertSelected,
+}
+
+/// <summary>One selectable entry in the tree-action dropdown, pairing the enum value with the same label its old dedicated button used to show.</summary>
+public sealed record TreeSelectionActionOption(TreeSelectionAction Value, string Label);
+
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
     private static readonly string ConfigPath = Path.Combine(
@@ -95,7 +112,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private bool _suppressReloadOnSettingsChange;
 
-    /// <summary>A folder, a .pak archive, or a single loose .uasset - auto-detected when <see cref="LoadSourceCommand"/> runs.</summary>
+    /// <summary>A folder, a .pak archive, a single loose .uasset, or a .utoc IoStore container - auto-detected when <see cref="LoadSourceCommand"/> runs.</summary>
     [ObservableProperty] private string _sourcePath = "";
     [ObservableProperty] private EngineVersion _defaultEngineVersion = EngineVersion.VER_UE4_27;
     [ObservableProperty] private string? _usmapPath;
@@ -115,10 +132,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         nameof(SearchCommand), nameof(PreviewCommand), nameof(ApplyCommand), nameof(SaveAllEditedCommand),
         nameof(RevertEditsCommand), nameof(RepackCommand), nameof(RepackSelectedCommand), nameof(LoadSelectedCommand),
         nameof(OpenFromTreeCommand), nameof(ExtractSelectedCommand), nameof(UnpackPakCommand), nameof(PackFolderCommand),
-        nameof(AddRuleCommand), nameof(RemoveRuleCommand))]
+        nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
     [ObservableProperty] private bool _isIoStoreBrowsing;
 
     public ObservableCollection<AssetTreeItemViewModel> RootTreeItems { get; } = new();
+
+    public IReadOnlyList<TreeSelectionActionOption> TreeSelectionActionOptions { get; } =
+    [
+        new(TreeSelectionAction.LoadSelected, "Load Selected"),
+        new(TreeSelectionAction.ExtractSelected, "Extract Selected..."),
+        new(TreeSelectionAction.RepackSelected, "Repack Selected..."),
+        new(TreeSelectionAction.ConvertSelected, "Convert Selected..."),
+    ];
+
+    /// <summary>Which tree action Run executes - defaults to the last one actually run (persisted via <see cref="BuildSession"/>/<see cref="ApplySession"/>, same as every other per-user preference this session restores), so a workflow the user repeats stays one click instead of a re-pick every time.</summary>
+    [NotifyCanExecuteChangedFor(nameof(RunSelectedTreeActionCommand))]
+    [ObservableProperty] private TreeSelectionAction _selectedTreeAction = TreeSelectionAction.LoadSelected;
 
     /// <summary>Most-recently-opened sources, newest first - see <see cref="AddRecentSource"/>.</summary>
     public ObservableCollection<RecentSourceEntry> RecentSources { get; } = new();
@@ -194,7 +223,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         nameof(RevertEditsCommand), nameof(RepackCommand), nameof(LoadSourceCommand), nameof(CloseWorkspaceCommand),
         nameof(OpenFromTreeCommand), nameof(LoadSelectedCommand), nameof(ExtractSelectedCommand), nameof(RepackSelectedCommand),
         nameof(ConvertSelectedCommand), nameof(RepackToIoStoreCommand), nameof(UnpackPakCommand), nameof(PackFolderCommand),
-        nameof(AddRuleCommand), nameof(RemoveRuleCommand))]
+        nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [ObservableProperty] private bool _isBusy;
 
@@ -405,7 +434,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void BrowseSourceFile()
     {
-        var dialog = new OpenFileDialog { Title = "Select .pak or .uasset file", Filter = "Pak/Uasset files (*.pak;*.uasset)|*.pak;*.uasset|All files (*.*)|*.*" };
+        var dialog = new OpenFileDialog { Title = "Select .pak, .uasset, or .utoc file", Filter = "Pak/Uasset/IoStore files (*.pak;*.uasset;*.utoc)|*.pak;*.uasset;*.utoc|All files (*.*)|*.*" };
         if (dialog.ShowDialog() == true)
             SourcePath = dialog.FileName;
     }
@@ -726,6 +755,36 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             StatusMessage = $"Failed to load properties for {assetPath}: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// Runs whichever of the four checkbox-selection actions <see cref="SelectedTreeAction"/>
+    /// currently holds - the single Run button's target. Delegates to each action's own
+    /// existing command method directly (not through its generated ICommand wrapper) so this
+    /// stays a plain dispatch with no double command-invocation machinery; <see cref="CanRunSelectedTreeAction"/>
+    /// still asks that same underlying command's own CanExecute, so eligibility (e.g. Convert
+    /// staying available during IoStore browsing while the other three don't, per
+    /// <see cref="CanEditWorkspace"/>) is never duplicated or able to drift out of sync.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRunSelectedTreeAction))]
+    private async Task RunSelectedTreeActionAsync()
+    {
+        switch (SelectedTreeAction)
+        {
+            case TreeSelectionAction.LoadSelected: await LoadSelectedAsync(); break;
+            case TreeSelectionAction.ExtractSelected: await ExtractSelectedAsync(); break;
+            case TreeSelectionAction.RepackSelected: await RepackSelectedAsync(); break;
+            case TreeSelectionAction.ConvertSelected: await ConvertSelectedAsync(); break;
+        }
+    }
+
+    private bool CanRunSelectedTreeAction() => SelectedTreeAction switch
+    {
+        TreeSelectionAction.LoadSelected => LoadSelectedCommand.CanExecute(null),
+        TreeSelectionAction.ExtractSelected => ExtractSelectedCommand.CanExecute(null),
+        TreeSelectionAction.RepackSelected => RepackSelectedCommand.CanExecute(null),
+        TreeSelectionAction.ConvertSelected => ConvertSelectedCommand.CanExecute(null),
+        _ => false,
+    };
 
     /// <summary>
     /// Loads every checked export's or table's properties into the grid at once. A whole
@@ -1748,6 +1807,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         DefaultEngineVersion = DefaultEngineVersion,
         UsmapPath = UsmapPath,
         CreateBackup = CreateBackup,
+        SelectedTreeAction = SelectedTreeAction,
         Scope = BuildScope(),
         Rules = new Collection<EditRule>(Rules.Select(r => r.Rule).ToList()),
         RecentSources = new Collection<RecentSourceEntry>(RecentSources.ToList()),
@@ -1759,6 +1819,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         DefaultEngineVersion = session.DefaultEngineVersion;
         UsmapPath = session.UsmapPath;
         CreateBackup = session.CreateBackup;
+        SelectedTreeAction = session.SelectedTreeAction;
 
         ExportNameTerms.Clear();
         foreach (var term in session.Scope.ExportNameTerms) ExportNameTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));

@@ -12,6 +12,7 @@ public sealed class EditorSession
     public EngineVersion DefaultEngineVersion { get; init; } = EngineVersion.VER_UE4_27;
     public string? UsmapPath { get; init; }
     public bool CreateBackup { get; init; } = true;
+    public TreeSelectionAction SelectedTreeAction { get; init; } = TreeSelectionAction.LoadSelected;
     public SearchQuery Scope { get; init; } = new();
     public Collection<EditRule> Rules { get; init; } = new();
 
