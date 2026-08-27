@@ -184,12 +184,19 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var retocInput = RetocDirectoryInputResolver.Resolve(SourceFolder);
+        if (retocInput == null)
+        {
+            Status = "Pick a source folder that isn't a drive root.";
+            return;
+        }
+
         Status = "Packing to IoStore...";
         ProgressDone = 0;
         ProgressTotal = 1;
 
         var aesKey = PakAesKey.Parse(AesKeyHex);
-        await RetocProcess.ConvertToZenAsync(SourceFolder, OutputPath, retocVersion, aesKey, cancellationToken);
+        await RetocProcess.ConvertToZenAsync(retocInput, OutputPath, retocVersion, aesKey, cancellationToken);
 
         ProgressDone = 1;
         Status = $"Packed to {OutputPath}.";

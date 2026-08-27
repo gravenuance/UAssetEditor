@@ -54,19 +54,21 @@ public static class RetocProcess
 
     /// <summary>
     /// Converts the given entries (asset filenames, as retoc's own -f/--filter expects) from
-    /// <paramref name="utocPath"/> into legacy-format loose files under
-    /// <paramref name="outputDirectory"/>. Engine version is left to retoc's own
-    /// auto-detection - confirmed via `to-legacy --help` that --version is only an override
-    /// there, unlike to-zen where retoc has nothing of its own to detect it from.
+    /// <paramref name="utocPath"/> into legacy format at <paramref name="output"/> - a loose
+    /// folder, or (confirmed via `to-legacy --help`: "Output directory or .pak") a .pak file
+    /// directly. An empty <paramref name="filters"/> list converts every entry. Engine version
+    /// is left to retoc's own auto-detection - confirmed via `to-legacy --help` that --version
+    /// is only an override there, unlike to-zen where retoc has nothing of its own to detect it
+    /// from.
     /// </summary>
     public static Task ConvertToLegacyAsync(
-        string utocPath, string outputDirectory, IReadOnlyList<string> filters, byte[]? aesKey, CancellationToken cancellationToken = default)
+        string utocPath, string output, IReadOnlyList<string> filters, byte[]? aesKey, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(utocPath);
-        ArgumentNullException.ThrowIfNull(outputDirectory);
+        ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
 
-        var args = new List<string> { "to-legacy", utocPath, outputDirectory };
+        var args = new List<string> { "to-legacy", utocPath, output };
         foreach (var filter in filters)
         {
             args.Add("-f");
