@@ -5,12 +5,13 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:UAssetEditor.App.ViewModels"
         mc:Ignorable="d"
-        Title="Pack Folder into .pak..." Height="380" Width="480" ResizeMode="NoResize"
+        Title="Pack Folder..." Height="420" Width="480" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource Mono.Background}"
         d:DataContext="{d:DesignInstance vm:PackFolderViewModel}">
     <Grid Margin="14">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -31,15 +32,26 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,0,0,8">
-            <TextBlock Text="Output .pak" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
-            <DockPanel Margin="0,2,0,0">
-                <Button Content="Browse..." DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2"
-                        Command="{Binding BrowseOutputCommand}" IsEnabled="{Binding IsNotRunning}" />
-                <TextBox Text="{Binding OutputPakPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
-            </DockPanel>
+            <TextBlock Text="Output format" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+            <ComboBox ItemsSource="{Binding OutputFormats}" SelectedValuePath="Value" SelectedValue="{Binding OutputFormat}" Margin="0,2,0,0" IsEnabled="{Binding IsNotRunning}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Label}" />
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Margin="0,0,0,8">
+            <TextBlock Text="Output" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+            <DockPanel Margin="0,2,0,0">
+                <Button Content="Browse..." DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2"
+                        Command="{Binding BrowseOutputCommand}" IsEnabled="{Binding IsNotRunning}" />
+                <TextBox Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
+            </DockPanel>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3" Margin="0,0,0,8" Visibility="{Binding IsPakFormat, Converter={StaticResource BoolToVisibility}}">
             <TextBlock Text="Mount point" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
             <DockPanel Margin="0,2,0,0">
                 <Button Content="Detect from .pak..." DockPanel.Dock="Right" Margin="4,0,0,0" Padding="8,2"
@@ -49,7 +61,7 @@
             </DockPanel>
         </StackPanel>
 
-        <WrapPanel Grid.Row="3" Margin="0,0,0,8">
+        <WrapPanel Grid.Row="4" Margin="0,0,0,8" Visibility="{Binding IsPakFormat, Converter={StaticResource BoolToVisibility}}">
             <StackPanel Width="180" Margin="0,0,8,0">
                 <TextBlock Text="Engine pak version" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
                 <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding Version}" Margin="0,2,0,0" IsEnabled="{Binding IsNotRunning}" />
@@ -66,20 +78,21 @@
             </StackPanel>
         </WrapPanel>
 
-        <StackPanel Grid.Row="4" Margin="0,0,0,8">
+        <StackPanel Grid.Row="5" Margin="0,0,0,8">
             <TextBlock Text="AES key (hex)" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
             <TextBox Text="{Binding AesKeyHex, UpdateSourceTrigger=PropertyChanged}" Margin="0,2,0,0" IsReadOnly="{Binding IsRunning}" FontFamily="{StaticResource Mono.Type.DataFont}" />
         </StackPanel>
 
-        <TextBlock Grid.Row="5" Text="Every file under the source folder becomes one pak entry, keyed by its path relative to that folder." TextWrapping="Wrap" FontStyle="Italic" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Top" />
+        <TextBlock Grid.Row="6" Text="Every file under the source folder becomes one entry, keyed by its path relative to that folder." TextWrapping="Wrap" FontStyle="Italic" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" VerticalAlignment="Top" />
 
-        <StackPanel Grid.Row="6" Margin="0,8,0,8">
+        <StackPanel Grid.Row="7" Margin="0,8,0,8">
             <ProgressBar Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressDone, Mode=OneWay}" Height="14"
+                         IsIndeterminate="{Binding IsIndeterminateProgress}"
                          Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
             <TextBlock Text="{Binding Status}" Margin="0,4,0,0" FontSize="{StaticResource Mono.Type.Body}" />
         </StackPanel>
 
-        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Margin="0,0,6,0" Padding="10,3" Command="{Binding CancelCommand}"
                     Visibility="{Binding IsRunning, Converter={StaticResource BoolToVisibility}}" />
             <Button Content="Close" Margin="0,0,6,0" Padding="10,3" Click="CloseButton_Click"

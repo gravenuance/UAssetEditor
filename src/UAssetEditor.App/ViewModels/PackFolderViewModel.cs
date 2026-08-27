@@ -2,18 +2,38 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using UAssetAPI;
+using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.AssetSources;
+using UAssetEditor.Core.AssetSources.IoStore;
 
 namespace UAssetEditor.App.ViewModels;
 
 /// <summary>One selectable entry in the Pack dialog's compression dropdown - "Default" (null) lets repak pick its own, the same behavior the existing Repack flow already uses.</summary>
 public sealed record CompressionOption(PakCompression? Value, string Label);
 
-/// <summary>Backs the Pack Folder into .pak dialog - builds a brand-new .pak from a chosen loose folder via <see cref="PakPacker"/>, off the UI thread, with live progress.</summary>
+/// <summary>What <see cref="PackFolderViewModel.RunAsync"/> builds the source folder into - see <see cref="PackFolderViewModel.OutputFormat"/>.</summary>
+public enum PackOutputFormat
+{
+    Pak,
+    IoStore,
+}
+
+/// <summary>One selectable entry in the Pack dialog's output-format dropdown.</summary>
+public sealed record PackOutputFormatOption(PackOutputFormat Value, string Label);
+
+/// <summary>
+/// Backs the Pack Folder dialog - builds a brand-new .pak from a chosen loose folder via
+/// <see cref="PakPacker"/>, or converts that same folder straight into an IoStore .utoc/.ucas
+/// pair via retoc's to-zen (<see cref="RetocProcess.ConvertToZenAsync"/>), off the UI thread,
+/// with live progress where the underlying tool provides any.
+/// </summary>
 public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
 {
+    private readonly EngineVersion _defaultEngineVersion;
+
     [ObservableProperty] private string _sourceFolder;
-    [ObservableProperty] private string _outputPakPath = "";
+    [ObservableProperty] private string _outputPath = "";
+    [ObservableProperty] private PackOutputFormat _outputFormat = PackOutputFormat.Pak;
     [ObservableProperty] private string _mountPoint;
     [ObservableProperty] private string _aesKeyHex;
     [ObservableProperty] private PakVersion _version = PakVersion.V11;
@@ -41,14 +61,23 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     public IReadOnlyList<CompressionOption> Compressions { get; } =
         [new CompressionOption(null, "Default"), ..Enum.GetValues<PakCompression>().Select(c => new CompressionOption(c, c.ToString()))];
 
-    public bool IsNotRunning => !IsRunning;
+    public IReadOnlyList<PackOutputFormatOption> OutputFormats { get; } =
+        [new PackOutputFormatOption(PackOutputFormat.Pak, "Legacy .pak"), new PackOutputFormatOption(PackOutputFormat.IoStore, "IoStore (.utoc)")];
 
-    public PackFolderViewModel(string? initialSourceFolder, string initialMountPoint, string initialAesKeyHex,
+    public bool IsNotRunning => !IsRunning;
+    public bool IsPakFormat => OutputFormat == PackOutputFormat.Pak;
+    public bool IsIoStoreFormat => OutputFormat == PackOutputFormat.IoStore;
+
+    /// <summary>Retoc gives no incremental progress for to-zen, unlike <see cref="PakPacker"/>'s per-file callback - so the progress bar just spins while an IoStore pack is running instead of tracking real completion.</summary>
+    public bool IsIndeterminateProgress => IsRunning && IsIoStoreFormat;
+
+    public PackFolderViewModel(string? initialSourceFolder, string initialMountPoint, string initialAesKeyHex, EngineVersion defaultEngineVersion,
         bool mountPointIsAuthoritative = false, PakVersion? initialVersion = null)
     {
         _sourceFolder = initialSourceFolder ?? "";
         _mountPoint = initialMountPoint;
         _aesKeyHex = initialAesKeyHex;
+        _defaultEngineVersion = defaultEngineVersion;
         _mountPointIsAuthoritative = mountPointIsAuthoritative;
         if (initialVersion is { } version) _version = version;
     }
@@ -63,8 +92,10 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void BrowseOutput()
     {
-        var dialog = new SaveFileDialog { Title = "Pack to...", Filter = "Pak files (*.pak)|*.pak" };
-        if (dialog.ShowDialog() == true) OutputPakPath = dialog.FileName;
+        var dialog = IsIoStoreFormat
+            ? new SaveFileDialog { Title = "Pack to...", Filter = "IoStore container (*.utoc)|*.utoc" }
+            : new SaveFileDialog { Title = "Pack to...", Filter = "Pak files (*.pak)|*.pak" };
+        if (dialog.ShowDialog() == true) OutputPath = dialog.FileName;
     }
 
     /// <summary>
@@ -101,24 +132,13 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     private async Task RunAsync()
     {
         IsRunning = true;
-        Status = "Packing...";
         _cts = new CancellationTokenSource();
         try
         {
-            var aesKey = PakAesKey.Parse(AesKeyHex);
-            var sourceFolder = SourceFolder;
-            var outputPath = OutputPakPath;
-            var mountPoint = MountPoint;
-            var version = Version;
-            var compression = Compression is { } c ? new[] { c } : null;
-            var progress = new Progress<(int Done, int Total)>(p => { ProgressDone = p.Done; ProgressTotal = p.Total; });
-
-            var result = await Task.Run(() => PakPacker.Build(sourceFolder, outputPath, mountPoint, version, compression, aesKey, progress, _cts.Token), _cts.Token);
-
-            Status = result.HasFailures
-                ? $"Pack failed: {result.FailedEntries[0].Reason}"
-                : $"Packed {ProgressDone} file(s) to {outputPath}.";
-            IsDone = true;
+            if (IsIoStoreFormat)
+                await RunIoStoreAsync(_cts.Token);
+            else
+                await RunPakAsync(_cts.Token);
         }
         catch (OperationCanceledException)
         {
@@ -136,6 +156,46 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         }
     }
 
+    private async Task RunPakAsync(CancellationToken cancellationToken)
+    {
+        Status = "Packing...";
+        var aesKey = PakAesKey.Parse(AesKeyHex);
+        var sourceFolder = SourceFolder;
+        var outputPath = OutputPath;
+        var mountPoint = MountPoint;
+        var version = Version;
+        var compression = Compression is { } c ? new[] { c } : null;
+        var progress = new Progress<(int Done, int Total)>(p => { ProgressDone = p.Done; ProgressTotal = p.Total; });
+
+        var result = await Task.Run(() => PakPacker.Build(sourceFolder, outputPath, mountPoint, version, compression, aesKey, progress, cancellationToken), cancellationToken);
+
+        Status = result.HasFailures
+            ? $"Pack failed: {result.FailedEntries[0].Reason}"
+            : $"Packed {ProgressDone} file(s) to {outputPath}.";
+        IsDone = true;
+    }
+
+    private async Task RunIoStoreAsync(CancellationToken cancellationToken)
+    {
+        var retocVersion = EngineVersionMapping.ToRetocVersion(_defaultEngineVersion);
+        if (retocVersion == null)
+        {
+            Status = $"'{_defaultEngineVersion}' has no IoStore equivalent - pick a UE4.25+ engine version first.";
+            return;
+        }
+
+        Status = "Packing to IoStore...";
+        ProgressDone = 0;
+        ProgressTotal = 1;
+
+        var aesKey = PakAesKey.Parse(AesKeyHex);
+        await RetocProcess.ConvertToZenAsync(SourceFolder, OutputPath, retocVersion, aesKey, cancellationToken);
+
+        ProgressDone = 1;
+        Status = $"Packed to {OutputPath}.";
+        IsDone = true;
+    }
+
     [RelayCommand(CanExecute = nameof(IsRunning))]
     private void Cancel() => _cts?.Cancel();
 
@@ -145,7 +205,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private bool CanRun() => !IsRunning && !string.IsNullOrWhiteSpace(SourceFolder) && !string.IsNullOrWhiteSpace(OutputPakPath);
+    private bool CanRun() => !IsRunning && !string.IsNullOrWhiteSpace(SourceFolder) && !string.IsNullOrWhiteSpace(OutputPath);
 
     /// <summary>
     /// Defaults the mount point to the chosen folder's own name ("../../../&lt;name&gt;/")
@@ -177,12 +237,20 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
             _mountPointIsAuthoritative = true;
     }
 
-    partial void OnOutputPakPathChanged(string value) => RunCommand.NotifyCanExecuteChanged();
+    partial void OnOutputPathChanged(string value) => RunCommand.NotifyCanExecuteChanged();
+
+    partial void OnOutputFormatChanged(PackOutputFormat value)
+    {
+        OnPropertyChanged(nameof(IsPakFormat));
+        OnPropertyChanged(nameof(IsIoStoreFormat));
+        OnPropertyChanged(nameof(IsIndeterminateProgress));
+    }
 
     partial void OnIsRunningChanged(bool value)
     {
         RunCommand.NotifyCanExecuteChanged();
         CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsNotRunning));
+        OnPropertyChanged(nameof(IsIndeterminateProgress));
     }
 }

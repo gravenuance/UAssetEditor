@@ -78,19 +78,22 @@ public static class RetocProcess
     }
 
     /// <summary>
-    /// Converts a legacy-format loose folder back into a fresh .utoc/.ucas pair at
-    /// <paramref name="outputUtocPath"/>. <paramref name="retocEngineVersion"/> must be one of
-    /// the strings <see cref="EngineVersionMapping.ToRetocVersion"/> returns (e.g. "UE5_3") -
-    /// required by retoc itself for this direction, unlike to-legacy.
+    /// Converts a legacy-format loose folder, or an existing .pak, back into a fresh
+    /// .utoc/.ucas pair at <paramref name="outputUtocPath"/> - retoc's own to-zen accepts
+    /// either kind of input directly (confirmed via `to-zen --help`: "Input directory or
+    /// .pak"), so no intermediate re-pack is needed when the source is already a .pak.
+    /// <paramref name="retocEngineVersion"/> must be one of the strings
+    /// <see cref="EngineVersionMapping.ToRetocVersion"/> returns (e.g. "UE5_3") - required by
+    /// retoc itself for this direction, unlike to-legacy.
     /// </summary>
     public static Task ConvertToZenAsync(
-        string inputDirectory, string outputUtocPath, string retocEngineVersion, byte[]? aesKey, CancellationToken cancellationToken = default)
+        string input, string outputUtocPath, string retocEngineVersion, byte[]? aesKey, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(inputDirectory);
+        ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(outputUtocPath);
         ArgumentNullException.ThrowIfNull(retocEngineVersion);
 
-        var args = new List<string> { "to-zen", inputDirectory, outputUtocPath, "--version", retocEngineVersion };
+        var args = new List<string> { "to-zen", input, outputUtocPath, "--version", retocEngineVersion };
         AddAesKey(args, aesKey);
 
         return RunAsync(args, static _ => { }, cancellationToken);

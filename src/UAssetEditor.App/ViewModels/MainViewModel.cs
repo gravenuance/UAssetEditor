@@ -1195,18 +1195,30 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Converts the current loose-folder workspace's root back into a fresh .utoc/.ucas pair
-    /// via retoc's to-zen - works whether that folder came from <see cref="ConvertSelectedCommand"/>
-    /// or was opened by hand, since retoc only cares that it's a directory of legacy-format
-    /// files, not where they came from. Always writes to a new file, matching every other
-    /// repack path's convention of never overwriting the source.
+    /// Converts the current workspace back into a fresh .utoc/.ucas pair via retoc's to-zen -
+    /// from a loose-folder workspace (whether that folder came from <see cref="ConvertSelectedCommand"/>
+    /// or was opened by hand) or directly from an open legacy .pak, since retoc's to-zen accepts
+    /// either a directory or a .pak as its input. Always writes to a new file, matching every
+    /// other repack path's convention of never overwriting the source.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanRepackToIoStore))]
     private async Task RepackToIoStoreAsync()
     {
-        if (_currentSource is not LooseFolderAssetSource)
+        string input;
+        string defaultFileName;
+        if (_currentSource is LooseFolderAssetSource)
         {
-            StatusMessage = "Open a loose folder (or convert IoStore entries) first.";
+            input = SourcePath;
+            defaultFileName = Path.GetFileNameWithoutExtension(SourcePath.TrimEnd('\\', '/'));
+        }
+        else if (_currentPakSource != null)
+        {
+            input = _currentPakSource.PakPath;
+            defaultFileName = Path.GetFileNameWithoutExtension(_currentPakSource.PakPath);
+        }
+        else
+        {
+            StatusMessage = "Open a loose folder, a .pak, or convert IoStore entries first.";
             return;
         }
 
@@ -1221,11 +1233,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             Title = "Repack to IoStore...",
             Filter = "IoStore container (*.utoc)|*.utoc",
-            FileName = Path.GetFileNameWithoutExtension(SourcePath.TrimEnd('\\', '/')) + ".utoc",
+            FileName = defaultFileName + ".utoc",
         };
         if (dialog.ShowDialog() != true) return;
 
-        var inputFolder = SourcePath;
         var outputPath = dialog.FileName;
 
         IsBusy = true;
@@ -1233,7 +1244,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var aesKey = ParseAesKey(PakAesKeyHex);
-            await RetocProcess.ConvertToZenAsync(inputFolder, outputPath, retocVersion, aesKey);
+            await RetocProcess.ConvertToZenAsync(input, outputPath, retocVersion, aesKey);
             StatusMessage = $"Repacked to {outputPath}.";
         }
         catch (Exception ex)
@@ -1258,7 +1269,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
     private void PackFolder()
     {
-        using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex,
+        using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex, DefaultEngineVersion,
             mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version);
         new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
@@ -1703,8 +1714,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private bool CanEditWorkspace() => !IsBusy && !IsIoStoreBrowsing;
 
-    /// <summary>Repack to IoStore only makes sense for a loose-folder-backed workspace - that's the input shape retoc's to-zen actually wants (a directory of legacy-format files), and it works whether that folder came from <see cref="ConvertSelectedCommand"/> or was opened by hand.</summary>
-    private bool CanRepackToIoStore() => !IsBusy && _currentSource is LooseFolderAssetSource;
+    /// <summary>Repack to IoStore works from either a loose-folder-backed workspace or an open legacy .pak - retoc's to-zen accepts both a directory and a .pak as input directly, so either source can go straight to IoStore.</summary>
+    private bool CanRepackToIoStore() => !IsBusy && (_currentSource is LooseFolderAssetSource || _currentPakSource != null);
 
     private void OnResultRowDirty(SearchResultRow row) => _dirtyAssetPaths.Add(row.AssetPath);
 
