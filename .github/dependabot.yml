@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Covers all four .csproj files under the solution (App, Core, PakWorker, Core.Tests).
+  # This only reaches NuGet-published dependencies - it can't see UAssetAPI's unreleased
+  # upstream commits or the vendored retoc.exe binary; scripts/CheckDependencyUpdates.ps1
+  # still covers those two and should keep being run before a release.
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
