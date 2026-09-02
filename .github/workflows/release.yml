@@ -23,15 +23,20 @@ jobs:
       - name: Build (Release)
         run: dotnet build UAssetEditor.slnx -c Release --no-restore
 
-      - name: Test (Release)
+      - name: Test Core (Release)
         run: dotnet test tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj -c Release --no-build
+
+      - name: Test App (Release)
+        run: dotnet test tests/UAssetEditor.App.Tests/UAssetEditor.App.Tests.csproj -c Release --no-build
 
       - name: Publish single-file exe
         run: dotnet publish src/UAssetEditor.App/UAssetEditor.App.csproj -p:PublishProfile=SingleFileRelease
 
       # Pulls the section under "## [<version>]" out of CHANGELOG.md, stopping at the next
-      # "## [" heading, to use as this release's notes - keeps one changelog as the single
-      # source of truth instead of writing release notes twice.
+      # "## [" heading or the reference-style link definitions at the file's end, to use as
+      # this release's notes - keeps one changelog as the single source of truth instead of
+      # writing release notes twice. Verified locally against the real file before trusting
+      # it here (both the middle-of-file and last-section cases).
       - name: Extract changelog section
         id: changelog
         shell: pwsh
@@ -44,7 +49,8 @@ jobs:
             exit 1
           }
           $rest = $lines[$start..($lines.Length - 1)]
-          $endOffset = ($rest | Select-Object -Skip 1 | Select-String -Pattern "^## \[").LineNumber
+          $endOffset = ($rest | Select-Object -Skip 1 | Select-String -Pattern "^## \[|^\[\w").LineNumber
+          if ($endOffset -is [array]) { $endOffset = $endOffset[0] }
           $section = if ($endOffset) { $rest[0..($endOffset - 1)] } else { $rest }
           $section -join "`n" | Out-File -FilePath release-notes.md -Encoding utf8
 
