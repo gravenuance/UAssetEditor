@@ -8,6 +8,12 @@ namespace UAssetEditor.App.ViewModels;
 /// <summary>Everything needed to restore a working session: source/versioning settings, search scope, and the rule list.</summary>
 public sealed class EditorSession
 {
+    /// <summary>Bumped whenever a breaking shape change needs <see cref="MainViewModel"/>'s load path to migrate an older file forward - see its LoadConfig.</summary>
+    public const int CurrentSchemaVersion = 1;
+
+    /// <summary>Defaults to 0 (not <see cref="CurrentSchemaVersion"/>) so a config file saved before this field existed reads back as "unversioned" rather than silently appearing current.</summary>
+    public int SchemaVersion { get; init; }
+
     public string SourcePath { get; init; } = "";
     public EngineVersion DefaultEngineVersion { get; init; } = EngineVersion.VER_UE4_27;
     public string? UsmapPath { get; init; }

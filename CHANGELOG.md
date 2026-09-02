@@ -16,6 +16,8 @@ All notable changes to this project are documented here.
 - The results grid's columns reflowing (and visibly scroll-jumping) on every value edit.
 - `EmbeddedToolLocator` re-reading and SHA-256-hashing the embedded retoc/worker payload on every call instead of only once.
 - Unhandled exceptions and unobserved task failures now get logged to a persistent file instead of vanishing when the window closes.
+- A path-traversal vulnerability in `PakUnpacker`: a crafted pak entry path could write outside the chosen destination folder.
+- The saved session config had no schema version and wrote non-atomically (a crash mid-save could corrupt it); both fixed.
 
 ### Changed
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.

@@ -1723,10 +1723,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
 
-            File.WriteAllText(ConfigPath, JsonSerializer.Serialize(BuildSession(), JsonOptions));
+            // Write-then-rename instead of File.WriteAllText directly on ConfigPath - a crash
+            // or power loss mid-write can't leave a half-written, unreadable config behind,
+            // since the rename only happens after every byte's already safely on disk.
+            var tempPath = ConfigPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(BuildSession(), JsonOptions));
+            File.Move(tempPath, ConfigPath, overwrite: true);
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Save config failed -> '{ConfigPath}'.", ConfigPath);
             StatusMessage = $"Save config failed: {ex.Message}";
         }
     }
@@ -1745,11 +1751,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var session = JsonSerializer.Deserialize<EditorSession>(File.ReadAllText(ConfigPath), JsonOptions);
             if (session == null) return;
 
+            // Newer than this build understands - loading it anyway risks silently losing
+            // whatever the newer fields meant, so keep today's defaults instead of guessing.
+            if (session.SchemaVersion > EditorSession.CurrentSchemaVersion)
+            {
+                Logger.LogWarning("Saved config schema version {SavedVersion} is newer than this build's {CurrentVersion} - ignoring it.",
+                    session.SchemaVersion, EditorSession.CurrentSchemaVersion);
+                StatusMessage = "Saved configuration is from a newer version - using defaults instead.";
+                return;
+            }
+
             ApplySession(session);
             StatusMessage = "Configuration loaded.";
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Load config failed <- '{ConfigPath}'.", ConfigPath);
             StatusMessage = $"Load config failed: {ex.Message}";
         }
     }
@@ -1874,6 +1891,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private EditorSession BuildSession() => new()
     {
+        SchemaVersion = EditorSession.CurrentSchemaVersion,
         SourcePath = SourcePath,
         DefaultEngineVersion = DefaultEngineVersion,
         UsmapPath = UsmapPath,
