@@ -87,6 +87,7 @@
                             <Separator />
                             <MenuItem Header="Repack Loaded .pak..." Command="{Binding RepackCommand}" />
                             <MenuItem Header="Repack to IoStore (.utoc)..." Command="{Binding RepackToIoStoreCommand}" />
+                            <MenuItem Header="Convert IoStore to Legacy..." Command="{Binding ConvertIoStoreToLegacyCommand}" />
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>
@@ -347,25 +348,27 @@
                                     </Style.Triggers>
                                 </Style>
                             </DataGrid.RowStyle>
-                            <!-- Width="*" columns fill exactly the visible viewport and clip
-                                 overflow instead of scrolling - SizeToCells (plus a floor via
-                                 MinWidth) lets each column grow to fit its actual content, so a
-                                 long path or value genuinely overflows into the grid's own
-                                 horizontal scrollbar instead of being cut off with no way to
-                                 see the rest. -->
+                            <!-- Width="*"/SizeToCells columns fill/grow to content, but SizeToCells
+                                 re-measures off the live editing control too - typing or
+                                 committing a VALUE edit reflows every column's width mid-edit,
+                                 which visibly shifts the grid's horizontal scroll position back
+                                 and forth. Fixed pixel widths never get re-measured, so editing
+                                 no longer moves anything; columns stay manually resizable
+                                 (CanUserResizeColumns is on by default) and the grid's own
+                                 horizontal scrollbar still reaches content wider than its column. -->
                             <DataGrid.Columns>
                                 <!-- Export names are chrome (identifiers you read, not data you copy/compare
                                      character-by-character) - back to the UI font, overriding the DataGridCell
                                      style's default monospace that Property/Value keep. -->
-                                <DataGridTextColumn Header="EXPORT" Binding="{Binding ExportName}" IsReadOnly="True" Width="SizeToCells" MinWidth="120">
+                                <DataGridTextColumn Header="EXPORT" Binding="{Binding ExportName}" IsReadOnly="True" Width="160" MinWidth="120">
                                     <DataGridTextColumn.CellStyle>
                                         <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
                                             <Setter Property="FontFamily" Value="Segoe UI" />
                                         </Style>
                                     </DataGridTextColumn.CellStyle>
                                 </DataGridTextColumn>
-                                <DataGridTextColumn Header="PROPERTY" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="SizeToCells" MinWidth="150" />
-                                <DataGridTextColumn Header="VALUE" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="SizeToCells" MinWidth="200">
+                                <DataGridTextColumn Header="PROPERTY" Binding="{Binding PropertyPath}" IsReadOnly="True" Width="220" MinWidth="150" />
+                                <DataGridTextColumn Header="VALUE" Binding="{Binding Value, UpdateSourceTrigger=LostFocus}" Width="280" MinWidth="200">
                                     <DataGridTextColumn.CellStyle>
                                         <!-- Reference and Unsupported rows have nowhere to write an edit to - disabling
                                              the cell (rather than leaving it editable and silently doing nothing) makes

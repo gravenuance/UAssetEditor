@@ -132,7 +132,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         nameof(SearchCommand), nameof(PreviewCommand), nameof(ApplyCommand), nameof(SaveAllEditedCommand),
         nameof(RevertEditsCommand), nameof(RepackCommand), nameof(RepackSelectedCommand), nameof(LoadSelectedCommand),
         nameof(OpenFromTreeCommand), nameof(ExtractSelectedCommand), nameof(UnpackPakCommand), nameof(PackFolderCommand),
-        nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
+        nameof(ConvertIoStoreToLegacyCommand), nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
     [ObservableProperty] private bool _isIoStoreBrowsing;
 
     public ObservableCollection<AssetTreeItemViewModel> RootTreeItems { get; } = new();
@@ -223,7 +223,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         nameof(RevertEditsCommand), nameof(RepackCommand), nameof(LoadSourceCommand), nameof(CloseWorkspaceCommand),
         nameof(OpenFromTreeCommand), nameof(LoadSelectedCommand), nameof(ExtractSelectedCommand), nameof(RepackSelectedCommand),
         nameof(ConvertSelectedCommand), nameof(RepackToIoStoreCommand), nameof(UnpackPakCommand), nameof(PackFolderCommand),
-        nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
+        nameof(ConvertIoStoreToLegacyCommand), nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     [ObservableProperty] private bool _isBusy;
 
@@ -1197,23 +1197,26 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Converts the current workspace back into a fresh .utoc/.ucas pair via retoc's to-zen -
     /// from a loose-folder workspace (whether that folder came from <see cref="ConvertSelectedCommand"/>
-    /// or was opened by hand) or directly from an open legacy .pak, since retoc's to-zen accepts
-    /// either a directory or a .pak as its input. Always writes to a new file, matching every
-    /// other repack path's convention of never overwriting the source.
+    /// or was opened by hand) or from an open legacy .pak. retoc's to-zen technically accepts a
+    /// .pak directly, but its package-path derivation for UE4.27-and-earlier containers needs
+    /// every asset's project-relative path to include a project-name segment (see
+    /// <see cref="RetocDirectoryInputResolver"/>) - a real pak's own entries are stored relative
+    /// to ITS mount point instead, without that segment baked in, so a pak-backed workspace is
+    /// extracted into a correctly-named temp folder first rather than handed to retoc directly.
+    /// A loose-folder workspace goes through <see cref="RetocDirectoryInputResolver.Resolve"/>
+    /// the same way <see cref="PackFolderViewModel"/> does. Always writes to a new file, matching
+    /// every other repack path's convention of never overwriting the source.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanRepackToIoStore))]
     private async Task RepackToIoStoreAsync()
     {
-        string input;
         string defaultFileName;
         if (_currentSource is LooseFolderAssetSource)
         {
-            input = SourcePath;
             defaultFileName = Path.GetFileNameWithoutExtension(SourcePath.TrimEnd('\\', '/'));
         }
         else if (_currentPakSource != null)
         {
-            input = _currentPakSource.PakPath;
             defaultFileName = Path.GetFileNameWithoutExtension(_currentPakSource.PakPath);
         }
         else
@@ -1225,7 +1228,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var retocVersion = EngineVersionMapping.ToRetocVersion(DefaultEngineVersion);
         if (retocVersion == null)
         {
-            StatusMessage = $"'{DefaultEngineVersion}' has no IoStore equivalent - pick a UE4.25+ engine version first.";
+            StatusMessage = "Pick a UE4.25+ engine version - this one has no IoStore equivalent.";
             return;
         }
 
@@ -1240,10 +1243,41 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var outputPath = dialog.FileName;
 
         IsBusy = true;
-        StatusMessage = "Repacking to IoStore...";
+        string? tempRoot = null;
         try
         {
             var aesKey = ParseAesKey(PakAesKeyHex);
+
+            string input;
+            if (_currentSource is LooseFolderAssetSource)
+            {
+                var resolved = RetocDirectoryInputResolver.Resolve(SourcePath);
+                if (resolved == null)
+                {
+                    StatusMessage = "Pick a workspace folder that isn't a drive root.";
+                    return;
+                }
+                input = resolved;
+            }
+            else
+            {
+                var pakSource = _currentPakSource!;
+                StatusMessage = "Extracting pak for IoStore conversion...";
+                var projectName = RetocDirectoryInputResolver.ExtractProjectName(pakSource.MountPoint)
+                    ?? Path.GetFileNameWithoutExtension(pakSource.PakPath);
+                tempRoot = Path.Combine(Path.GetTempPath(), "UAssetEditor_ToZen_" + Guid.NewGuid());
+                var projectFolder = Path.Combine(tempRoot, projectName);
+                Directory.CreateDirectory(projectFolder);
+                var unpackResult = await Task.Run(() => PakUnpacker.Unpack(pakSource, projectFolder));
+                if (unpackResult.HasFailures)
+                {
+                    StatusMessage = $"Extract failed: {unpackResult.FailedEntries[0].Reason}";
+                    return;
+                }
+                input = tempRoot;
+            }
+
+            StatusMessage = "Repacking to IoStore...";
             await RetocProcess.ConvertToZenAsync(input, outputPath, retocVersion, aesKey);
             StatusMessage = $"Repacked to {outputPath}.";
         }
@@ -1254,7 +1288,28 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         finally
         {
             IsBusy = false;
+            if (tempRoot != null)
+            {
+                // A large pak extracts to thousands of files - deleting that tree recursively
+                // is slow enough to freeze the UI thread if done inline here, so it runs on a
+                // background thread instead. IsBusy is already false above, so this cleanup
+                // doesn't block the user from starting something else in the meantime.
+                var pathToDelete = tempRoot;
+                await Task.Run(() =>
+                {
+                    try { Directory.Delete(pathToDelete, recursive: true); }
+                    catch { /* best effort - a leftover temp extraction isn't worth failing over */ }
+                });
+            }
         }
+    }
+
+    /// <summary>Opens the Convert IoStore to Legacy dialog, pre-filled with the current AES key field - conversion itself runs inside the dialog, not here. Standalone, unlike <see cref="ConvertSelectedCommand"/>, which only converts checked entries of an already-browsed container into the app's own workspace.</summary>
+    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    private void ConvertIoStoreToLegacy()
+    {
+        using var viewModel = new ConvertIoStoreToLegacyViewModel(null, PakAesKeyHex);
+        new ConvertIoStoreToLegacyWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
     /// <summary>Opens the Unpack .pak dialog, pre-filled with the currently-loaded pak (if any) and the current AES key field - unpacking itself runs inside the dialog, not here.</summary>
