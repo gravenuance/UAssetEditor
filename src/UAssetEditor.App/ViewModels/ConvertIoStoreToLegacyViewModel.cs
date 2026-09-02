@@ -1,8 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
+using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.App.ViewModels;
 
@@ -27,6 +29,8 @@ public sealed record LegacyOutputFormatOption(LegacyOutputFormat Value, string L
 /// </summary>
 public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, IDisposable
 {
+    private static readonly ILogger Logger = AppLog.For<ConvertIoStoreToLegacyViewModel>();
+
     [ObservableProperty] private string _sourceUtocPath;
     [ObservableProperty] private string _outputPath = "";
     [ObservableProperty] private LegacyOutputFormat _outputFormat = LegacyOutputFormat.Folder;
@@ -92,6 +96,7 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Convert to legacy failed for '{UtocPath}' -> '{OutputPath}'.", SourceUtocPath, OutputPath);
             Status = $"Convert failed: {ex.Message}";
         }
         finally

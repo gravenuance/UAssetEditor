@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
@@ -13,6 +14,7 @@ using UAssetEditor.App.Views;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.Logging;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
 using UAssetEditor.Core.Versioning;
@@ -59,6 +61,8 @@ public sealed record TreeSelectionActionOption(TreeSelectionAction Value, string
 
 public sealed partial class MainViewModel : ObservableObject, IDisposable
 {
+    private static readonly ILogger Logger = AppLog.For<MainViewModel>();
+
     private static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "UAssetEditor", "lastSession.json");
@@ -1283,6 +1287,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Repack to IoStore failed -> '{OutputPath}'.", outputPath);
             StatusMessage = $"Repack to IoStore failed: {ex.Message}";
         }
         finally

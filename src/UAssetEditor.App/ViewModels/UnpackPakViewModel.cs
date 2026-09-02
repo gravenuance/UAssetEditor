@@ -1,13 +1,17 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using UAssetEditor.Core.AssetSources;
+using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.App.ViewModels;
 
 /// <summary>Backs the Unpack .pak dialog - extracts every entry of a chosen .pak to a chosen folder via <see cref="PakUnpacker"/>, off the UI thread, with live progress.</summary>
 public sealed partial class UnpackPakViewModel : ObservableObject, IDisposable
 {
+    private static readonly ILogger Logger = AppLog.For<UnpackPakViewModel>();
+
     [ObservableProperty] private string _sourcePakPath;
     [ObservableProperty] private string _destinationFolder = "";
     [ObservableProperty] private string _aesKeyHex;
@@ -59,9 +63,16 @@ public sealed partial class UnpackPakViewModel : ObservableObject, IDisposable
                 return PakUnpacker.Unpack(source, destination, progress: progress, cancellationToken: _cts.Token);
             }, _cts.Token);
 
-            Status = result.HasFailures
-                ? $"Unpacked {result.SucceededCount} file(s) to {destination} - {result.FailedEntries.Count} failed."
-                : $"Unpacked {result.SucceededCount} file(s) to {destination}.";
+            if (result.HasFailures)
+            {
+                Status = $"Unpacked {result.SucceededCount} file(s) to {destination} - {result.FailedEntries.Count} failed.";
+                Logger.LogWarning("Unpack of '{PakPath}' had {FailedCount} failed entr(y/ies): {Reasons}",
+                    sourcePath, result.FailedEntries.Count, string.Join("; ", result.FailedEntries.Select(f => $"{f.Entry}: {f.Reason}")));
+            }
+            else
+            {
+                Status = $"Unpacked {result.SucceededCount} file(s) to {destination}.";
+            }
             IsDone = true;
         }
         catch (OperationCanceledException)
@@ -70,6 +81,7 @@ public sealed partial class UnpackPakViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Unpack failed for '{PakPath}' -> '{Destination}'.", SourcePakPath, DestinationFolder);
             Status = $"Unpack failed: {ex.Message}";
         }
         finally

@@ -1,10 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
+using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.App.ViewModels;
 
@@ -29,6 +31,8 @@ public sealed record PackOutputFormatOption(PackOutputFormat Value, string Label
 /// </summary>
 public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
 {
+    private static readonly ILogger Logger = AppLog.For<PackFolderViewModel>();
+
     private readonly EngineVersion _defaultEngineVersion;
 
     [ObservableProperty] private string _sourceFolder;
@@ -124,6 +128,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to read mount point from '{PakPath}'.", dialog.FileName);
             Status = $"Failed to read mount point: {ex.Message}";
         }
     }
@@ -146,6 +151,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Pack failed for '{SourceFolder}' -> '{OutputPath}'.", SourceFolder, OutputPath);
             Status = $"Pack failed: {ex.Message}";
         }
         finally

@@ -11,6 +11,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.11" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -30,8 +31,14 @@
          no UI thread to return to, keeps CA2007 enabled and fixed.)
          CA1515 ("consider making public types internal") doesn't fit an EXE: nothing outside
          this assembly ever references UAssetEditor.App.dll as a library, so every ViewModel/
-         View being public is already exactly as encapsulated as it needs to be. -->
-    <NoWarn>$(NoWarn);CA2007;CA1515</NoWarn>
+         View being public is already exactly as encapsulated as it needs to be.
+         CA1848 (use LoggerMessage source-gen delegates) targets hot-path logging - every log
+         call in this app fires on startup/shutdown or inside a user-facing error handler, none
+         of them frequent enough for the extra delegate-caching boilerplate to earn its keep.
+         CA1873 (argument evaluation may be unnecessary if logging is disabled) is the same
+         non-hot-path reasoning: these calls aren't frequent enough for a guarded IsEnabled
+         check to matter. -->
+    <NoWarn>$(NoWarn);CA2007;CA1515;CA1848;CA1873</NoWarn>
   </PropertyGroup>
 
   <!--
