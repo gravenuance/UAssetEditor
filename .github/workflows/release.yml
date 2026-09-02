@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore UAssetEditor.slnx
+
+      - name: Build (Release)
+        run: dotnet build UAssetEditor.slnx -c Release --no-restore
+
+      - name: Test (Release)
+        run: dotnet test tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj -c Release --no-build
+
+      - name: Publish single-file exe
+        run: dotnet publish src/UAssetEditor.App/UAssetEditor.App.csproj -p:PublishProfile=SingleFileRelease
+
+      # Pulls the section under "## [<version>]" out of CHANGELOG.md, stopping at the next
+      # "## [" heading, to use as this release's notes - keeps one changelog as the single
+      # source of truth instead of writing release notes twice.
+      - name: Extract changelog section
+        id: changelog
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $lines = Get-Content CHANGELOG.md
+          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
+          if (-not $start) {
+            Write-Error "No '## [$version]' section found in CHANGELOG.md"
+            exit 1
+          }
+          $rest = $lines[$start..($lines.Length - 1)]
+          $endOffset = ($rest | Select-Object -Skip 1 | Select-String -Pattern "^## \[").LineNumber
+          $section = if ($endOffset) { $rest[0..($endOffset - 1)] } else { $rest }
+          $section -join "`n" | Out-File -FilePath release-notes.md -Encoding utf8
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: src/UAssetEditor.App/bin/Release/net10.0-windows/publish/win-x64/UAssetEditor.App.exe
