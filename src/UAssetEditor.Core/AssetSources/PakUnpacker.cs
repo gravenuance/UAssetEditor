@@ -24,6 +24,16 @@ public static class PakUnpacker
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destinationFolder);
+
+        // Pak entry paths are untrusted external input - a crafted pak could name an entry
+        // "../../../../Windows/System32/evil.dll" to write outside destinationFolder entirely.
+        // Resolving destinationFolder once, up front, to its full form is what makes the
+        // per-entry containment check below a plain string-prefix comparison.
+        var destinationRoot = Path.GetFullPath(destinationFolder);
+        var destinationRootWithSeparator = destinationRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? destinationRoot
+            : destinationRoot + Path.DirectorySeparatorChar;
 
         var entries = source.ListAllEntries().Where(e => entryFilter?.Invoke(e) ?? true).ToList();
         var failures = new List<(string Entry, string Reason)>();
@@ -36,7 +46,10 @@ public static class PakUnpacker
             var entry = entries[i];
             try
             {
-                var outputPath = Path.Combine(destinationFolder, entry.Replace('/', Path.DirectorySeparatorChar));
+                var outputPath = Path.GetFullPath(Path.Combine(destinationRoot, entry.Replace('/', Path.DirectorySeparatorChar)));
+                if (!outputPath.StartsWith(destinationRootWithSeparator, StringComparison.Ordinal))
+                    throw new InvalidOperationException($"Entry path '{entry}' escapes the destination folder.");
+
                 Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
                 using (var rented = source.ReadOriginalBytes(entry))
                     File.WriteAllBytes(outputPath, rented.Span);

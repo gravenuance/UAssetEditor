@@ -100,4 +100,38 @@ public class PakUnpackerTests
             if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
         }
     }
+
+    [Fact]
+    public void Unpack_EntryPathEscapesDestinationFolder_FailsThatEntryInsteadOfWritingOutsideIt()
+    {
+        // Security regression: pak entry paths are untrusted external input. Confirmed against
+        // the real repak writer/reader that an entry literally named with a "../" traversal
+        // sequence round-trips completely unsanitized - nothing upstream of PakUnpacker stops
+        // a hand-crafted (or malicious) pak from naming an entry this way.
+        var outsideMarker = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Escaped_" + Guid.NewGuid() + ".txt");
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        {
+            [$"../{Path.GetFileName(outsideMarker)}"] = Encoding.UTF8.GetBytes("pwned"),
+            ["Content/Foo.uasset"] = Encoding.UTF8.GetBytes("foo"),
+        });
+        var destination = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Unpack_" + Guid.NewGuid());
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+            var result = PakUnpacker.Unpack(source, destination, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.SucceededCount);
+            var failedEntry = Assert.Single(result.FailedEntries);
+            Assert.Contains("escapes the destination folder", failedEntry.Reason, StringComparison.Ordinal);
+            Assert.False(File.Exists(outsideMarker), "The traversal entry must not have been written outside the destination folder.");
+            Assert.True(File.Exists(Path.Combine(destination, "Content", "Foo.uasset")));
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            if (File.Exists(outsideMarker)) File.Delete(outsideMarker);
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+    }
 }
