@@ -25,4 +25,3 @@ Only `MainViewModel`/`MainWindow` go through the `ServiceCollection` in `App.xam
 ## Known gaps
 
 - `UAssetEditor.App` has no test project - only `UAssetEditor.Core` (and by extension `UAssetEditor.Core.Tests`) is unit-tested. ViewModel logic (session save/load, command wiring) currently has no automated coverage.
-- Logging (`ILogger` via `AppLog`) is wired into the process-wide crash handlers and a handful of ViewModel error handlers, not yet every catch block in `MainViewModel`.

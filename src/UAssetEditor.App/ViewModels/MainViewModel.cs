@@ -383,6 +383,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Reload with updated settings failed for '{SourcePath}'.", SourcePath);
             StatusMessage = $"Reload failed: {ex.Message}";
         }
         finally
@@ -506,6 +507,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load folder '{FolderPath}'.", folderPath);
             StatusMessage = $"Failed to load folder: {ex.Message}";
         }
         finally
@@ -547,6 +549,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to open pak '{PakPath}'.", pakPath);
             StatusMessage = $"Failed to open pak: {ex.Message}";
         }
         finally
@@ -585,6 +588,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to open file '{FilePath}'.", filePath);
             StatusMessage = $"Failed to open '{Path.GetFileName(filePath)}': {ex.Message}";
         }
         finally
@@ -631,6 +635,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to list IoStore container '{UtocPath}'.", utocPath);
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
             StatusMessage = $"Failed to list IoStore container: {ex.Message}";
@@ -688,6 +693,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to open tree item '{FullPath}' [{ItemName}].", fullPath, item.Name);
             StatusMessage = $"Failed to open {fullPath} [{item.Name}]: {ex.Message}";
         }
         finally
@@ -722,6 +728,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load exports for '{AssetPath}'.", assetPath);
             StatusMessage = $"Failed to load exports for {assetPath}: {ex.Message}";
         }
     }
@@ -756,6 +763,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load properties for '{AssetPath}'.", assetPath);
             StatusMessage = $"Failed to load properties for {assetPath}: {ex.Message}";
         }
     }
@@ -863,6 +871,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Failed to load selected tree items.");
             StatusMessage = $"Failed to load selection: {ex.Message}";
         }
         finally
@@ -921,6 +930,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Extract selected failed -> '{Destination}'.", destination);
             StatusMessage = $"Extract failed: {ex.Message}";
         }
         finally
@@ -980,12 +990,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 foreach (var path in source.ListAllEntries().Where(e => MatchesAnySelectedPrefix(e, prefixes)))
                     _unrepackedSavedPaths.Remove(path);
 
+            if (result.HasFailures)
+            {
+                Logger.LogWarning("Repack selected -> '{OutputPath}' had failures: {Reasons}",
+                    outputPath, string.Join("; ", result.FailedEntries.Select(f => $"{f.Entry}: {f.Reason}")));
+            }
             StatusMessage = result.HasFailures
                 ? $"Repack failed: {result.FailedEntries[0].Reason}"
                 : $"Repacked {result.SucceededCount} selected file(s) to {outputPath}.";
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Repack selected failed -> '{OutputPath}'.", outputPath);
             StatusMessage = $"Repack failed: {ex.Message}";
         }
         finally
@@ -1092,6 +1108,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Convert selected failed for '{UtocPath}'.", utocPath);
             StatusMessage = $"Convert failed: {ex.Message}";
             return;
         }
@@ -1184,12 +1201,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             if (!result.HasFailures)
                 _unrepackedSavedPaths.Clear();
 
+            if (result.HasFailures)
+                Logger.LogWarning("Repack -> '{OutputPath}' failed: {Reason}", outputPath, result.FailedEntries[0].Reason);
             StatusMessage = result.HasFailures
                 ? $"Repack failed: {result.FailedEntries[0].Reason}"
                 : $"Repacked to {outputPath}.";
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Repack failed -> '{OutputPath}'.", outputPath);
             StatusMessage = $"Repack failed: {ex.Message}";
         }
         finally
@@ -1454,6 +1474,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Search failed for '{SourcePath}'.", SourcePath);
             StatusMessage = $"Search failed: {ex.Message}";
         }
         finally
@@ -1500,6 +1521,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Save all edited failed for {Count} asset(s).", dirtyPaths.Count);
             StatusMessage = $"Save failed: {ex.Message}";
         }
         finally
@@ -1547,6 +1569,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Revert edits failed for {Count} asset(s).", dirtyPaths.Count);
             StatusMessage = $"Revert failed: {ex.Message}";
         }
         finally
@@ -1626,6 +1649,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Preview failed for '{SourcePath}'.", SourcePath);
             StatusMessage = $"Preview failed: {ex.Message}";
         }
         finally
@@ -1703,6 +1727,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Apply failed for '{SourcePath}'.", SourcePath);
             StatusMessage = $"Apply failed: {ex.Message}";
         }
         finally
