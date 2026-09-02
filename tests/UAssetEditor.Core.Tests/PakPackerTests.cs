@@ -17,7 +17,7 @@ public class PakPackerTests
 
         try
         {
-            PakPacker.Build(sourceFolder, outputPath);
+            PakPacker.Build(sourceFolder, outputPath, cancellationToken: TestContext.Current.CancellationToken);
 
             using var check = new PakAssetSource(outputPath);
             Assert.Equal(
@@ -45,7 +45,7 @@ public class PakPackerTests
 
         try
         {
-            PakPacker.Build(sourceFolder, outputPath, mountPoint: "../../../MyGame/");
+            PakPacker.Build(sourceFolder, outputPath, mountPoint: "../../../MyGame/", cancellationToken: TestContext.Current.CancellationToken);
 
             using var check = new PakAssetSource(outputPath);
             Assert.Equal("../../../MyGame/", check.MountPoint);
@@ -71,7 +71,7 @@ public class PakPackerTests
 
         try
         {
-            PakPacker.Build(sourceFolder, outputPath, mountPoint: "");
+            PakPacker.Build(sourceFolder, outputPath, mountPoint: "", cancellationToken: TestContext.Current.CancellationToken);
 
             using var check = new PakAssetSource(outputPath);
             Assert.Equal("", check.MountPoint);

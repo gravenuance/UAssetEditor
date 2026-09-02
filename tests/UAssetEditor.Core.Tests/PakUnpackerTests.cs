@@ -28,7 +28,7 @@ public class PakUnpackerTests
         try
         {
             using (var source = new PakAssetSource(pakPath))
-                PakUnpacker.Unpack(source, destination);
+                PakUnpacker.Unpack(source, destination, cancellationToken: TestContext.Current.CancellationToken);
 
             foreach (var (path, expectedBytes) in files)
             {
@@ -58,7 +58,7 @@ public class PakUnpackerTests
         try
         {
             using (var source = new PakAssetSource(pakPath))
-                PakUnpacker.Unpack(source, destination, progress: progress);
+                PakUnpacker.Unpack(source, destination, progress: progress, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal((1, 2), progress.Values[0]);
             Assert.Equal((2, 2), progress.Values[1]);
@@ -86,7 +86,7 @@ public class PakUnpackerTests
         try
         {
             using var source = new PakAssetSource(pakPath);
-            var result = PakUnpacker.Unpack(source, destination, entryFilter: e => e.StartsWith("Content/Weapons/", StringComparison.Ordinal));
+            var result = PakUnpacker.Unpack(source, destination, entryFilter: e => e.StartsWith("Content/Weapons/", StringComparison.Ordinal), cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(2, result.SucceededCount);
             Assert.Empty(result.FailedEntries);

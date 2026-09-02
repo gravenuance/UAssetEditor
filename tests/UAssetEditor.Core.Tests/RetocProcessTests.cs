@@ -41,7 +41,7 @@ public class RetocProcessTests
             var pakPath = BuildLegacyTestPak(workDir);
             var utocPath = Path.Combine(workDir, "test.utoc");
 
-            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null);
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(utocPath));
             Assert.True(File.Exists(Path.ChangeExtension(utocPath, ".ucas")));
@@ -61,9 +61,9 @@ public class RetocProcessTests
         {
             var pakPath = BuildLegacyTestPak(workDir);
             var utocPath = Path.Combine(workDir, "test.utoc");
-            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null);
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
 
-            var entries = await RetocProcess.ListAsync(utocPath, aesKey: null);
+            var entries = await RetocProcess.ListAsync(utocPath, aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
 
             // Not asserting on specific paths: a container built from plain non-package files
             // has nothing but its own ContainerHeader chunk, which ListAsync deliberately
@@ -92,11 +92,11 @@ public class RetocProcessTests
         {
             var pakPath = BuildLegacyTestPak(workDir);
             var utocPath = Path.Combine(workDir, "test.utoc");
-            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null);
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
 
             var outputDir = Path.Combine(workDir, "legacy_out");
             var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
-                RetocProcess.ConvertToLegacyAsync(utocPath, outputDir, filters: [], aesKey: null));
+                RetocProcess.ConvertToLegacyAsync(utocPath, outputDir, filters: [], aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
 
             Assert.Equal(1, exception.ExitCode);
             Assert.Contains("ScriptObjects", exception.Message, StringComparison.Ordinal);
@@ -113,7 +113,7 @@ public class RetocProcessTests
         var missingPath = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_Missing_" + Guid.NewGuid() + ".utoc");
 
         var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
-            RetocProcess.ListAsync(missingPath, aesKey: null));
+            RetocProcess.ListAsync(missingPath, aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(1, exception.ExitCode);
         Assert.Contains(missingPath, exception.Message, StringComparison.Ordinal);

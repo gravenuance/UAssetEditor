@@ -197,7 +197,7 @@ public class SearchServiceTests
         var source = new ThrowingThenGoodAssetSource("bad.uasset", "good.uasset", goodAsset);
         var versions = new EngineVersionResolver();
 
-        var results = await SearchService.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] });
+        var results = await SearchService.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Single(results);
         Assert.Equal("good.uasset", results[0].AssetPath);
@@ -214,7 +214,7 @@ public class SearchServiceTests
         var source = new InMemoryAssetSource(new Dictionary<string, UAssetAPI.UAsset> { ["a.uasset"] = asset });
         var query = new SearchQuery { PropertyNameTerms = ["["], PropertyNameCompare = TextCompare.Regex };
 
-        var exception = await Record.ExceptionAsync(() => SearchService.SearchAllAsync(source, new EngineVersionResolver(), query));
+        var exception = await Record.ExceptionAsync(() => SearchService.SearchAllAsync(source, new EngineVersionResolver(), query, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Null(exception);
     }

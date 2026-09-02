@@ -21,7 +21,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         var change = Assert.Single(Assert.Single(changeSets).Changes);
         Assert.Equal("5", change.OldValue);
@@ -44,7 +44,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
-        await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null);
+        await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, source.SaveCount);
     }
@@ -68,7 +68,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
-        var changeSets = await EditExecutor.StageAsync(source, path => source.OpenAsset(path, EngineVersion.UNKNOWN, null), ruleSet);
+        var changeSets = await EditExecutor.StageAsync(source, path => source.OpenAsset(path, EngineVersion.UNKNOWN, null), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, source.SaveCount);
         var change = Assert.Single(Assert.Single(changeSets).Changes);
@@ -91,7 +91,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
-        var changeSets = await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null);
+        var changeSets = await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(changeSets);
         Assert.Equal(0, source.SaveCount);
@@ -109,7 +109,7 @@ public class EditExecutorTests
             Rules = { new RemoveTagRule { Tag = "Alpha" } },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         // Both "Tags" (the array itself, matched by name) and "Tags[0]"/"Tags[1]" (elements)
         // match the scope; only the array-typed node can honor a RemoveTagRule.
@@ -134,7 +134,7 @@ public class EditExecutorTests
             Rules = { new NumericAdjustRule { Operation = operation, TargetValue = target } },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         var change = Assert.Single(Assert.Single(changeSets).Changes);
         Assert.Equal(expected.ToString(System.Globalization.CultureInfo.InvariantCulture), change.NewValue);
@@ -152,7 +152,7 @@ public class EditExecutorTests
             Rules = { new NumericAdjustRule { Operation = "div", TargetValue = "0" } },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(changeSets);
     }
@@ -169,7 +169,7 @@ public class EditExecutorTests
             Rules = { new NumericAdjustRule { Operation = "add", TargetValue = "1", Skip = new SkipCondition { Comparison = SkipComparison.Eq, Value = "5" } } },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(changeSets);
     }
@@ -186,7 +186,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "Changed", Skip = new SkipCondition { Comparison = SkipComparison.Eq, Value = "Hello World" } } },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(changeSets);
     }
@@ -203,7 +203,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "0" } },
         };
 
-        await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         var countNode = PropertyWalker.Walk(export).Single(n => n.Path == "Count");
         Assert.True(countNode.Property.IsZero);
@@ -226,7 +226,7 @@ public class EditExecutorTests
             Rules = { new RemovePropertyRule() },
         };
 
-        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet);
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         var changes = Assert.Single(changeSets).Changes;
         Assert.Equal(2, changes.Count);
@@ -261,7 +261,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "x" } },
         };
 
-        var exception = await Record.ExceptionAsync(() => EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet));
+        var exception = await Record.ExceptionAsync(() => EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Null(exception);
     }

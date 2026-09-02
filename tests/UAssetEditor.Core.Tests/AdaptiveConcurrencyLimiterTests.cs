@@ -17,11 +17,11 @@ public class AdaptiveConcurrencyLimiterTests
     {
         using var limiter = new AdaptiveConcurrencyLimiter(2);
 
-        var lease1 = await limiter.AcquireAsync();
-        var lease2 = await limiter.AcquireAsync();
+        var lease1 = await limiter.AcquireAsync(TestContext.Current.CancellationToken);
+        var lease2 = await limiter.AcquireAsync(TestContext.Current.CancellationToken);
 
-        var thirdAcquire = limiter.AcquireAsync();
-        await Task.Delay(50);
+        var thirdAcquire = limiter.AcquireAsync(TestContext.Current.CancellationToken);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
         Assert.False(thirdAcquire.IsCompleted);
 
         lease1.Dispose();
@@ -81,7 +81,7 @@ public class AdaptiveConcurrencyLimiterTests
 
         var leases = new List<IDisposable>();
         for (var i = 0; i < 4; i++)
-            leases.Add(await limiter.AcquireAsync());
+            leases.Add(await limiter.AcquireAsync(TestContext.Current.CancellationToken));
 
         limiter.RebalanceCore(0.95); // target = min = 1, while all 4 permits are held
         Assert.Equal(1, limiter.CurrentDegree);
@@ -90,9 +90,9 @@ public class AdaptiveConcurrencyLimiterTests
             lease.Dispose();
 
         // Only one permit should have actually made it back to the semaphore.
-        var first = await limiter.AcquireAsync();
-        var second = limiter.AcquireAsync();
-        await Task.Delay(50);
+        var first = await limiter.AcquireAsync(TestContext.Current.CancellationToken);
+        var second = limiter.AcquireAsync(TestContext.Current.CancellationToken);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
 
         Assert.False(second.IsCompleted);
         first.Dispose();

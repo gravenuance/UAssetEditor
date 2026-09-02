@@ -72,7 +72,7 @@ public class PakWorkerCrashRecoveryTests
         try
         {
             using var source = new PakAssetSource(pakPath);
-            var result = PakUnpacker.Unpack(source, destination);
+            var result = PakUnpacker.Unpack(source, destination, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(2, result.SucceededCount);
             var failedEntry = Assert.Single(result.FailedEntries);
