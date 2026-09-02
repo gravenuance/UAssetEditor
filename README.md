@@ -4,6 +4,38 @@ An editor for .pak and .uasset files.
 
 ![UI](/eg.png)
 
+## Build
+
+Requires the .NET 10 SDK (pinned in `global.json`).
+
+```
+dotnet build UAssetEditor.slnx
+```
+
+Run the test suite (Release matches what CI runs):
+
+```
+dotnet test tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj -c Release
+```
+
+## Run
+
+For development, run straight from source:
+
+```
+dotnet run --project src/UAssetEditor.App
+```
+
+For a standalone build, publish the single-file executable:
+
+```
+dotnet publish src/UAssetEditor.App/UAssetEditor.App.csproj -p:PublishProfile=SingleFileRelease
+```
+
+The result is a single self-contained `UAssetEditor.App.exe` under `src/UAssetEditor.App/bin/Release/net10.0-windows/publish/win-x64/` - no separate .NET runtime install needed on the target machine.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the non-obvious design decisions behind the pak worker process, retoc integration, and a few other things that aren't visible just from reading the code top to bottom.
+
 ## How this is different from UAssetGUI
 
 UAssetGUI opens one .uasset at a time and you edit it by hand in a property tree. UAssetEditor is built around doing the same edit to a lot of assets at once, and working straight from the archive instead of unpacking everything first.
