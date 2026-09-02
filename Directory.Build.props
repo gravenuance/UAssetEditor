@@ -17,16 +17,12 @@
     <AnalysisMode>All</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
-    <!-- CA1031 ("catch a more specific exception") fires on every deliberate boundary
-         catch-all in this solution: a top-level UI command reporting failure via
-         StatusMessage instead of crashing, or a batch operation (search/edit/pack/unpack)
-         skipping one bad asset/entry so the rest of the batch still completes. Narrowing
-         these to specific exception types would mean enumerating every exception any
-         downstream call (native repak bindings, file I/O, JSON, regex, UAssetAPI parsing)
-         might throw, which defeats the point of a boundary that's meant to catch anything
-         and keep going - suppressed solution-wide rather than pragma'd at each of the ~25
-         call sites that share this same intentional shape. -->
-    <NoWarn>$(NoWarn);CA1031</NoWarn>
+    <!-- Release is what CI and the pre-push check build - warnings-as-errors only there so
+         Debug inner-loop builds stay fast/quiet while a warning can't reach main. -->
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+
+    <!-- Deliberate rule dial-downs live in .editorconfig (see there for CA1031's reason). -->
+
   </PropertyGroup>
 
 </Project>

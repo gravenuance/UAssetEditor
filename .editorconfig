@@ -1,0 +1,11 @@
+root = true
+
+[*.cs]
+# CA1031 ("catch a more specific exception") fires on every deliberate boundary catch-all in
+# this solution: a top-level UI command reporting failure via StatusMessage instead of
+# crashing, or a batch operation (search/edit/pack/unpack) skipping one bad asset/entry so the
+# rest of the batch still completes. Narrowing these to specific exception types would mean
+# enumerating every exception any downstream call (native repak bindings, file I/O, JSON,
+# regex, UAssetAPI parsing) might throw, which defeats the point of a boundary that's meant to
+# catch anything and keep going.
+dotnet_diagnostic.CA1031.severity = none
