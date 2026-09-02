@@ -22,6 +22,6 @@ Every pak entry read used to allocate a fresh `byte[]`; large entries (textures,
 
 Only `MainViewModel`/`MainWindow` go through the `ServiceCollection` in `App.xaml.cs` - the various dialog ViewModels (`PackFolderViewModel`, `UnpackPakViewModel`, `ConvertIoStoreToLegacyViewModel`, ...) are constructed directly with `new` where they're opened, since they're short-lived and need per-invocation constructor arguments (a pre-filled path, an AES key) that don't fit a container-managed lifetime well. `AppLog.For<T>()` gives these an ambient logger without threading an `ILoggerFactory` through every one of those constructors for a cross-cutting concern.
 
-## Known gaps
+## UAssetEditor.App.Tests only covers what's cleanly testable
 
-- `UAssetEditor.App` has no test project - only `UAssetEditor.Core` (and by extension `UAssetEditor.Core.Tests`) is unit-tested. ViewModel logic (session save/load, command wiring) currently has no automated coverage.
+`MainViewModel` itself isn't under test: its `ConfigPath` is a hardcoded real LocalAppData path with no way to inject a test location, so constructing it would read/depend on whatever the running machine's actual saved session happens to be - not deterministic, and out of scope for the refactor that would need to happen to fix that. `UAssetEditor.App.Tests` instead covers `EditorSession`'s schema-versioning/serialization directly (the exact behavior `MainViewModel`'s `SaveConfig`/`LoadConfig` rely on) and the dialog ViewModels' pure logic (mount-point guessing, format-toggle properties, `CanRun` validation) - none of which touch the real file dialogs their Browse* commands open, which can't run headless in CI.

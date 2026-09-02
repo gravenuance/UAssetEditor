@@ -29,9 +29,10 @@
          ObservableCollections/properties directly - ConfigureAwait(false) here would risk a
          cross-thread access exception, not just be a style nit. (UAssetEditor.Core, which has
          no UI thread to return to, keeps CA2007 enabled and fixed.)
-         CA1515 ("consider making public types internal") doesn't fit an EXE: nothing outside
-         this assembly ever references UAssetEditor.App.dll as a library, so every ViewModel/
-         View being public is already exactly as encapsulated as it needs to be.
+         CA1515 ("consider making public types internal") doesn't fit an EXE: the only outside
+         reference is UAssetEditor.App.Tests white-box-testing ViewModel logic directly, not a
+         real consumer depending on a public API surface, so every ViewModel/View being public
+         is still exactly as encapsulated as it needs to be.
          CA1848 (use LoggerMessage source-gen delegates) targets hot-path logging - every log
          call in this app fires on startup/shutdown or inside a user-facing error handler, none
          of them frequent enough for the extra delegate-caching boilerplate to earn its keep.
