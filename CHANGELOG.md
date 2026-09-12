@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-12
+
 ### Fixed
 - "Detect Mount Point..." in the Pack Folder dialog blocked the UI thread while reading an existing pak's header (spawning/reconnecting to the pak worker process synchronously); it now runs off the UI thread like every other pak operation.
 - Canceling an IoStore convert/pack (retoc) left the underlying `retoc.exe` process running in the background instead of stopping it, letting it keep writing to the output the app had just reported as canceled.
@@ -30,5 +32,6 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gravenuance/UAssetEditor/releases/tag/v1.0.0
