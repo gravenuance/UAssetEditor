@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- "Detect Mount Point..." in the Pack Folder dialog blocked the UI thread while reading an existing pak's header (spawning/reconnecting to the pak worker process synchronously); it now runs off the UI thread like every other pak operation.
+- Canceling an IoStore convert/pack (retoc) left the underlying `retoc.exe` process running in the background instead of stopping it, letting it keep writing to the output the app had just reported as canceled.
+
 ## [1.0.0] - 2026-09-03
 
 ### Added

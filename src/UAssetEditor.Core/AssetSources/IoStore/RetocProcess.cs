@@ -131,6 +131,16 @@ public static class RetocProcess
         using var process = new Process { StartInfo = startInfo };
         process.Start();
 
+        // Cancellation only stops this method from waiting - it doesn't touch the child process,
+        // so a canceled convert/pack would otherwise leave retoc.exe running (and still writing
+        // to the output the user was just told got canceled) unless it's killed here too.
+        await using var killOnCancel = cancellationToken.Register(static state =>
+        {
+            var p = (Process)state!;
+            try { if (!p.HasExited) p.Kill(entireProcessTree: true); }
+            catch { /* best effort */ }
+        }, process).ConfigureAwait(false);
+
         // Drain both streams concurrently with waiting for exit rather than reading one and
         // then the other - a process that fills the other stream's OS pipe buffer while only
         // one side is being read blocks trying to write and never exits, which would hang this

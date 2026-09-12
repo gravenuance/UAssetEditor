@@ -114,14 +114,15 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     /// the app's main workspace source first.
     /// </summary>
     [RelayCommand]
-    private void DetectMountPoint()
+    private async Task DetectMountPointAsync()
     {
         var dialog = new OpenFileDialog { Title = "Read mount point and version from an existing .pak...", Filter = "Pak files (*.pak)|*.pak" };
         if (dialog.ShowDialog() != true) return;
 
         try
         {
-            var header = PakMountPointReader.Read(dialog.FileName, PakAesKey.Parse(AesKeyHex));
+            var aesKey = PakAesKey.Parse(AesKeyHex);
+            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey));
             MountPoint = header.MountPoint;
             Version = header.Version;
             Status = $"Mount point and version ({header.Version}) read from '{System.IO.Path.GetFileName(dialog.FileName)}'.";
