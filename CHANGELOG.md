@@ -7,6 +7,7 @@ All notable changes to this project are documented here.
 ### Fixed
 - "Convert Selected..." on a browsed IoStore container always failed with a "does not contain ... ScriptObjects" error for any container that doesn't carry the game's global script-objects chunk (true of most single-mod `.utoc` files) - `to-legacy` no longer tries to extract them, since nothing in this app reads that output anyway.
 - "Convert IoStore to Legacy..." (Tools menu) was grayed out while browsing a raw IoStore container, even though it's a standalone dialog that doesn't touch the current workspace and never needed one open.
+- Converting an IoStore container could silently produce an empty output folder with no error at all: retoc logs a per-asset conversion failure and keeps going rather than failing outright, so "0 of N assets converted" looked exactly like success. This is now treated as a real failure, with retoc's own reasons carried through to the log.
 
 ## [1.0.2] - 2026-09-15
 

@@ -12,9 +12,9 @@ namespace UAssetEditor.Core.Tests;
 /// Unreal Engine content is the plumbing - process invocation, argument handling, output
 /// parsing, error surfacing - not a full asset-level round trip: a container built from plain
 /// (non-package) files converts to Zen fine but has nothing "legacy" to extract back out
-/// (confirmed empirically - it has no script objects, which a real cooked container always
-/// would), so <see cref="ConvertToLegacyAsync_OnRealContainer_DoesNotThrow"/> only proves the
-/// call succeeds and produces well-formed output, not that any particular asset comes back.
+/// (confirmed empirically - it has no script objects or convertible packages, either of which a
+/// real cooked container always would), which is exactly the "0 succeeded" shape
+/// <see cref="ConvertToLegacyAsync_WhenNoAssetsSucceed_ThrowsWithRetocsOwnDiagnostics"/> tests.
 /// </summary>
 [Collection("Pak")]
 public class RetocProcessTests
@@ -79,17 +79,18 @@ public class RetocProcessTests
     }
 
     [Fact]
-    public async Task ConvertToLegacyAsync_OnRealContainer_DoesNotThrow()
+    public async Task ConvertToLegacyAsync_WhenNoAssetsSucceed_ThrowsWithRetocsOwnDiagnostics()
     {
-        // Real-world repro (from the app's own log file): a small, standalone container (e.g.
-        // a single-mod .utoc) has no ScriptObjects chunk of its own - only the game's full,
-        // global container normally carries one - so to-legacy's unconditional attempt to also
-        // extract script objects used to hard-fail the *entire* conversion, even though the
-        // actually-requested assets converted fine on their own. ConvertToLegacyAsync now
-        // always passes --no-script-objects (this app has no feature that reads that output
-        // anyway) to skip exactly that step. A container built from plain (non-package) files
-        // is the same shape - confirmed empirically, it has no script objects either - so this
-        // proves the fix without needing real cooked Unreal Engine content.
+        // Real-world repro (from the app's own log file, on a real game mod's small, standalone
+        // .utoc): to-legacy can exit 0 having converted zero assets - retoc logs each per-package
+        // failure (or, as here, simply finds no convertible packages at all) at "info" level and
+        // keeps going rather than failing the whole process. That used to look exactly like
+        // success to this app - no exception, an empty output folder, nothing in the log - since
+        // ConvertToLegacyAsync discarded retoc's stdout entirely. It now surfaces "0 succeeded" as
+        // a real failure, with retoc's own diagnostic line(s) carried through to the log. A
+        // container built from plain (non-package) files reproduces "0 succeeded" without needing
+        // real cooked Unreal Engine content (it also has no script objects - see
+        // ConvertToZenAsync_OnALegacyPak_ProducesAUtocAndUcas's sibling tests).
         var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
         Directory.CreateDirectory(workDir);
         try
@@ -98,17 +99,12 @@ public class RetocProcessTests
             var utocPath = Path.Combine(workDir, "test.utoc");
             await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
 
-            // No output-directory assertion: with empty filters and a container that (like a
-            // real single-mod .utoc) has no convertible legacy packages of its own, retoc
-            // legitimately extracts zero assets and never creates the output folder at all -
-            // confirmed by running retoc.exe directly against this exact fixture. The fix under
-            // test is that this call no longer throws at all (it used to, on the ScriptObjects
-            // chunk, before --no-script-objects), not what ends up on disk.
             var outputDir = Path.Combine(workDir, "legacy_out");
-            var exception = await Record.ExceptionAsync(() =>
+            var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
                 RetocProcess.ConvertToLegacyAsync(utocPath, outputDir, filters: [], aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
 
-            Assert.Null(exception);
+            Assert.Equal("No assets converted - check the AES key and engine version.", exception.UserMessage);
+            Assert.Contains("legacy assets", exception.Message, StringComparison.Ordinal);
         }
         finally
         {

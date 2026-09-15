@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace UAssetEditor.Core.AssetSources.IoStore;
 
@@ -66,7 +68,7 @@ public static class RetocProcess
     /// standalone container (e.g. a single-mod .utoc) that doesn't carry a ScriptObjects chunk
     /// of its own, which only the game's own full/global container normally does.
     /// </summary>
-    public static Task ConvertToLegacyAsync(
+    public static async Task ConvertToLegacyAsync(
         string utocPath, string output, IReadOnlyList<string> filters, byte[]? aesKey, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(utocPath);
@@ -81,7 +83,45 @@ public static class RetocProcess
         }
         AddAesKey(args, aesKey);
 
-        return RunAsync(args, static _ => { }, cancellationToken);
+        // retoc reports a per-package conversion failure (wrong engine-version guess, a corrupt
+        // package, etc.) as an "info:"-level stdout line and keeps going - the process still
+        // exits 0 even when every single requested asset failed, which used to look exactly
+        // like success here: no exception, an empty output folder, and (since this call
+        // previously discarded stdout entirely) nothing in the log to explain why. Capturing it
+        // and treating "0 succeeded" as a real failure surfaces retoc's own per-file reasons
+        // instead.
+        var stdOutLines = new List<string>();
+        await RunAsync(args, stdOutLines.Add, cancellationToken).ConfigureAwait(false);
+
+        if (TryGetSucceededAssetCount(stdOutLines, out var succeeded) && succeeded == 0)
+        {
+            var detail = stdOutLines.Count > 0 ? $": {string.Join('\n', stdOutLines)}" : "";
+            throw new IoStoreConversionException(
+                $"retoc {string.Join(' ', args)} converted 0 assets{detail}",
+                "No assets converted - check the AES key and engine version.",
+                exitCode: 0);
+        }
+    }
+
+    // Matches retoc's own to-legacy summary line, e.g. "info: Extracted 3 (1 failed) legacy
+    // assets to ...". Absent entirely when --no-assets was passed, in which case there's
+    // nothing to check here - the caller didn't ask for assets in the first place.
+    private static readonly Regex ExtractedAssetsSummaryRegex = new(@"Extracted (\d+) \(\d+ failed\) legacy assets", RegexOptions.Compiled);
+
+    private static bool TryGetSucceededAssetCount(IReadOnlyList<string> stdOutLines, out int succeeded)
+    {
+        foreach (var line in stdOutLines)
+        {
+            var match = ExtractedAssetsSummaryRegex.Match(line);
+            if (match.Success)
+            {
+                succeeded = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                return true;
+            }
+        }
+
+        succeeded = 0;
+        return false;
     }
 
     /// <summary>
