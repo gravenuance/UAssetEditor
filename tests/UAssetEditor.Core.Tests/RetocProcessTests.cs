@@ -103,7 +103,7 @@ public class RetocProcessTests
             var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
                 RetocProcess.ConvertToLegacyAsync(utocPath, outputDir, filters: [], aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
 
-            Assert.Equal("No assets converted - check the AES key and engine version.", exception.UserMessage);
+            Assert.Equal("No assets converted - see the log for retoc's reason.", exception.UserMessage);
             Assert.Contains("legacy assets", exception.Message, StringComparison.Ordinal);
         }
         finally

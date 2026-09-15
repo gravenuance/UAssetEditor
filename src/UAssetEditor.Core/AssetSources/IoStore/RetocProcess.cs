@@ -83,25 +83,32 @@ public static class RetocProcess
         }
         AddAesKey(args, aesKey);
 
-        // retoc reports a per-package conversion failure (wrong engine-version guess, a corrupt
-        // package, etc.) as an "info:"-level stdout line and keeps going - the process still
-        // exits 0 even when every single requested asset failed, which used to look exactly
-        // like success here: no exception, an empty output folder, and (since this call
-        // previously discarded stdout entirely) nothing in the log to explain why. Capturing it
-        // and treating "0 succeeded" as a real failure surfaces retoc's own per-file reasons
-        // instead.
+        // retoc reports a per-package conversion failure and keeps going rather than failing
+        // the whole process - confirmed against a real user session where 41 of 41 requested
+        // assets failed (unresolvable cross-package imports - a single-mod .utoc typically
+        // can't resolve imports into the base game's own containers on its own) yet retoc still
+        // exited 0. Each per-package failure is logged at info level, but - because a progress
+        // bar is active while packages are being processed - through indicatif's own output
+        // target (stderr), not the plain stdout the final "Extracted N (M failed)" summary line
+        // below uses once the progress bar is gone. Capturing *both* and treating "0 succeeded"
+        // as a real failure means the log finally shows retoc's real per-package reasons,
+        // instead of an empty output folder with nothing to explain why.
         var stdOutLines = new List<string>();
-        await RunAsync(args, stdOutLines.Add, cancellationToken).ConfigureAwait(false);
+        var stdErr = await RunAsync(args, stdOutLines.Add, cancellationToken).ConfigureAwait(false);
 
         if (TryGetSucceededAssetCount(stdOutLines, out var succeeded) && succeeded == 0)
         {
-            var detail = stdOutLines.Count > 0 ? $": {string.Join('\n', stdOutLines)}" : "";
+            var diagnosticLines = stdOutLines.Concat(SplitNonEmptyLines(stdErr)).ToList();
+            var detail = diagnosticLines.Count > 0 ? $": {string.Join('\n', diagnosticLines)}" : "";
             throw new IoStoreConversionException(
                 $"retoc {string.Join(' ', args)} converted 0 assets{detail}",
-                "No assets converted - check the AES key and engine version.",
+                "No assets converted - see the log for retoc's reason.",
                 exitCode: 0);
         }
     }
+
+    private static IEnumerable<string> SplitNonEmptyLines(string text) =>
+        text.Split('\n').Select(static line => line.TrimEnd('\r')).Where(static line => line.Length > 0);
 
     // Matches retoc's own to-legacy summary line, e.g. "info: Extracted 3 (1 failed) legacy
     // assets to ...". Absent entirely when --no-assets was passed, in which case there's
@@ -160,7 +167,8 @@ public static class RetocProcess
         }
     }
 
-    private static async Task RunAsync(List<string> args, Action<string> onStdOutLine, CancellationToken cancellationToken)
+    /// <summary>Returns the process's captured stderr text on success (exit code 0) - <see cref="ConvertToLegacyAsync"/> needs it even then, since retoc can report per-package failures there without a nonzero exit. Throws (with stderr already folded into the exception) on any other exit code.</summary>
+    private static async Task<string> RunAsync(List<string> args, Action<string> onStdOutLine, CancellationToken cancellationToken)
     {
         var exePath = ResolveExecutable();
 
@@ -205,6 +213,8 @@ public static class RetocProcess
             var message = $"retoc {command} failed (exit code {process.ExitCode}){detail}";
             throw new IoStoreConversionException(message, SummarizeStdErr(stdErr, process.ExitCode), process.ExitCode);
         }
+
+        return stdErr;
     }
 
     // retoc's stderr on failure is Clap's usual multi-paragraph dump (the real error, then a
