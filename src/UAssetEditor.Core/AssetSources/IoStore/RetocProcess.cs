@@ -60,7 +60,11 @@ public static class RetocProcess
     /// directly. An empty <paramref name="filters"/> list converts every entry. Engine version
     /// is left to retoc's own auto-detection - confirmed via `to-legacy --help` that --version
     /// is only an override there, unlike to-zen where retoc has nothing of its own to detect it
-    /// from.
+    /// from. Always passes --no-script-objects: this app has no feature that reads a converted
+    /// container's script-objects output, and unconditionally attempting to extract them is
+    /// real-world confirmed to hard-fail the *entire* conversion - assets and all - for a small,
+    /// standalone container (e.g. a single-mod .utoc) that doesn't carry a ScriptObjects chunk
+    /// of its own, which only the game's own full/global container normally does.
     /// </summary>
     public static Task ConvertToLegacyAsync(
         string utocPath, string output, IReadOnlyList<string> filters, byte[]? aesKey, CancellationToken cancellationToken = default)
@@ -69,7 +73,7 @@ public static class RetocProcess
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
 
-        var args = new List<string> { "to-legacy", utocPath, output };
+        var args = new List<string> { "to-legacy", utocPath, output, "--no-script-objects" };
         foreach (var filter in filters)
         {
             args.Add("-f");

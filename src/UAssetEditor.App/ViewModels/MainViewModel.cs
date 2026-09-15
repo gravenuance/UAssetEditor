@@ -129,14 +129,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// no <see cref="AssetWorkspace"/> in that state (nothing is parseable pre-conversion), so
     /// every command that needs a real parsed asset or pak-specific operation is disabled (see
     /// <see cref="CanEditWorkspace"/>) rather than just failing at runtime with a status
-    /// message. <see cref="LoadSourceCommand"/> and <see cref="ConvertSelectedCommand"/> are
-    /// deliberately exempt - those are exactly what this mode is for.
+    /// message. <see cref="LoadSourceCommand"/>, <see cref="ConvertSelectedCommand"/> and
+    /// <see cref="ConvertIoStoreToLegacyCommand"/> are deliberately exempt - the first two are
+    /// exactly what this mode is for, and the third is a standalone dialog that browses for its
+    /// own source .utoc rather than touching the current workspace, so it never needed one open.
     /// </summary>
     [NotifyCanExecuteChangedFor(
         nameof(SearchCommand), nameof(PreviewCommand), nameof(ApplyCommand), nameof(SaveAllEditedCommand),
         nameof(RevertEditsCommand), nameof(RepackCommand), nameof(RepackSelectedCommand), nameof(LoadSelectedCommand),
         nameof(OpenFromTreeCommand), nameof(ExtractSelectedCommand), nameof(UnpackPakCommand), nameof(PackFolderCommand),
-        nameof(ConvertIoStoreToLegacyCommand), nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
+        nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
     [ObservableProperty] private bool _isIoStoreBrowsing;
 
     public ObservableCollection<AssetTreeItemViewModel> RootTreeItems { get; } = new();
@@ -1329,8 +1331,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Opens the Convert IoStore to Legacy dialog, pre-filled with the current AES key field - conversion itself runs inside the dialog, not here. Standalone, unlike <see cref="ConvertSelectedCommand"/>, which only converts checked entries of an already-browsed container into the app's own workspace.</summary>
-    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    /// <summary>Opens the Convert IoStore to Legacy dialog, pre-filled with the current AES key field - conversion itself runs inside the dialog, not here. Standalone, unlike <see cref="ConvertSelectedCommand"/>, which only converts checked entries of an already-browsed container into the app's own workspace - so unlike every other <see cref="CanEditWorkspace"/>-gated command here, it needs no workspace (or even a browsed IoStore container) open at all, just <see cref="CanRunWhenIdle"/>.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void ConvertIoStoreToLegacy()
     {
         using var viewModel = new ConvertIoStoreToLegacyViewModel(null, PakAesKeyHex);
