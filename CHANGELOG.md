@@ -9,6 +9,9 @@ All notable changes to this project are documented here.
 - "Convert IoStore to Legacy...", "Unpack .pak..." and "Pack Folder into .pak..." (Tools menu) were grayed out while browsing a raw IoStore container, even though each is a standalone dialog that browses for its own source and never needed a workspace open at all.
 - "Repack Loaded .pak..." (Tools menu) stayed enabled with no pak loaded (or a non-pak workspace open), only failing with a status message after being clicked, instead of graying out like "Repack to IoStore..." already correctly does.
 - "Convert IoStore to Legacy..." always opened with an empty source field even while already browsing a container, unlike "Unpack .pak..."/"Pack Folder..." which do pre-fill from the current context - it now pre-fills with the currently-browsed container's path too.
+
+### Changed
+- "Convert Selected..." and the standalone "Convert IoStore to Legacy..." now resolve a single-mod `.utoc` against its enclosing `Paks` folder when one is found, so a mod that only overrides a few of a base game's assets can resolve imports into whatever container actually owns the rest - previously every such asset failed to convert (see the "0 assets converted" fix above). The actual conversion stays scoped to exactly the requested entries; only the wider folder is now available for import resolution.
 - Converting an IoStore container could silently produce an empty output folder with no error at all: retoc logs a per-asset conversion failure and keeps going rather than failing outright, so "0 of N assets converted" looked exactly like success. This is now treated as a real failure, with retoc's own reasons carried through to the log.
 
 ## [1.0.2] - 2026-09-15

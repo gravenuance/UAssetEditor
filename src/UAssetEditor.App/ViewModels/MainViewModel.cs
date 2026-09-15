@@ -1109,11 +1109,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var aesKey = ParseAesKey(PakAesKeyHex);
         var count = selected.Count;
 
+        // A single-mod .utoc that only overrides a few of a base game's assets can't resolve
+        // imports into whatever container actually owns the rest on its own (real repro - see
+        // RetocPaksFolderResolver's own remarks); pointing retoc at the whole enclosing Paks
+        // folder instead gives it that context, while `selected` (already a concrete,
+        // non-empty list from the guard above) keeps the actual conversion scoped to exactly
+        // the checked entries, not the whole folder's contents.
+        var input = RetocPaksFolderResolver.FindEnclosingPaksFolder(utocPath) ?? utocPath;
+
         IsBusy = true;
         StatusMessage = $"Converting {count} entr{(count == 1 ? "y" : "ies")} to legacy format...";
         try
         {
-            await RetocProcess.ConvertToLegacyAsync(utocPath, tempDir, selected, aesKey);
+            await RetocProcess.ConvertToLegacyAsync(input, tempDir, selected, aesKey);
         }
         catch (Exception ex)
         {

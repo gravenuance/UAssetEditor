@@ -86,7 +86,29 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
         try
         {
             var aesKey = PakAesKey.Parse(AesKeyHex);
-            await RetocProcess.ConvertToLegacyAsync(SourceUtocPath, OutputPath, filters: [], aesKey, _cts.Token);
+
+            // A standalone .utoc that only overrides a handful of a base game's assets can't
+            // resolve imports into whatever container actually owns the rest on its own - see
+            // RetocPaksFolderResolver's own remarks for the real repro. When this source sits
+            // under a real Paks folder, point retoc there instead for that wider resolution
+            // context, but scope the -f filter to exactly this file's own entries first - an
+            // empty filter against the *whole* Paks folder would attempt to convert the entire
+            // game, not just what was actually asked for. Falls back to the plain single-file
+            // behavior (convert everything in it, no filter) whenever no Paks folder is found,
+            // or this file turns out to have no real packages of its own to scope to.
+            var input = SourceUtocPath;
+            IReadOnlyList<string> filters = [];
+            if (RetocPaksFolderResolver.FindEnclosingPaksFolder(SourceUtocPath) is { } paksFolder)
+            {
+                var ownEntries = await RetocProcess.ListAsync(SourceUtocPath, aesKey, _cts.Token);
+                if (ownEntries.Count > 0)
+                {
+                    input = paksFolder;
+                    filters = ownEntries;
+                }
+            }
+
+            await RetocProcess.ConvertToLegacyAsync(input, OutputPath, filters, aesKey, _cts.Token);
             Status = $"Converted to {OutputPath}.";
             IsDone = true;
         }
