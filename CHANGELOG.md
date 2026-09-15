@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-15
+
 ### Fixed
 - Opening an IoStore container with an AES key (list, or converting to/from legacy) always failed with "unexpected argument '--aes-key' found": retoc treats `--aes-key` as a global option, valid only before the subcommand, but it was being appended after instead.
 - A failed retoc call showed its entire command line and stderr dump (often several paragraphs) as the app's status message instead of a short summary; the full detail still goes to the log file, but the UI now shows just retoc's own first error line.
@@ -36,6 +38,7 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.2...HEAD
+[1.0.2]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gravenuance/UAssetEditor/releases/tag/v1.0.0
