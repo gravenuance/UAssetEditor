@@ -129,15 +129,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// no <see cref="AssetWorkspace"/> in that state (nothing is parseable pre-conversion), so
     /// every command that needs a real parsed asset or pak-specific operation is disabled (see
     /// <see cref="CanEditWorkspace"/>) rather than just failing at runtime with a status
-    /// message. <see cref="LoadSourceCommand"/>, <see cref="ConvertSelectedCommand"/> and
-    /// <see cref="ConvertIoStoreToLegacyCommand"/> are deliberately exempt - the first two are
-    /// exactly what this mode is for, and the third is a standalone dialog that browses for its
-    /// own source .utoc rather than touching the current workspace, so it never needed one open.
+    /// message. <see cref="LoadSourceCommand"/> and <see cref="ConvertSelectedCommand"/> are
+    /// deliberately exempt - exactly what this mode is for. <see cref="ConvertIoStoreToLegacyCommand"/>,
+    /// <see cref="UnpackPakCommand"/> and <see cref="PackFolderCommand"/> are exempt too, for a
+    /// different reason: each is a standalone dialog that browses for its own source file/folder
+    /// rather than touching the current workspace (see their own CanExecute), so none of them
+    /// ever needed one open - their notification wiring lives with the state they actually check
+    /// (e.g. <see cref="CanRepack"/> below), not here.
     /// </summary>
     [NotifyCanExecuteChangedFor(
         nameof(SearchCommand), nameof(PreviewCommand), nameof(ApplyCommand), nameof(SaveAllEditedCommand),
-        nameof(RevertEditsCommand), nameof(RepackCommand), nameof(RepackSelectedCommand), nameof(LoadSelectedCommand),
-        nameof(OpenFromTreeCommand), nameof(ExtractSelectedCommand), nameof(UnpackPakCommand), nameof(PackFolderCommand),
+        nameof(RevertEditsCommand), nameof(RepackSelectedCommand), nameof(LoadSelectedCommand),
+        nameof(OpenFromTreeCommand), nameof(ExtractSelectedCommand),
         nameof(AddRuleCommand), nameof(RemoveRuleCommand), nameof(RunSelectedTreeActionCommand))]
     [ObservableProperty] private bool _isIoStoreBrowsing;
 
@@ -516,6 +519,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
             RepackToIoStoreCommand.NotifyCanExecuteChanged();
+            RepackCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -558,6 +562,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
             RepackToIoStoreCommand.NotifyCanExecuteChanged();
+            RepackCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -597,6 +602,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
             RepackToIoStoreCommand.NotifyCanExecuteChanged();
+            RepackCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -646,6 +652,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             IsBusy = false;
             RepackToIoStoreCommand.NotifyCanExecuteChanged();
+            RepackCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -1170,7 +1177,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         return count;
     }
 
-    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    /// <summary>Repacks the currently-open pak - unlike <see cref="UnpackPakCommand"/>/<see cref="PackFolderCommand"/> (standalone tools that browse for their own source), this only ever operates on <see cref="_currentPakSource"/>, so <see cref="CanRepack"/> checks that directly instead of the generic <see cref="CanEditWorkspace"/>, matching how <see cref="CanRepackToIoStore"/> already does for its own command.</summary>
+    [RelayCommand(CanExecute = nameof(CanRepack))]
     private async Task RepackAsync()
     {
         if (_currentPakSource == null)
@@ -1339,16 +1347,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         new ConvertIoStoreToLegacyWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
-    /// <summary>Opens the Unpack .pak dialog, pre-filled with the currently-loaded pak (if any) and the current AES key field - unpacking itself runs inside the dialog, not here.</summary>
-    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    /// <summary>Opens the Unpack .pak dialog, pre-filled with the currently-loaded pak (if any, just a convenience default) and the current AES key field - unpacking itself runs inside the dialog, not here. Standalone like <see cref="ConvertIoStoreToLegacyCommand"/>: Browse there can point at any .pak, so this only needs <see cref="CanRunWhenIdle"/>, not a workspace open.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void UnpackPak()
     {
         using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex);
         new UnpackPakWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
-    /// <summary>Opens the Pack Folder into .pak dialog, pre-filled with the currently-loaded pak's mount point (if any) so a mod folder built from an unpacked pak defaults to repacking back the same way.</summary>
-    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    /// <summary>Opens the Pack Folder into .pak dialog, pre-filled with the currently-loaded pak's mount point (if any, just a convenience default) so a mod folder built from an unpacked pak defaults to repacking back the same way. Standalone like <see cref="UnpackPakCommand"/>: builds a pak from whatever folder Browse points at, not necessarily (or even usually) the current workspace, so this only needs <see cref="CanRunWhenIdle"/>.</summary>
+    [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void PackFolder()
     {
         using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex, DefaultEngineVersion,
@@ -1597,6 +1605,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         IsIoStoreBrowsing = false;
         _ioStoreContainerPath = null;
         RepackToIoStoreCommand.NotifyCanExecuteChanged();
+        RepackCommand.NotifyCanExecuteChanged();
         StatusMessage = "Workspace closed.";
     }
 
@@ -1820,6 +1829,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Repack to IoStore works from either a loose-folder-backed workspace or an open legacy .pak - retoc's to-zen accepts both a directory and a .pak as input directly, so either source can go straight to IoStore.</summary>
     private bool CanRepackToIoStore() => !IsBusy && (_currentSource is LooseFolderAssetSource || _currentPakSource != null);
+
+    /// <summary>Repack only ever writes a new .pak from the currently-open pak, so unlike <see cref="CanEditWorkspace"/> this checks for one directly rather than just "some workspace, of any kind, is open and idle".</summary>
+    private bool CanRepack() => !IsBusy && _currentPakSource != null;
 
     private void OnResultRowDirty(SearchResultRow row) => _dirtyAssetPaths.Add(row.AssetPath);
 
