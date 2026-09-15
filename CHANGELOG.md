@@ -4,15 +4,15 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-15
+
 ### Fixed
 - "Convert Selected..." on a browsed IoStore container always failed with a "does not contain ... ScriptObjects" error for any container that doesn't carry the game's global script-objects chunk (true of most single-mod `.utoc` files) - `to-legacy` no longer tries to extract them, since nothing in this app reads that output anyway.
 - "Convert IoStore to Legacy...", "Unpack .pak..." and "Pack Folder into .pak..." (Tools menu) were grayed out while browsing a raw IoStore container, even though each is a standalone dialog that browses for its own source and never needed a workspace open at all.
 - "Repack Loaded .pak..." (Tools menu) stayed enabled with no pak loaded (or a non-pak workspace open), only failing with a status message after being clicked, instead of graying out like "Repack to IoStore..." already correctly does.
 - "Convert IoStore to Legacy..." always opened with an empty source field even while already browsing a container, unlike "Unpack .pak..."/"Pack Folder..." which do pre-fill from the current context - it now pre-fills with the currently-browsed container's path too.
-
-### Changed
-- "Convert Selected..." and the standalone "Convert IoStore to Legacy..." now resolve a single-mod `.utoc` against its enclosing `Paks` folder when one is found, so a mod that only overrides a few of a base game's assets can resolve imports into whatever container actually owns the rest - previously every such asset failed to convert (see the "0 assets converted" fix above). The actual conversion stays scoped to exactly the requested entries; only the wider folder is now available for import resolution.
 - Converting an IoStore container could silently produce an empty output folder with no error at all: retoc logs a per-asset conversion failure and keeps going rather than failing outright, so "0 of N assets converted" looked exactly like success. This is now treated as a real failure, with retoc's own reasons carried through to the log.
+- A single-mod `.utoc` that only overrides a few of a base game's assets always failed every one of them - it can't resolve imports into whatever container actually owns the rest on its own. "Convert Selected..." and the standalone "Convert IoStore to Legacy..." now resolve such a container against its enclosing `Paks` folder (found automatically) for that wider context, while keeping the actual conversion scoped to exactly the requested entries.
 
 ## [1.0.2] - 2026-09-15
 
@@ -48,7 +48,8 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/gravenuance/UAssetEditor/releases/tag/v1.0.0
