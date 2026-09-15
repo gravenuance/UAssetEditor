@@ -153,7 +153,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Pack failed for '{SourceFolder}' -> '{OutputPath}'.", SourceFolder, OutputPath);
-            Status = $"Pack failed: {ex.Message}";
+            Status = $"Pack failed: {IoStoreConversionException.Summarize(ex)}";
         }
         finally
         {

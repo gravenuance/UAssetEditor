@@ -97,7 +97,7 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
         catch (Exception ex)
         {
             Logger.LogError(ex, "Convert to legacy failed for '{UtocPath}' -> '{OutputPath}'.", SourceUtocPath, OutputPath);
-            Status = $"Convert failed: {ex.Message}";
+            Status = $"Convert failed: {IoStoreConversionException.Summarize(ex)}";
         }
         finally
         {

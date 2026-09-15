@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 
 namespace UAssetEditor.Core.AssetSources.IoStore;
 
@@ -101,16 +102,17 @@ public static class RetocProcess
         return RunAsync(args, static _ => { }, cancellationToken);
     }
 
-    // Not confirmed against a real encrypted container (retoc's own docs give no example key
-    // value) - passed as bare hex, no "0x" prefix, matching typical Rust hex-parsing crate
-    // convention. If a real encrypted .utoc round trip fails specifically on key parsing, this
-    // is the first thing to revisit.
+    // --aes-key is a *global* retoc option, recognized only before the subcommand
+    // (`retoc.exe --aes-key <KEY> list ...`) even though every subcommand's own --help is
+    // silent about it - confirmed against the real vendored retoc.exe, which rejects
+    // `list --path <UTOC> --aes-key <KEY>` with "unexpected argument '--aes-key' found".
+    // Passed as bare hex, no "0x" prefix, matching typical Rust hex-parsing crate convention.
     private static void AddAesKey(List<string> args, byte[]? aesKey)
     {
         if (aesKey is { Length: > 0 })
         {
-            args.Add("--aes-key");
-            args.Add(Convert.ToHexString(aesKey));
+            args.Insert(0, Convert.ToHexString(aesKey));
+            args.Insert(0, "--aes-key");
         }
     }
 
@@ -156,8 +158,28 @@ public static class RetocProcess
         {
             var command = string.Join(' ', args);
             var detail = string.IsNullOrWhiteSpace(stdErr) ? "" : $": {stdErr.Trim()}";
-            throw new IoStoreConversionException($"retoc {command} failed (exit code {process.ExitCode}){detail}", process.ExitCode);
+            var message = $"retoc {command} failed (exit code {process.ExitCode}){detail}";
+            throw new IoStoreConversionException(message, SummarizeStdErr(stdErr, process.ExitCode), process.ExitCode);
         }
+    }
+
+    // retoc's stderr on failure is Clap's usual multi-paragraph dump (the real error, then a
+    // blank line, then a "tip:" and a full "Usage:"/"--help" block) - far too long for a UI
+    // status line, unlike the first line alone, which is consistently retoc's actual complaint
+    // (e.g. "error: unexpected argument '--aes-key' found"). The full text still reaches the
+    // log file via the exception's own Message.
+    private static string SummarizeStdErr(string stdErr, int exitCode)
+    {
+        var firstLine = stdErr
+            .Split('\n')
+            .Select(static line => line.Trim())
+            .FirstOrDefault(static line => line.Length > 0);
+
+        if (string.IsNullOrEmpty(firstLine))
+            return $"retoc exited with code {exitCode}.";
+
+        const int maxLength = 160;
+        return firstLine.Length > maxLength ? firstLine[..maxLength] + "..." : firstLine;
     }
 
     // Reads line-by-line rather than ReadToEndAsync().Split('\n') - a container with hundreds

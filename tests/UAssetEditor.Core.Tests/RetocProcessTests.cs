@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using UAssetAPI;
 using UAssetEditor.Core.AssetSources.IoStore;
@@ -129,6 +130,33 @@ public class RetocProcessTests
             await Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
             Assert.False(File.Exists(utocPath));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ListAsync_WithAnAesKey_DoesNotRejectItAsAnUnexpectedArgument()
+    {
+        // Real-world repro (from the app's own log file): retoc's --aes-key is a *global*
+        // option, only recognized before the subcommand ("retoc.exe --aes-key <KEY> list ..."),
+        // not after it like every other per-subcommand flag - passing one alongside an AES key
+        // used to fail every single retoc call (list, to-zen, to-legacy alike) with "unexpected
+        // argument '--aes-key' found", not just when the key material was actually wrong.
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var pakPath = BuildLegacyTestPak(workDir);
+            var utocPath = Path.Combine(workDir, "test.utoc");
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
+
+            var aesKey = Enumerable.Range(0, 32).Select(i => (byte)i).ToArray();
+            var entries = await RetocProcess.ListAsync(utocPath, aesKey, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotNull(entries);
         }
         finally
         {

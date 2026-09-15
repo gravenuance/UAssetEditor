@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Opening an IoStore container with an AES key (list, or converting to/from legacy) always failed with "unexpected argument '--aes-key' found": retoc treats `--aes-key` as a global option, valid only before the subcommand, but it was being appended after instead.
+- A failed retoc call showed its entire command line and stderr dump (often several paragraphs) as the app's status message instead of a short summary; the full detail still goes to the log file, but the UI now shows just retoc's own first error line.
+
 ## [1.0.1] - 2026-09-12
 
 ### Fixed

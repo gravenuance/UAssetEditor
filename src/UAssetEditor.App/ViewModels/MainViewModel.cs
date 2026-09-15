@@ -638,7 +638,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Logger.LogError(ex, "Failed to list IoStore container '{UtocPath}'.", utocPath);
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
-            StatusMessage = $"Failed to list IoStore container: {ex.Message}";
+            StatusMessage = $"Failed to list IoStore container: {IoStoreConversionException.Summarize(ex)}";
         }
         finally
         {
@@ -1109,7 +1109,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Convert selected failed for '{UtocPath}'.", utocPath);
-            StatusMessage = $"Convert failed: {ex.Message}";
+            StatusMessage = $"Convert failed: {IoStoreConversionException.Summarize(ex)}";
             return;
         }
         finally
@@ -1308,7 +1308,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             Logger.LogError(ex, "Repack to IoStore failed -> '{OutputPath}'.", outputPath);
-            StatusMessage = $"Repack to IoStore failed: {ex.Message}";
+            StatusMessage = $"Repack to IoStore failed: {IoStoreConversionException.Summarize(ex)}";
         }
         finally
         {
