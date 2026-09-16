@@ -39,8 +39,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## UAssetAPI (repak_bind)
+## UAssetAPI
 
-UAssetAPI (NuGet dependency, `UAssetAPI.dll`) embeds `repak_bind.dll`, a native binding to
-the `repak` Rust crate (also by trumank). See https://github.com/atenfyr/UAssetAPI and
-https://github.com/trumank/repak for that project's own license/attribution.
+- **Source**: https://github.com/atenfyr/UAssetAPI
+- **Vendored at**: `vendor/UAssetAPI/` (source, consumed via `ProjectReference` from
+  `UAssetEditor.Core`)
+- **Vendored version**: `master` @ `3228c1e86261aa08131f7ec0ff1a395f5d0b2a84` (2026-08-31) -
+  not the `1.1.0` NuGet package, which predates upstream's `FInstancedStruct` support (added
+  2026-05-25, commit `b23892f`) and was silently falling back to an unparseable `RawExport`
+  for any asset using that type anywhere in its data - confirmed on 5 real Marvel Rivals
+  physics blueprints that were previously permanently unreadable by this tool.
+- **License**: MIT (`vendor/UAssetAPI-LICENSE.txt`)
+- **Notice**: `vendor/UAssetAPI-NOTICE.md` (attribution for adapted third-party segments,
+  e.g. cue4parse, per upstream's own NOTICE)
+- Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
+  by trumank). See https://github.com/trumank/repak for that project's own license/attribution.

@@ -1,0 +1,9 @@
+<Project>
+
+  <!-- Vendored third-party source (see /THIRD_PARTY_NOTICES.md) - deliberately does not
+       inherit the repo-root Directory.Build.props' strict analyzer/warnings-as-errors
+       settings, since this code isn't ours to hold to house style. MSBuild picks the
+       nearest Directory.Build.props automatically, so this one applies instead of the
+       parent for every project under /vendor. -->
+
+</Project>

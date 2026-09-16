@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/vendor/">
+    <Project Path="vendor/UAssetAPI/UAssetAPI.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/UAssetEditor.App/UAssetEditor.App.csproj" />
     <Project Path="src/UAssetEditor.Cli/UAssetEditor.Cli.csproj" />
