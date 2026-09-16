@@ -79,6 +79,62 @@ public class RetocProcessTests
     }
 
     [Fact]
+    public async Task ConvertToLegacyAsync_WithFiltersTooLongForOneCommandLine_BatchesInsteadOfFailingToStartTheProcess()
+    {
+        // Real-world repro (from the app's own log file): converting a large checked selection
+        // (hundreds of long asset paths as -f filters) threw Win32Exception(206) "The filename
+        // or extension is too long" trying to start retoc.exe at all - Windows' CreateProcess
+        // has a hard ~32,767-character command-line limit. Enough fake filters here to
+        // comfortably exceed that limit (~90,000 chars total) proves the real vendored
+        // retoc.exe process actually starts via multiple batched calls instead of one
+        // oversized one - a Win32Exception is a different exception type entirely, so
+        // ThrowsAsync<IoStoreConversionException> below only passes if retoc itself actually
+        // ran (repeatedly) and reported back, not if the process failed to start at all.
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var pakPath = BuildLegacyTestPak(workDir);
+            var utocPath = Path.Combine(workDir, "test.utoc");
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
+
+            var filters = Enumerable.Range(0, 1000)
+                .Select(i => $"../../../Marvel/Content/Marvel/Characters/9999/FakeAssetNameForBatchingTest_{i:D4}.uasset")
+                .ToList();
+
+            var outputDir = Path.Combine(workDir, "legacy_out");
+            var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
+                RetocProcess.ConvertToLegacyAsync(utocPath, outputDir, filters, aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal("No assets converted - see the log for retoc's reason.", exception.UserMessage);
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertToLegacyAsync_WithTooManyFiltersForAPakOutput_RefusesRatherThanTruncatingSilently()
+    {
+        // retoc truncates its .pak output fresh on every invocation, unlike a loose-folder
+        // output (which only ever adds/overwrites individual files) - so batching a filter
+        // list too large for one command line would silently keep only the last batch's
+        // entries for a .pak target. This must refuse outright, before even attempting a
+        // single retoc call (no real .utoc needed to prove that: the same filter list that
+        // batches safely for a loose-folder output - see the sibling test above - must be
+        // rejected here purely because the output extension is ".pak").
+        var filters = Enumerable.Range(0, 1000)
+            .Select(i => $"../../../Marvel/Content/Marvel/Characters/9999/FakeAssetNameForBatchingTest_{i:D4}.uasset")
+            .ToList();
+
+        var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
+            RetocProcess.ConvertToLegacyAsync("nonexistent.utoc", "output.pak", filters, aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal("Selection too large for one .pak - convert to a loose folder instead.", exception.UserMessage);
+    }
+
+    [Fact]
     public async Task ConvertToLegacyAsync_WhenNoAssetsSucceed_ThrowsWithRetocsOwnDiagnostics()
     {
         // Real-world repro (from the app's own log file, on a real game mod's small, standalone

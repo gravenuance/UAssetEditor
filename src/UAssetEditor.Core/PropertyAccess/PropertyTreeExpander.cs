@@ -13,7 +13,7 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// checkbox for (see <see cref="PropertyWalker.HasEditableDescendant"/>) - a table that
 /// recursively holds nothing but more tables has nothing of its own to usefully load.
 /// </summary>
-public sealed record PropertyTreeItem(string Path, string DisplayName, PropertyData Property, bool HasEditableContent);
+public sealed record PropertyTreeItem(string Path, string DisplayName, PropertyData Property, bool HasEditableContent, bool IsArrayElement = false);
 
 /// <summary>
 /// Supplies the Browse tree's property children one level at a time, filtered down to only
@@ -55,7 +55,7 @@ public static class PropertyTreeExpander
             var count = ChildCount(property);
             if (count == 0) continue;
 
-            var name = property.Name?.Value?.Value ?? "";
+            var name = FNameDisplay.ToDisplayString(property.Name);
             items.Add(new PropertyTreeItem(PropertyPaths.Child(prefix, property), $"{name} ({count})", property,
                 PropertyWalker.HasEditableDescendant(property, asset)));
         }
@@ -71,7 +71,7 @@ public static class PropertyTreeExpander
             if (count == 0) continue;
 
             items.Add(new PropertyTreeItem(PropertyPaths.ArrayElement(prefix, i), $"[{i}] ({count})", elements[i],
-                PropertyWalker.HasEditableDescendant(elements[i], asset)));
+                PropertyWalker.HasEditableDescendant(elements[i], asset), IsArrayElement: true));
         }
         return items;
     }
@@ -84,7 +84,8 @@ public static class PropertyTreeExpander
             var count = ChildCount(value);
             if (count == 0) continue;
 
-            var keyText = PropertyValueAccessor.AsSearchableString(key, asset) ?? key.Name?.Value?.Value ?? "?";
+            var fromName = FNameDisplay.ToDisplayString(key.Name);
+            var keyText = PropertyValueAccessor.AsSearchableString(key, asset) ?? (fromName.Length > 0 ? fromName : "?");
             items.Add(new PropertyTreeItem(PropertyPaths.MapEntry(prefix, keyText), $"{keyText} ({count})", value,
                 PropertyWalker.HasEditableDescendant(value, asset)));
         }

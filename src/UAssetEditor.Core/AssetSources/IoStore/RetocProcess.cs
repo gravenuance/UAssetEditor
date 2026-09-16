@@ -75,13 +75,21 @@ public static class RetocProcess
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
 
-        var args = new List<string> { "to-legacy", utocPath, output, "--no-script-objects" };
-        foreach (var filter in filters)
-        {
-            args.Add("-f");
-            args.Add(filter);
-        }
-        AddAesKey(args, aesKey);
+        var fixedArgs = new List<string> { "to-legacy", utocPath, output, "--no-script-objects" };
+        AddAesKey(fixedArgs, aesKey);
+        var batches = BatchFilters(filters, string.Join(' ', fixedArgs).Length);
+
+        // retoc truncates its .pak output fresh on every invocation (action_to_legacy's pak
+        // branch always opens a new File::create), unlike a loose-folder output (FSFileWriter's
+        // own write_file only ever adds/overwrites individual files, never wipes the directory)
+        // - so more than one batch here would silently keep only the *last* batch's entries.
+        // Refuse outright rather than quietly losing data; a selection this large can still go
+        // to a loose folder instead.
+        if (batches.Count > 1 && string.Equals(Path.GetExtension(output), ".pak", StringComparison.OrdinalIgnoreCase))
+            throw new IoStoreConversionException(
+                $"{filters.Count} entries is too large to convert directly to one .pak (would need {batches.Count} retoc calls, each of which truncates the .pak fresh) - convert to a loose folder instead.",
+                "Selection too large for one .pak - convert to a loose folder instead.",
+                exitCode: 0);
 
         // retoc reports a per-package conversion failure and keeps going rather than failing
         // the whole process - confirmed against a real user session where 41 of 41 requested
@@ -90,21 +98,77 @@ public static class RetocProcess
         // exited 0. Each per-package failure is logged at info level, but - because a progress
         // bar is active while packages are being processed - through indicatif's own output
         // target (stderr), not the plain stdout the final "Extracted N (M failed)" summary line
-        // below uses once the progress bar is gone. Capturing *both* and treating "0 succeeded"
-        // as a real failure means the log finally shows retoc's real per-package reasons,
-        // instead of an empty output folder with nothing to explain why.
-        var stdOutLines = new List<string>();
-        var stdErr = await RunAsync(args, stdOutLines.Add, cancellationToken).ConfigureAwait(false);
+        // below uses once the progress bar is gone. Capturing *both*, across every batch, and
+        // treating "0 succeeded overall" as a real failure means the log finally shows retoc's
+        // real per-package reasons, instead of an empty output folder with nothing to explain
+        // why.
+        var totalSucceeded = 0;
+        var sawSummaryLine = false;
+        var diagnostics = new List<string>();
 
-        if (TryGetSucceededAssetCount(stdOutLines, out var succeeded) && succeeded == 0)
+        foreach (var batch in batches)
         {
-            var diagnosticLines = stdOutLines.Concat(SplitNonEmptyLines(stdErr)).ToList();
-            var detail = diagnosticLines.Count > 0 ? $": {string.Join('\n', diagnosticLines)}" : "";
+            var args = new List<string> { "to-legacy", utocPath, output, "--no-script-objects" };
+            foreach (var filter in batch)
+            {
+                args.Add("-f");
+                args.Add(filter);
+            }
+            AddAesKey(args, aesKey);
+
+            var stdOutLines = new List<string>();
+            var stdErr = await RunAsync(args, stdOutLines.Add, cancellationToken).ConfigureAwait(false);
+
+            if (TryGetSucceededAssetCount(stdOutLines, out var succeeded))
+            {
+                sawSummaryLine = true;
+                totalSucceeded += succeeded;
+            }
+            diagnostics.AddRange(stdOutLines);
+            diagnostics.AddRange(SplitNonEmptyLines(stdErr));
+        }
+
+        if (sawSummaryLine && totalSucceeded == 0)
+        {
+            var detail = diagnostics.Count > 0 ? $": {string.Join('\n', diagnostics)}" : "";
             throw new IoStoreConversionException(
-                $"retoc {string.Join(' ', args)} converted 0 assets{detail}",
+                $"retoc to-legacy {utocPath} -> {output} converted 0 assets across {batches.Count} batch(es){detail}",
                 "No assets converted - see the log for retoc's reason.",
                 exitCode: 0);
         }
+    }
+
+    // Windows' CreateProcess has a hard ~32,767-character command-line limit - a single retoc
+    // call with enough -f filters (a big checked folder/container can mean hundreds of long
+    // asset paths) can exceed it, confirmed by a real Win32Exception(206) "The filename or
+    // extension is too long" converting a large selection. Splits into as many sequential
+    // batches as needed to stay safely under that limit. An empty filter list (convert every
+    // entry) is never split - there's nothing to batch, and splitting it would turn "convert
+    // everything" into "convert everything, N times".
+    private const int MaxCommandLineLength = 30_000;
+
+    private static List<List<string>> BatchFilters(IReadOnlyList<string> filters, int fixedLength)
+    {
+        if (filters.Count == 0)
+            return [[]];
+
+        var batches = new List<List<string>>();
+        var batch = new List<string>();
+        var length = fixedLength;
+        foreach (var filter in filters)
+        {
+            var entryLength = filter.Length + 4; // "-f " plus the filter text itself, roughly
+            if (batch.Count > 0 && length + entryLength > MaxCommandLineLength)
+            {
+                batches.Add(batch);
+                batch = new List<string>();
+                length = fixedLength;
+            }
+            batch.Add(filter);
+            length += entryLength;
+        }
+        batches.Add(batch);
+        return batches;
     }
 
     private static IEnumerable<string> SplitNonEmptyLines(string text) =>

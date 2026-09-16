@@ -63,4 +63,47 @@ public class PropertyLocatorTests
         Assert.True(PropertyValueAccessor.TrySetStringValue(node.Property, "100", asset));
         Assert.Equal("100", PropertyValueAccessor.AsSearchableString(PropertyLocator.Locate(asset, 0, "Row1.Damage")!.Property, asset));
     }
+
+    [Fact]
+    public void LocateArrayElement_FindsTheOwningArrayAndIndex()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        var chains = TestAssets.AddStructArray(asset, export, "Chains", 10, 20);
+
+        var located = PropertyLocator.LocateArrayElement(asset, 0, "Chains[1]");
+
+        Assert.NotNull(located);
+        Assert.Same(chains, located!.Value.Array);
+        Assert.Equal(1, located.Value.Index);
+    }
+
+    [Fact]
+    public void LocateArrayElement_ReturnsNullForAPlainStructField()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+
+        Assert.Null(PropertyLocator.LocateArrayElement(asset, 0, "Location.X"));
+    }
+
+    [Fact]
+    public void LocateArrayElement_ReturnsNullForAMapEntry()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateExportWithMap(asset);
+
+        // "Scores[Alice]" has a trailing bracket too, but "Alice" isn't an integer index and
+        // the resolved parent (Scores) is a map, not an array - must not be mistaken for one.
+        Assert.Null(PropertyLocator.LocateArrayElement(asset, 0, "Scores[Alice]"));
+    }
+
+    [Fact]
+    public void LocateArrayElement_ReturnsNullForAnUnknownPath()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+
+        Assert.Null(PropertyLocator.LocateArrayElement(asset, 0, "NoSuchArray[0]"));
+    }
 }

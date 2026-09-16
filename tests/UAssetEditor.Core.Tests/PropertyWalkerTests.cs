@@ -1,3 +1,4 @@
+using UAssetAPI.PropertyTypes.Objects;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Core.Tests;
@@ -34,6 +35,24 @@ public class PropertyWalkerTests
         Assert.NotNull(countNode.Owner);
         Assert.Same(export.Data, countNode.Owner);
         Assert.Same(export.Data[countNode.OwnerIndex], countNode.Property);
+    }
+
+    [Fact]
+    public void Walk_DistinguishesSiblingsThatShareAnFNameByNumber()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateExportWithNumberedSiblings(asset);
+
+        var paths = PropertyWalker.Walk(export).Select(n => n.Path).ToList();
+
+        Assert.Contains("Node", paths);
+        Assert.Contains("Node_0", paths);
+        Assert.Contains("Node_1", paths);
+        // Distinct paths just proves they don't collide by NAME - confirm each also still
+        // resolves back to its own distinct value, not silently the wrong sibling's.
+        Assert.Equal(0, ((IntPropertyData)PropertyWalker.Walk(export).Single(n => n.Path == "Node").Property).Value);
+        Assert.Equal(1, ((IntPropertyData)PropertyWalker.Walk(export).Single(n => n.Path == "Node_0").Property).Value);
+        Assert.Equal(2, ((IntPropertyData)PropertyWalker.Walk(export).Single(n => n.Path == "Node_1").Property).Value);
     }
 
     [Fact]

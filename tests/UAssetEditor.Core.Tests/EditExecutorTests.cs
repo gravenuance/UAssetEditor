@@ -1,4 +1,5 @@
 using UAssetAPI;
+using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.PropertyAccess;
@@ -116,6 +117,67 @@ public class EditExecutorTests
         var change = Assert.Single(Assert.Single(changeSets).Changes);
         Assert.Equal("RemoveTag", change.RuleDescription);
         Assert.Equal("Alpha", change.NewValue);
+    }
+
+    [Fact]
+    public async Task DuplicateElementRule_AppendsACloneOfTheLastElement_AndAppliesOverrides()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddStructArray(asset, export, "Chains", 10, 20);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["Chains"] },
+            Rules = { new DuplicateElementRule { Overrides = { new FieldOverride { Path = "Value", Value = "99" } } } },
+        };
+
+        await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null, cancellationToken: TestContext.Current.CancellationToken);
+
+        var chains = (ArrayPropertyData)PropertyWalker.Walk(export).Single(n => n.Path == "Chains").Property;
+        Assert.Equal(3, chains.Value!.Length);
+        Assert.Equal("10", ValueField(chains.Value[0]));
+        Assert.Equal("20", ValueField(chains.Value[1]));
+        Assert.Equal("99", ValueField(chains.Value[2]));
+
+        string? ValueField(PropertyData element) =>
+            PropertyValueAccessor.AsSearchableString(PropertyWalker.WalkFrom(element, asset).Single(n => n.Path == "Value").Property, asset);
+    }
+
+    [Fact]
+    public void DuplicateElementRule_RoundTripsThroughTheSamePolymorphicJsonEditRuleUses()
+    {
+        // RuleSet persistence (MainViewModel's saved session, and any saved/shared rule set
+        // file) serializes the EditRule list polymorphically by a "kind" discriminator - a
+        // typo'd or missing [JsonDerivedType] on a new rule kind would silently fail to
+        // round-trip rather than throwing at the call site that adds it.
+        EditRule rule = new DuplicateElementRule { Overrides = { new FieldOverride { Path = "RootBone", Value = "spine_05" } } };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(rule);
+        var roundTripped = System.Text.Json.JsonSerializer.Deserialize<EditRule>(json);
+
+        var duplicateRule = Assert.IsType<DuplicateElementRule>(roundTripped);
+        var fieldOverride = Assert.Single(duplicateRule.Overrides);
+        Assert.Equal("RootBone", fieldOverride.Path);
+        Assert.Equal("spine_05", fieldOverride.Value);
+    }
+
+    [Fact]
+    public async Task DuplicateElementRule_OnAnEmptyArray_MakesNoChange()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddStructArray(asset, export, "Chains");
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["Chains"] },
+            Rules = { new DuplicateElementRule() },
+        };
+
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(changeSets);
     }
 
     [Theory]

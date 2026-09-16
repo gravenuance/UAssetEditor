@@ -21,6 +21,23 @@ public class PropertyTreeExpanderTests
     }
 
     [Fact]
+    public void GetExportRoot_DistinguishesSiblingsThatShareAnFNameByNumber()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateExportWithNumberedStructSiblings(asset);
+
+        var root = PropertyTreeExpander.GetExportRoot(export, asset);
+        var displayNames = root.Select(i => i.DisplayName).ToList();
+
+        // Each sibling has one field, so "(1)" - the point here is the distinct base name
+        // before it, not the count; a bug that ignores FName.Number collapses all three to
+        // the identical "Node (1)" three times over instead of three distinct entries.
+        Assert.Contains("Node (1)", displayNames);
+        Assert.Contains("Node_0 (1)", displayNames);
+        Assert.Contains("Node_1 (1)", displayNames);
+    }
+
+    [Fact]
     public void GetChildren_OnStructWithOnlyScalarFields_YieldsNothing()
     {
         var asset = TestAssets.CreateAsset();
@@ -115,6 +132,38 @@ public class PropertyTreeExpanderTests
         var middle = PropertyTreeExpander.GetExportRoot(export, asset).Single(i => i.Path == "MiddleContainer");
 
         Assert.False(middle.HasEditableContent);
+    }
+
+    [Fact]
+    public void GetChildren_OnArrayOfStructs_MarksEachElementAsAnArrayElement()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddStructArray(asset, export, "Chains", 1, 2);
+
+        var root = PropertyTreeExpander.GetExportRoot(export, asset);
+        var chains = Assert.Single(root, i => i.Path == "Chains");
+
+        // The array property itself isn't an element of anything - only its children are.
+        Assert.False(chains.IsArrayElement);
+
+        var elements = PropertyTreeExpander.GetChildren(chains.Property, chains.Path, asset);
+        Assert.Equal(2, elements.Count);
+        Assert.All(elements, e => Assert.True(e.IsArrayElement));
+    }
+
+    [Fact]
+    public void GetChildren_OnStructField_IsNotMarkedAsAnArrayElement()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddNestedStruct(asset, export);
+
+        var root = PropertyTreeExpander.GetExportRoot(export, asset);
+        var outer = Assert.Single(root, i => i.Path == "Outer");
+        var inner = Assert.Single(PropertyTreeExpander.GetChildren(outer.Property, outer.Path, asset));
+
+        Assert.False(inner.IsArrayElement);
     }
 
     [Fact]

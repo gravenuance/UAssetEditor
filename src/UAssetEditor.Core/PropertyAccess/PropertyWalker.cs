@@ -36,6 +36,15 @@ public static class PropertyWalker
     public static bool HasEditableDescendant(PropertyData property, UAsset asset) =>
         WalkChildren(property, "", asset).Any(n => PropertyValueAccessor.AsSearchableString(n.Property, asset) != null);
 
+    /// <summary>
+    /// Walks one property's own subtree (struct fields, array elements, map entries), with
+    /// paths relative to <paramref name="property"/> itself rather than an export's root - for
+    /// locating a field inside a value that isn't (yet) part of an export's own Data list, e.g.
+    /// a just-duplicated array element (see Editing.EditExecutor's DuplicateElementRule).
+    /// </summary>
+    public static IEnumerable<PropertyNode> WalkFrom(PropertyData property, UAsset asset) =>
+        WalkChildren(property, "", asset);
+
     private static IEnumerable<PropertyNode> WalkRows(List<StructPropertyData> rows, UAsset asset)
     {
         foreach (var row in rows)
@@ -92,7 +101,8 @@ public static class PropertyWalker
             case MapPropertyData { Value: { } entries }:
                 foreach (var (key, value) in entries)
                 {
-                    var keyText = PropertyValueAccessor.AsSearchableString(key, asset) ?? key.Name?.Value?.Value ?? "?";
+                    var fromName = FNameDisplay.ToDisplayString(key.Name);
+                    var keyText = PropertyValueAccessor.AsSearchableString(key, asset) ?? (fromName.Length > 0 ? fromName : "?");
                     var entryPath = PropertyPaths.MapEntry(path, keyText);
 
                     // Same as a DataTable row: a map's backing TMap isn't a

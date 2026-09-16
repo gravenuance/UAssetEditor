@@ -58,6 +58,35 @@ public class PropertyValueAccessorTests
     }
 
     [Fact]
+    public void AsSearchableString_ReadsEnumValueByName()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new EnumPropertyData(new FName(asset, "BoneConstraintGlobalComplianceType"))
+        {
+            EnumType = new FName(asset, "EBoneConstraintGlobalComplianceType"),
+            Value = new FName(asset, "Leather"),
+        };
+
+        Assert.Equal("Leather", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void TrySetStringValue_SetsEnumValueByName()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new EnumPropertyData(new FName(asset, "BoneConstraintGlobalComplianceType"))
+        {
+            EnumType = new FName(asset, "EBoneConstraintGlobalComplianceType"),
+            Value = new FName(asset, "Leather"),
+        };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "Fat", asset);
+
+        Assert.True(ok);
+        Assert.Equal("Fat", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
     public void UpdateIsZeroFlag_ReflectsEmptyString()
     {
         var asset = TestAssets.CreateAsset();

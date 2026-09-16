@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
 
 namespace UAssetEditor.Core.Editing;
@@ -16,6 +17,7 @@ namespace UAssetEditor.Core.Editing;
 [JsonDerivedType(typeof(AddTagRule), "addTag")]
 [JsonDerivedType(typeof(RemoveTagRule), "removeTag")]
 [JsonDerivedType(typeof(ReplaceReferenceRule), "replaceReference")]
+[JsonDerivedType(typeof(DuplicateElementRule), "duplicateElement")]
 public abstract class EditRule
 {
 }
@@ -99,4 +101,26 @@ public sealed class ReplaceReferenceRule : EditRule
     public required string OldReference { get; init; }
     public required string NewReference { get; init; }
     public bool IsRegex { get; init; }
+}
+
+/// <summary>Sets one field of a just-duplicated element (see <see cref="DuplicateElementRule"/>), addressed by its path relative to the element itself (e.g. "RootBone", "PhysicsSettings.Damping").</summary>
+public sealed class FieldOverride
+{
+    public required string Path { get; init; }
+    public required string Value { get; init; }
+}
+
+/// <summary>
+/// Appends a clone of a matched array's own last element - e.g. one more "Chains" entry,
+/// copied from whichever chain the matched node already has - then applies <see cref="Overrides"/>
+/// to just that new clone. The batch counterpart to the Browse tree's "Duplicate Element"
+/// context-menu action (<see cref="PropertyAccess.ArrayElementEditor.Duplicate"/>): one rule
+/// grows every array the scope matches and specializes each new element in the same pass,
+/// instead of duplicating and hand-editing one node at a time. Always clones the template
+/// from within the SAME array it's appending to (never a value from elsewhere), so the clone
+/// is guaranteed to match that array's own element schema.
+/// </summary>
+public sealed class DuplicateElementRule : EditRule
+{
+    public Collection<FieldOverride> Overrides { get; init; } = new();
 }

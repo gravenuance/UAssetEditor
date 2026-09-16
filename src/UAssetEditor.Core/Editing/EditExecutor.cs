@@ -178,7 +178,7 @@ public static class EditExecutor
         }
     }
 
-    private static bool IsStructural(EditRule rule) => rule is RemovePropertyRule or AddTagRule or RemoveTagRule;
+    private static bool IsStructural(EditRule rule) => rule is RemovePropertyRule or AddTagRule or RemoveTagRule or DuplicateElementRule;
 
     private static PropertyNode? LocateCached(UAsset asset, Dictionary<int, Dictionary<string, PropertyNode>> cache, int exportIndex, string propertyPath)
     {
@@ -271,6 +271,9 @@ public static class EditExecutor
                 removeFromArray.Value = remaining;
                 return new PropertyChange(path, match.ExportIndex, match.ExportName, match.PropertyPath, "RemoveTag", oldValue, removeTag.Tag);
 
+            case DuplicateElementRule duplicateRule:
+                return ApplyDuplicateElementRule(asset, path, match, duplicateRule, node, oldValue);
+
             default:
                 return null;
         }
@@ -278,6 +281,30 @@ public static class EditExecutor
         PropertyValueAccessor.UpdateIsZeroFlag(node.Property);
         var newValue = PropertyValueAccessor.AsSearchableString(node.Property, asset) ?? "";
         return new PropertyChange(path, match.ExportIndex, match.ExportName, match.PropertyPath, rule.GetType().Name, oldValue, newValue);
+    }
+
+    /// <summary>Duplicates <paramref name="node"/>'s array's own last element and applies <paramref name="rule"/>'s field overrides to just the clone. See <see cref="DuplicateElementRule"/>.</summary>
+    private static PropertyChange? ApplyDuplicateElementRule(UAsset asset, string path, SearchResult match, DuplicateElementRule rule, PropertyNode node, string oldValue)
+    {
+        if (node.Property is not ArrayPropertyData array || array.Value is not { Length: > 0 } elements)
+            return null;
+
+        var clone = ArrayElementEditor.Duplicate(array, elements.Length - 1);
+
+        var appliedCount = 0;
+        if (rule.Overrides.Count > 0)
+        {
+            var byPath = PropertyWalker.WalkFrom(clone, asset).ToDictionary(n => n.Path, n => n.Property);
+            foreach (var fieldOverride in rule.Overrides)
+            {
+                if (byPath.TryGetValue(fieldOverride.Path, out var target) &&
+                    PropertyValueAccessor.TrySetStringValue(target, fieldOverride.Value, asset))
+                    appliedCount++;
+            }
+        }
+
+        var newValue = $"+1 element ({appliedCount}/{rule.Overrides.Count} override(s) applied)";
+        return new PropertyChange(path, match.ExportIndex, match.ExportName, match.PropertyPath, "DuplicateElement", oldValue, newValue);
     }
 
     private static bool ShouldSkip(PropertyData prop, SkipCondition skip, string currentValueText) =>

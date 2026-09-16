@@ -32,6 +32,7 @@ public static class PropertyValueAccessor
             ObjectPropertyData o => DescribeObjectReference(o.Value, asset),
             SoftObjectPropertyData so => DescribeSoftObjectPath(so.Value),
             SoftObjectPathPropertyData sop => sop.Path?.Value,
+            EnumPropertyData e => e.Value?.Value?.Value,
             _ => null,
         };
     }
@@ -63,6 +64,9 @@ public static class PropertyValueAccessor
                 return true;
             case TextPropertyData t:
                 t.Value = new FString(newValue);
+                return true;
+            case EnumPropertyData e:
+                e.Value = new FName(asset, newValue);
                 return true;
             default:
                 return false;

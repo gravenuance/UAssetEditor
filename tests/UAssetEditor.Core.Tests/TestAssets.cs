@@ -1,5 +1,7 @@
+using System.Linq;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
+using UAssetAPI.FieldTypes;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
@@ -102,6 +104,30 @@ internal static class TestAssets
         return middle;
     }
 
+    /// <summary>
+    /// Adds an array of small structs (each a single "Value" int field) to an already-built
+    /// export's Data - the shape a KawaiiPhysics node's "Chains" array actually has, for
+    /// exercising array-element duplication/removal rather than the scalar-element "Tags"
+    /// array <see cref="CreateSampleExport"/> already builds.
+    /// </summary>
+    public static ArrayPropertyData AddStructArray(UAsset asset, NormalExport export, string arrayName, params int[] values)
+    {
+        var elements = values.Select(v => (PropertyData)new StructPropertyData(new FName(asset, arrayName))
+        {
+            StructType = new FName(asset, arrayName + "Type"),
+            Value = new List<PropertyData> { new IntPropertyData(new FName(asset, "Value")) { Value = v } },
+        }).ToArray();
+
+        var array = new ArrayPropertyData(new FName(asset, arrayName))
+        {
+            ArrayType = new FName(asset, "StructProperty"),
+            Value = elements,
+        };
+
+        export.Data.Add(array);
+        return array;
+    }
+
     /// <summary>A small NameProperty-to-IntProperty map, for exercising map-entry traversal.</summary>
     public static MapPropertyData CreateSampleMap(UAsset asset, string propertyName = "Scores")
     {
@@ -120,6 +146,62 @@ internal static class TestAssets
         return map;
     }
 
+    /// <summary>
+    /// An export whose Data list holds three "Node" siblings using Unreal's real FName.Number
+    /// encoding (Number 0 = bare, Number K >= 1 displays as "_{K-1}") rather than the suffix
+    /// baked into the string - the shape a legacy/versioned-format asset's top-level properties
+    /// actually have (confirmed against a real retoc-converted file this session), as opposed to
+    /// an unversioned CDO's own Data list, which bakes the suffix into the string instead (see
+    /// <see cref="CreateClassWithNumberedNode"/>). Exercises <see cref="PropertyAccess.PropertyPaths.Child"/>'s
+    /// FNameDisplay reconstruction - without it, all three siblings collapse to the identical bare path "Node".
+    /// </summary>
+    public static NormalExport CreateExportWithNumberedSiblings(UAsset asset, string exportName = "NumberedExport")
+    {
+        var export = new NormalExport(asset, Array.Empty<byte>())
+        {
+            ObjectName = new FName(asset, exportName),
+            Data = new List<PropertyData>
+            {
+                new IntPropertyData(new FName(asset, "Node")) { Value = 0 },
+                new IntPropertyData(new FName(asset, "Node", 1)) { Value = 1 },
+                new IntPropertyData(new FName(asset, "Node", 2)) { Value = 2 },
+            },
+        };
+
+        asset.Exports.Add(export);
+        return export;
+    }
+
+    /// <summary>
+    /// Same real Number-based FName encoding as <see cref="CreateExportWithNumberedSiblings"/>,
+    /// but each sibling is a non-empty struct (rather than a scalar) - the shape
+    /// <see cref="PropertyAccess.PropertyTreeExpander.GetExportRoot"/> needs, since it filters
+    /// out childless (scalar) properties entirely and so can't exercise its own DisplayName
+    /// construction against a plain <see cref="IntPropertyData"/> sibling set.
+    /// </summary>
+    public static NormalExport CreateExportWithNumberedStructSiblings(UAsset asset, string exportName = "NumberedStructExport")
+    {
+        StructPropertyData Node(FName name, int value) => new(name)
+        {
+            StructType = new FName(asset, "NodeType"),
+            Value = new List<PropertyData> { new IntPropertyData(new FName(asset, "Value")) { Value = value } },
+        };
+
+        var export = new NormalExport(asset, Array.Empty<byte>())
+        {
+            ObjectName = new FName(asset, exportName),
+            Data = new List<PropertyData>
+            {
+                Node(new FName(asset, "Node"), 0),
+                Node(new FName(asset, "Node", 1), 1),
+                Node(new FName(asset, "Node", 2), 2),
+            },
+        };
+
+        asset.Exports.Add(export);
+        return export;
+    }
+
     /// <summary>An export whose only top-level property is a map - exercises map-entry traversal in <see cref="PropertyAccess.PropertyWalker"/>/<see cref="PropertyAccess.PropertyTreeExpander"/>.</summary>
     public static NormalExport CreateExportWithMap(UAsset asset, string exportName = "MapExport")
     {
@@ -131,6 +213,99 @@ internal static class TestAssets
 
         asset.Exports.Add(export);
         return export;
+    }
+
+    /// <summary>
+    /// A minimal Blueprint-style class export (LoadedProperties declaring one struct-typed
+    /// node property) paired with its CDO export (holding that property's default value) -
+    /// the shape <see cref="PropertyAccess.ClassPropertyDeclarer"/> needs: a class whose
+    /// ClassDefaultObject points back to the CDO export that carries the actual value.
+    /// </summary>
+    public static (ClassExport ClassExport, NormalExport Cdo) CreateClassWithNode(
+        UAsset asset, string nodePropertyName, string className = "TestClass_C", string cdoName = "Default__TestClass_C")
+    {
+        var cdo = new NormalExport(asset, Array.Empty<byte>())
+        {
+            ObjectName = new FName(asset, cdoName),
+            Data = new List<PropertyData>
+            {
+                new StructPropertyData(new FName(asset, nodePropertyName))
+                {
+                    StructType = new FName(asset, "TestNodeType"),
+                    Value = new List<PropertyData> { new IntPropertyData(new FName(asset, "Value")) { Value = 1 } },
+                },
+            },
+        };
+        asset.Exports.Add(cdo);
+        var cdoIndex = asset.Exports.Count - 1;
+
+        var classExport = new ClassExport
+        {
+            Asset = asset,
+            ObjectName = new FName(asset, className),
+            LoadedProperties = new FProperty[]
+            {
+                new FStructProperty
+                {
+                    Name = new FName(asset, nodePropertyName),
+                    Struct = FPackageIndex.FromImport(0),
+                    ElementSize = 8,
+                },
+            },
+            ClassDefaultObject = FPackageIndex.FromExport(cdoIndex),
+        };
+        asset.Exports.Add(classExport);
+
+        return (classExport, cdo);
+    }
+
+    /// <summary>
+    /// Same shape as <see cref="CreateClassWithNode"/>, except the LoadedProperties entry uses
+    /// Unreal's own real encoding for a "Foo_N" sibling - FName(String="Foo", Number=N+1) - rather
+    /// than one literal "Foo_N" string with Number 0. Confirmed against a real compiled Marvel
+    /// Rivals anim-blueprint class via reflection: every "AnimGraphNode_KawaiiPhysics_N" declared
+    /// on the class is FName("AnimGraphNode_KawaiiPhysics", Number=N+1); only the CDO's own Data
+    /// list bakes the suffix into the string (Number 0). <see cref="displayNumber"/> is the "_N"
+    /// suffix as it would display (e.g. 34 for "..._34"); pass 0 for the bare, unsuffixed name.
+    /// </summary>
+    public static (ClassExport ClassExport, NormalExport Cdo) CreateClassWithNumberedNode(
+        UAsset asset, string baseName, int displayNumber, string className = "TestClass_C", string cdoName = "Default__TestClass_C")
+    {
+        var displayName = displayNumber == 0 ? baseName : $"{baseName}_{displayNumber}";
+
+        var cdo = new NormalExport(asset, Array.Empty<byte>())
+        {
+            ObjectName = new FName(asset, cdoName),
+            Data = new List<PropertyData>
+            {
+                new StructPropertyData(new FName(asset, displayName))
+                {
+                    StructType = new FName(asset, "TestNodeType"),
+                    Value = new List<PropertyData> { new IntPropertyData(new FName(asset, "Value")) { Value = 1 } },
+                },
+            },
+        };
+        asset.Exports.Add(cdo);
+        var cdoIndex = asset.Exports.Count - 1;
+
+        var classExport = new ClassExport
+        {
+            Asset = asset,
+            ObjectName = new FName(asset, className),
+            LoadedProperties = new FProperty[]
+            {
+                new FStructProperty
+                {
+                    Name = new FName(asset, baseName, displayNumber + 1),
+                    Struct = FPackageIndex.FromImport(0),
+                    ElementSize = 8,
+                },
+            },
+            ClassDefaultObject = FPackageIndex.FromExport(cdoIndex),
+        };
+        asset.Exports.Add(classExport);
+
+        return (classExport, cdo);
     }
 
     /// <summary>A DataTableExport whose rows (each a struct) live in Table.Data rather than the export's own (empty) Data - exercises the DataTable-specific root in <see cref="PropertyAccess.PropertyTreeExpander"/>.</summary>
