@@ -299,16 +299,37 @@ internal static class Commands
     {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var sourcePath = args.RequireOption("from");
-        var arrayPath = args.RequireOption("into");
+        var intoPath = args.Option("into");
+        var sourceExportIndex = args.Option("from-export") is { } fromExport
+            ? AssetIo.ResolveExportIndex(asset, fromExport)
+            : exportIndex;
 
-        var source = PropertyLocator.Locate(asset, exportIndex, sourcePath)
+        var source = PropertyLocator.Locate(asset, sourceExportIndex, sourcePath)
             ?? throw new ArgException($"No property at path '{sourcePath}'.");
-        if (PropertyLocator.Locate(asset, exportIndex, arrayPath)?.Property is not UAssetAPI.PropertyTypes.Objects.ArrayPropertyData array)
-            throw new ArgException($"'{arrayPath}' isn't an array property.");
 
-        ArrayElementEditor.AppendClone(array, source.Property);
-        var newIndex = array.Value!.Length - 1;
-        return $"Appended clone of {sourcePath} -> {arrayPath}[{newIndex}]";
+        if (intoPath == null)
+        {
+            var rootData = PropertyLocator.LocateExportData(asset, exportIndex)
+                ?? throw new ArgException("Export has no top-level property list.");
+            StructFieldEditor.AppendClone(rootData, source.Property);
+            return $"Appended clone of {sourcePath} -> export root ({source.Property.Name})";
+        }
+
+        var target = PropertyLocator.Locate(asset, exportIndex, intoPath)?.Property;
+
+        switch (target)
+        {
+            case UAssetAPI.PropertyTypes.Objects.ArrayPropertyData array:
+                ArrayElementEditor.AppendClone(array, source.Property);
+                return $"Appended clone of {sourcePath} -> {intoPath}[{array.Value!.Length - 1}]";
+
+            case UAssetAPI.PropertyTypes.Structs.StructPropertyData @struct:
+                StructFieldEditor.AppendClone(@struct, source.Property);
+                return $"Appended clone of {sourcePath} -> {intoPath}.{source.Property.Name}";
+
+            default:
+                throw new ArgException($"'{intoPath}' isn't an array or struct property.");
+        }
     }
 
     /// <summary>

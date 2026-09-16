@@ -94,9 +94,16 @@ static void PrintUsage()
               Declare a brand-new top-level class property by cloning --template's declaration and CDO value (see ClassPropertyDeclarer).
               Does not touch AnimNodeData or ComponentPose.LinkID - splice those in by hand with 'duplicate'/'set' afterward.
 
-          uacli append-clone <file> --export <e> --from <sourcePath> --into <arrayPath> [--save] [--backup]
-              Deep-clone the property at --from and append it as --into's new last element - for an array with no existing
-              element of its own to 'duplicate' from (e.g. an empty ExcludeBones list), cloning a same-shaped sibling property instead.
+          uacli append-clone <file> --export <e> --from <sourcePath> [--into <containerPath>] [--from-export <e>] [--save] [--backup]
+              Deep-clone the property at --from and append it into --into, which may be an array (appended as the new last
+              element - for one with no existing element of its own to 'duplicate' from, e.g. an empty ExcludeBones list) or a
+              struct (appended as a new field - for a scalar field omitted because it sits at its engine default, e.g. a
+              Kinematic body's unset GravityScale, which 'set' can't find until something adds it). Omit --into to append
+              straight onto the export's own top-level property list instead, for when the whole property is missing (e.g. a
+              rigid body whose every DefaultInstance field sat at default, omitting the whole struct, not just its fields).
+              --from-export resolves --from against a different export than --into's (defaults to the same --export) -
+              needed when the template lives on a different top-level object entirely, e.g. cloning one PhysicsAsset body's
+              populated DefaultInstance field onto another body's.
 
           uacli script <file> --ops <opsfile> [--save] [--backup]
               Run several set/duplicate/remove/add-node/append-clone ops (one per line, same "--flag value" syntax minus the file/verb)

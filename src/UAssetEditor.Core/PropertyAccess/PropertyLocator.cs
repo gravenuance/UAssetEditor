@@ -17,6 +17,19 @@ public static class PropertyLocator
     }
 
     /// <summary>
+    /// The export's own top-level property list - the root <see cref="ArrayElementEditor"/>/
+    /// <see cref="StructFieldEditor"/> mutate when a whole property (not just a field within an
+    /// existing struct) is missing entirely, e.g. a rigid body whose every <c>DefaultInstance</c>
+    /// field sits at its engine default omits the whole struct property, not just its fields.
+    /// </summary>
+    public static IList<PropertyData>? LocateExportData(UAsset asset, int exportIndex)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        if (exportIndex < 0 || exportIndex >= asset.Exports.Count) return null;
+        return asset.Exports[exportIndex] is NormalExport export ? export.Data : null;
+    }
+
+    /// <summary>
     /// Re-locates an array element's own owning array and index by path (e.g. "Chains[3]") -
     /// the counterpart to <see cref="Locate"/> for structural edits (<see cref="ArrayElementEditor"/>),
     /// which need the array itself to mutate, not just the element sitting at that path.
