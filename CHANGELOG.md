@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-16
+
+### Fixed
+- Launching the app while another process (e.g. a second instance) held the log file open crashed the entire app with an unhandled exception on the background logging thread, instead of just dropping that log line.
+
 ## [1.1.0] - 2026-09-16
 
 ### Added
