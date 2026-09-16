@@ -7,7 +7,7 @@
         xmlns:controls="clr-namespace:UAssetEditor.App.Controls"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         mc:Ignorable="d"
-        Title="UAssetEditor" Height="900" Width="1400" MinWidth="1100" MinHeight="650"
+        Title="UAssetEditor" Height="900" Width="1400" MinWidth="1180" MinHeight="700"
         Icon="UAssetEditor.ico"
         Background="{StaticResource Mono.Background}"
         d:DataContext="{d:DesignInstance vm:MainViewModel}">
@@ -21,6 +21,28 @@
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding BrowseSourceFileCommand}" />
         <KeyBinding Key="S" Modifiers="Control" Command="{Binding SaveAllEditedCommand}" />
     </Window.InputBindings>
+    <Window.Resources>
+        <!-- Only ever attached to a TreeViewItem when HasTreeContextAction is true (see the
+             DataTrigger on TreeView.ItemContainerStyle below), so this popup never opens empty -
+             but IsArrayElement and IsTopLevelStructProperty are mutually exclusive (an array
+             element's path always has a trailing "[N]", a top-level property's never does), so
+             each item's own Visibility narrows to just the one action that's actually legal for
+             whichever row it opened on. Declared as a keyed resource (rather than inline in the
+             Style's Setter.Value) so its Click handlers get wired through the normal,
+             well-supported per-resource connector instead of the window's own - an event
+             handler on an element nested directly inside a Style's Setter.Value crashes
+             InitializeComponent with a XamlParseException (Set connectionId threw
+             System.InvalidCastException) in this WPF version. -->
+        <ContextMenu x:Key="TreeItemContextMenu" DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+            <MenuItem Header="Duplicate Element" Click="DuplicateArrayElement_Click"
+                      Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibility}}" />
+            <MenuItem Header="Remove Element" Click="RemoveArrayElement_Click"
+                      Visibility="{Binding IsArrayElement, Converter={StaticResource BoolToVisibility}}" />
+            <MenuItem Header="Add Node (Clone)" Click="AddAnimGraphNode_Click"
+                      ToolTip="Clone as a new, separately-declared node - set its AnimNodeData entry and ComponentPose.LinkID afterward"
+                      Visibility="{Binding IsTopLevelStructProperty, Converter={StaticResource BoolToVisibility}}" />
+        </ContextMenu>
+    </Window.Resources>
     <!-- Flush edge-to-edge chrome, matching the redesign mockup: every strip below sets its
          own background and the only separation between them is a 1px border, not margin -
          no outer window padding, no gaps between sections. -->
@@ -226,15 +248,27 @@
                 <!-- MinWidth/MaxWidth bound what the GridSplitter below can do to the tree
                      column - without them a drag (or two pointers fighting over the same
                      splitter) can collapse it to nothing or balloon it over the results pane. -->
-                <ColumnDefinition Width="320" MinWidth="160" MaxWidth="500" />
+                <ColumnDefinition Width="320" MinWidth="240" MaxWidth="500" />
                 <ColumnDefinition Width="2" />
                 <ColumnDefinition Width="*" MinWidth="300" />
                 <ColumnDefinition Width="26" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Header="BROWSE" Grid.Column="0" ToolTip="Check items, then Load, Extract, or Repack the selection">
+            <GroupBox Grid.Column="0" ToolTip="Check items, then Load, Extract, or Repack the selection">
+                <GroupBox.Header>
+                    <DockPanel LastChildFill="False">
+                        <TextBlock DockPanel.Dock="Left" Text="BROWSE" VerticalAlignment="Center" />
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                            <Button Content="Expand All" Command="{Binding ExpandAllFoldersCommand}" Padding="8,1" FontSize="{StaticResource Mono.Type.Caption}" Margin="4,0,0,0"
+                                    ToolTip="Expands every folder - assets themselves stay collapsed, so nothing gets parsed" />
+                            <Button Content="Collapse All" Command="{Binding CollapseAllTreeCommand}" Padding="8,1" FontSize="{StaticResource Mono.Type.Caption}" Margin="4,0,0,0"
+                                    ToolTip="Collapses every expanded node in the tree" />
+                        </StackPanel>
+                    </DockPanel>
+                </GroupBox.Header>
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
@@ -259,8 +293,40 @@
                                 Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
                                 ToolTip="Runs the selected action above on the checked tree items" />
                     </StackPanel>
-                    <TreeView x:Name="AssetTree" Grid.Row="1" ItemsSource="{Binding RootTreeItems}" FontSize="{StaticResource Mono.Type.Caption}"
+                    <!-- Checks (never unchecks) every checkable node anywhere in the tree - loaded or
+                         not yet expanded alike, since this only ever reads each node's own Name, never
+                         its children's real content - whose name contains one of these terms, e.g.
+                         "Post_" to grab every physics-asset override across every character folder at
+                         once instead of hand-checking each one. -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,4">
+                        <controls:TermsBox Terms="{Binding TreeSelectNameTerms}" />
+                        <Button Content="Select" Command="{Binding SelectMatchingTreeItemsCommand}"
+                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
+                                ToolTip="Checks every item anywhere in the tree whose name matches above" />
+                        <Button Content="Unselect All" Command="{Binding UnselectAllTreeItemsCommand}"
+                                Margin="6,0,0,0" Padding="8,2" FontSize="{StaticResource Mono.Type.Caption}"
+                                ToolTip="Unchecks every item anywhere in the tree" />
+                    </StackPanel>
+                    <TreeView x:Name="AssetTree" Grid.Row="2" ItemsSource="{Binding RootTreeItems}" FontSize="{StaticResource Mono.Type.Caption}"
                               MouseDoubleClick="AssetTree_MouseDoubleClick" TreeViewItem.Expanded="AssetTree_Expanded">
+                        <TreeView.ItemContainerStyle>
+                            <Style TargetType="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                                <!-- A TreeViewItem doesn't select itself on a right click the way it does
+                                     on a left click - without this, right-clicking a row leaves whatever
+                                     was selected before highlighted instead of the row the menu is for. -->
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="TreeViewItem_PreviewMouseRightButtonDown" />
+                                <!-- Only attached at all when there's a legal action to show (see
+                                     HasTreeContextAction) - a struct field's or map entry's owner isn't
+                                     resizable the same way. Without this trigger, every node would get
+                                     the same ContextMenu and open an empty popup where it doesn't apply. -->
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasTreeContextAction}" Value="True">
+                                        <Setter Property="ContextMenu" Value="{StaticResource TreeItemContextMenu}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.ItemContainerStyle>
                         <TreeView.ItemTemplate>
                             <HierarchicalDataTemplate ItemsSource="{Binding Children}">
                                 <StackPanel Orientation="Horizontal">
@@ -467,6 +533,37 @@
                         </StackPanel>
                         <CheckBox Content="Regex" Margin="0,10,0,0" IsChecked="{Binding RuleIsRegex}" FontSize="{StaticResource Mono.Type.Caption}"
                                   Visibility="{Binding ShowRuleRegex, Converter={StaticResource BoolToVisibility}}" />
+
+                        <!-- Duplicate Element's own per-field overrides on the new copy - a
+                             small path/value list instead of the single RuleValue1/2 boxes
+                             every other kind uses, since this is the only kind that can need
+                             more than two fields set at once (e.g. RootBone, compliance, and
+                             a handful of tuned physics values, all on the same new chain). -->
+                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowRuleOverrides, Converter={StaticResource BoolToVisibility}}">
+                            <TextBlock Text="Field overrides on the copy" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" />
+                            <ItemsControl ItemsSource="{Binding RuleOverrides}" Margin="0,3,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="4" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="20" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Grid.Column="0" Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}" Height="24" FontSize="{StaticResource Mono.Type.Caption}"
+                                                     ToolTip="Field path relative to the new element, e.g. RootBone" />
+                                            <TextBox Grid.Column="2" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" Height="24" FontSize="{StaticResource Mono.Type.Caption}"
+                                                     ToolTip="New value for that field" />
+                                            <Button Grid.Column="3" Content="&#xD7;" Padding="0" Height="24" FontSize="{StaticResource Mono.Type.Caption}"
+                                                    Command="{Binding DataContext.RemoveOverrideRowCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" ToolTip="Remove this override" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="Add Override" Command="{Binding AddOverrideRowCommand}" HorizontalAlignment="Stretch" Margin="0,3,0,0" Padding="6,3" FontSize="{StaticResource Mono.Type.Caption}" />
+                        </StackPanel>
 
                         <Border BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,0,0,1" Margin="0,14,0,14" />
 

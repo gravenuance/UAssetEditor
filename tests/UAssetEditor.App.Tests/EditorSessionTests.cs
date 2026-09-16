@@ -1,5 +1,6 @@
 using System.Text.Json;
 using UAssetEditor.App.ViewModels;
+using UAssetEditor.Core.Search;
 
 namespace UAssetEditor.App.Tests;
 
@@ -33,6 +34,7 @@ public class EditorSessionTests
             SchemaVersion = EditorSession.CurrentSchemaVersion,
             SourcePath = @"C:\Games\Example\Content.pak",
             UsmapPath = @"C:\Games\Example\Mappings.usmap",
+            AesKeyHex = "0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74",
             CreateBackup = false,
         };
 
@@ -43,7 +45,21 @@ public class EditorSessionTests
         Assert.Equal(EditorSession.CurrentSchemaVersion, roundTripped.SchemaVersion);
         Assert.Equal(session.SourcePath, roundTripped.SourcePath);
         Assert.Equal(session.UsmapPath, roundTripped.UsmapPath);
+        Assert.Equal(session.AesKeyHex, roundTripped.AesKeyHex);
         Assert.False(roundTripped.CreateBackup);
+    }
+
+    [Fact]
+    public void Deserialize_JsonSavedBeforeAesKeyHexExisted_DefaultsToEmpty()
+    {
+        // Simulates a real pre-existing config file saved before this field was added - the
+        // JSON simply has no "AesKeyHex" property, and must still load instead of throwing.
+        const string legacyJson = """{ "SourcePath": "D:\\Old\\Source" }""";
+
+        var session = JsonSerializer.Deserialize<EditorSession>(legacyJson, JsonOptions);
+
+        Assert.NotNull(session);
+        Assert.Equal("", session.AesKeyHex);
     }
 
     [Fact]
@@ -58,6 +74,39 @@ public class EditorSessionTests
         Assert.NotNull(session);
         Assert.Equal(0, session.SchemaVersion);
         Assert.Equal(@"D:\Old\Source", session.SourcePath);
+    }
+
+    [Fact]
+    public void Serialize_ThenDeserialize_RoundTripsTreeSelectNameTerms()
+    {
+        // Regression test: the Browse tree's "name contains" filter used to be excluded from
+        // the saved session on purpose (a one-shot action term, not a lasting search scope) -
+        // it's now persisted the same way the search-scope term boxes are, so a name filter
+        // typed in a past session doesn't have to be retyped every launch.
+        var session = new EditorSession
+        {
+            SchemaVersion = EditorSession.CurrentSchemaVersion,
+            TreeSelectNameTerms = { new ConditionTerm("Post_", TermTag.And) },
+        };
+
+        var json = JsonSerializer.Serialize(session, JsonOptions);
+        var roundTripped = JsonSerializer.Deserialize<EditorSession>(json, JsonOptions);
+
+        Assert.NotNull(roundTripped);
+        var term = Assert.Single(roundTripped.TreeSelectNameTerms);
+        Assert.Equal("Post_", term.Text);
+        Assert.Equal(TermTag.And, term.Tag);
+    }
+
+    [Fact]
+    public void Deserialize_JsonSavedBeforeTreeSelectNameTermsExisted_DefaultsToEmpty()
+    {
+        const string legacyJson = """{ "SourcePath": "D:\\Old\\Source" }""";
+
+        var session = JsonSerializer.Deserialize<EditorSession>(legacyJson, JsonOptions);
+
+        Assert.NotNull(session);
+        Assert.Empty(session.TreeSelectNameTerms);
     }
 
     [Fact]

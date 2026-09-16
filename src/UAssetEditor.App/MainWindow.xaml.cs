@@ -70,6 +70,44 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>A TreeViewItem doesn't select itself on a right click the way it does on a left click - this makes the row a context menu opens for the one visibly highlighted, instead of leaving whatever was selected before.</summary>
+    private void TreeViewItem_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not TreeViewItem item) return;
+        item.Focus();
+        item.IsSelected = true;
+    }
+
+    /// <summary>Duplicates the right-clicked array element - see MainWindow.xaml's per-item ContextMenu, only attached to Property nodes where <see cref="AssetTreeItemViewModel.IsArrayElement"/> is true.</summary>
+    private void DuplicateArrayElement_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        if (sender is not FrameworkElement { DataContext: AssetTreeItemViewModel item }) return;
+
+        if (viewModel.DuplicateArrayElementCommand.CanExecute(item))
+            viewModel.DuplicateArrayElementCommand.Execute(item);
+    }
+
+    /// <summary>Removes the right-clicked array element - the undo path for an unwanted <see cref="DuplicateArrayElement_Click"/>.</summary>
+    private void RemoveArrayElement_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        if (sender is not FrameworkElement { DataContext: AssetTreeItemViewModel item }) return;
+
+        if (viewModel.RemoveArrayElementCommand.CanExecute(item))
+            viewModel.RemoveArrayElementCommand.Execute(item);
+    }
+
+    /// <summary>Clones the right-clicked top-level struct property as a brand new class member - see MainWindow.xaml's per-item ContextMenu, only attached to Property nodes where <see cref="AssetTreeItemViewModel.IsTopLevelStructProperty"/> is true.</summary>
+    private void AddAnimGraphNode_Click(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel) return;
+        if (sender is not FrameworkElement { DataContext: AssetTreeItemViewModel item }) return;
+
+        if (viewModel.AddAnimGraphNodeCommand.CanExecute(item))
+            viewModel.AddAnimGraphNodeCommand.Execute(item);
+    }
+
     /// <summary>
     /// Every button with an attached ContextMenu (the File/Tools/Help menu-bar buttons, the
     /// Source "Browse..." split button, the "Recent" dropdown) opens it the same way on a

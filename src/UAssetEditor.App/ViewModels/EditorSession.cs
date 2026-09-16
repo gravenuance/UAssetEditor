@@ -17,10 +17,16 @@ public sealed class EditorSession
     public string SourcePath { get; init; } = "";
     public EngineVersion DefaultEngineVersion { get; init; } = EngineVersion.VER_UE4_27;
     public string? UsmapPath { get; init; }
+
+    /// <summary>The AES key field's last value, independent of <see cref="RecentSources"/> - restored even when the next source opened isn't one already in Recent (e.g. a brand-new path), not just when reopening one that is.</summary>
+    public string AesKeyHex { get; init; } = "";
     public bool CreateBackup { get; init; } = true;
     public TreeSelectionAction SelectedTreeAction { get; init; } = TreeSelectionAction.LoadSelected;
     public SearchQuery Scope { get; init; } = new();
     public Collection<EditRule> Rules { get; init; } = new();
+
+    /// <summary>The Browse tree's "name contains" filter terms (see <see cref="MainViewModel.TreeSelectNameTerms"/>) - restored the same way <see cref="Scope"/>'s terms are, so a name filter typed in a past session doesn't have to be retyped.</summary>
+    public Collection<ConditionTerm> TreeSelectNameTerms { get; init; } = new();
 
     /// <summary>Most-recently-opened sources (folder/.pak/.uasset), newest first - see <see cref="MainViewModel.AddRecentSource"/>.</summary>
     public Collection<RecentSourceEntry> RecentSources { get; init; } = new();

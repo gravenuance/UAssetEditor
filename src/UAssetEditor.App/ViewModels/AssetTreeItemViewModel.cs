@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.PropertyAccess;
 
@@ -47,6 +48,15 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     public TreeNodeKind Kind { get; }
     public ObservableCollection<AssetTreeItemViewModel> Children { get; } = new();
 
+    /// <summary>
+    /// The node whose <see cref="Children"/> this one lives in - null only for a root item
+    /// (never set on the shared <see cref="LoadingPlaceholder"/> singleton, since it's reused
+    /// under many different parents at once). Lets a structural edit on one Property node
+    /// (see <c>MainViewModel.DuplicateArrayElementCommand</c>/<c>RemoveArrayElementCommand</c>)
+    /// find its owning array's tree node and refresh that node's children in place.
+    /// </summary>
+    public AssetTreeItemViewModel? Parent { get; private init; }
+
     /// <summary>For an <see cref="TreeNodeKind.Export"/> or <see cref="TreeNodeKind.Property"/> node, the export's index within the asset - inherited unchanged by every Property node descending from a given Export node.</summary>
     public int ExportIndex { get; private init; }
 
@@ -58,6 +68,25 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
 
     /// <summary>For a <see cref="TreeNodeKind.Property"/> node, its full path from the export's root (e.g. "Location", "Row1.Damage", "Scores[Alice]") - the same scheme <c>PropertyWalker</c>'s flat walk uses, so double-clicking this node can open exactly its own subtree into the edit grid.</summary>
     public string? PropertyPath { get; private init; }
+
+    /// <summary>For a <see cref="TreeNodeKind.Property"/> node, whether it's one element of an array (as opposed to a struct field or map entry) - the only kind of Property node <c>MainViewModel.DuplicateArrayElementCommand</c>/<c>RemoveArrayElementCommand</c> can act on, since a struct field's owner isn't resizable the same way.</summary>
+    public bool IsArrayElement { get; private init; }
+
+    /// <summary>
+    /// For a <see cref="TreeNodeKind.Property"/> node, whether it's a struct-typed property
+    /// sitting directly on its export's own root (e.g. an "AnimGraphNode_KawaiiPhysics_N" on a
+    /// class default object) rather than nested inside another struct/array/map. The only kind
+    /// of node <c>MainViewModel.AddAnimGraphNodeCommand</c> can clone as a brand new class
+    /// member - see <see cref="Core.PropertyAccess.ClassPropertyDeclarer"/> for why a whole new
+    /// class member has to start from a top-level property, not an arbitrarily nested one.
+    /// Best-effort: true whenever the shape looks right, even for an export that turns out not
+    /// to have a companion class - ClassPropertyDeclarer itself is the real gate, and fails with
+    /// a clear message rather than silently doing nothing.
+    /// </summary>
+    public bool IsTopLevelStructProperty { get; private init; }
+
+    /// <summary>Whether this node has any right-click tree action at all (see MainWindow.xaml's ItemContainerStyle) - the union gating whether the context menu attaches, with each item's own Visibility further narrowing which specific action(s) show.</summary>
+    public bool HasTreeContextAction => IsArrayElement || IsTopLevelStructProperty;
 
     public bool ExportsLoaded { get; private set; }
 
@@ -87,6 +116,17 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     /// <summary>Checked via the tree's checkboxes to build up a multi-item selection for <c>LoadSelectedCommand</c> (Export/Property nodes) or <c>ExtractSelectedCommand</c> (Folder/Asset nodes), independent of the TreeView's own single-item selection highlight.</summary>
     [ObservableProperty] private bool _isChecked;
 
+    /// <summary>
+    /// Two-way bound to the TreeView's own container (see MainWindow.xaml's ItemContainerStyle),
+    /// so manual expand/collapse clicks and <c>ExpandAllFoldersCommand</c>/<c>CollapseAllTreeCommand</c>
+    /// both go through the same state. <c>ExpandAllFoldersCommand</c> only ever sets this true on
+    /// <see cref="TreeNodeKind.Folder"/> nodes - setting it on an Asset's "Exports" placeholder or an
+    /// Export/Property node would trigger <c>MainWindow.AssetTree_Expanded</c>'s real parse/property
+    /// load, which "expand everything" must never do across a tree that can hold hundreds of
+    /// thousands of assets (some individually tens of GB).
+    /// </summary>
+    [ObservableProperty] private bool _isExpanded;
+
     private AssetTreeItemViewModel(string name, string? fullPath, TreeNodeKind kind)
     {
         Name = name;
@@ -111,8 +151,27 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         {
             Kind = TreeNodeKind.Folder;
             IsCheckable = true;
-            foreach (var child in node.Children)
-                Children.Add(new AssetTreeItemViewModel(child, asZenEntries));
+
+            // Compacts a run of folders that each have exactly one non-leaf child into a
+            // single row - e.g. a pak's mount-point-relative "../../../ProjectName/Content/
+            // ProjectName" prefix, which otherwise forces several expand clicks that reveal
+            // nothing (no sibling files, no branching) before reaching anything actually
+            // browsable. Matches VS Code's "compact folders" behavior. Still backed by one
+            // real path (the deepest merged node's), so checking this row, double-clicking
+            // it, or extracting it behaves exactly as if every intermediate level were its
+            // own row.
+            var names = new List<string> { node.Name };
+            var effective = node;
+            while (effective.Children.Count == 1 && !effective.Children[0].IsLeaf)
+            {
+                effective = effective.Children[0];
+                names.Add(effective.Name);
+            }
+
+            Name = string.Join('/', names);
+            FullPath = effective.FullPath;
+            foreach (var child in effective.Children)
+                Children.Add(new AssetTreeItemViewModel(child, asZenEntries) { Parent = this });
             return;
         }
 
@@ -125,7 +184,7 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         {
             Kind = TreeNodeKind.Asset;
             IsCheckable = true;
-            var exportsGroup = new AssetTreeItemViewModel("Exports", null, TreeNodeKind.ExportsGroup) { AssetPath = node.FullPath };
+            var exportsGroup = new AssetTreeItemViewModel("Exports", null, TreeNodeKind.ExportsGroup) { AssetPath = node.FullPath, Parent = this };
             exportsGroup.Children.Add(LoadingPlaceholder);
             Children.Add(exportsGroup);
         }
@@ -146,7 +205,7 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
         Children.Clear();
         for (var i = 0; i < exportNames.Count; i++)
         {
-            var exportNode = new AssetTreeItemViewModel(exportNames[i], AssetPath, TreeNodeKind.Export) { ExportIndex = i, AssetPath = AssetPath, IsCheckable = true };
+            var exportNode = new AssetTreeItemViewModel(exportNames[i], AssetPath, TreeNodeKind.Export) { ExportIndex = i, AssetPath = AssetPath, IsCheckable = true, Parent = this };
             exportNode.Children.Add(LoadingPlaceholder);
             Children.Add(exportNode);
         }
@@ -163,24 +222,66 @@ public sealed partial class AssetTreeItemViewModel : ObservableObject
     /// </summary>
     public void MarkPropertiesLoaded(IReadOnlyList<PropertyTreeItem> items)
     {
-        ArgumentNullException.ThrowIfNull(items);
-
         if (PropertiesLoaded) return;
         PropertiesLoaded = true;
+
+        RefreshChildren(items);
+    }
+
+    /// <summary>
+    /// Rebuilds this node's children from scratch to match <paramref name="items"/> - the
+    /// same body <see cref="MarkPropertiesLoaded"/> uses for the first-time lazy load, but
+    /// callable again afterward to resync after a structural edit
+    /// (<c>MainViewModel.DuplicateArrayElementCommand</c>/<c>RemoveArrayElementCommand</c>)
+    /// changes how many elements the underlying array holds. A full rebuild rather than an
+    /// in-place patch because removing (or inserting before) an element shifts every later
+    /// element's positional <see cref="PropertyPath"/> ("Chains[3]" becomes "Chains[2]"), not
+    /// just the one that actually changed - so every sibling's identity here is stale, not
+    /// only the edited one's.
+    /// </summary>
+    public void RefreshChildren(IReadOnlyList<PropertyTreeItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
 
         Children.Clear();
         foreach (var item in items)
         {
             var node = new AssetTreeItemViewModel(item.DisplayName, FullPath, TreeNodeKind.Property)
             {
+                Parent = this,
                 AssetPath = AssetPath,
                 ExportIndex = ExportIndex,
                 Property = item.Property,
                 PropertyPath = item.Path,
                 IsCheckable = item.HasEditableContent,
+                IsArrayElement = item.IsArrayElement,
+                IsTopLevelStructProperty = Kind == TreeNodeKind.Export && item.Property is StructPropertyData,
             };
             node.Children.Add(LoadingPlaceholder);
             Children.Add(node);
         }
+    }
+
+    /// <summary>
+    /// Collapses this Asset node's "Exports" subtree back to its just-constructed, never-expanded
+    /// state - every Export/Property node beneath it (each holding a <see cref="Property"/> or
+    /// <see cref="ExportIndex"/> captured from whatever <c>UAsset</c> instance was live when it
+    /// loaded) is discarded along with it. Needed whenever the workspace discards and re-parses
+    /// the underlying asset out from under an already-expanded tree (<c>MainViewModel.RevertEditsCommand</c>) -
+    /// otherwise a stale node's cached data (e.g. an array element a since-reverted duplicate
+    /// added) keeps showing, and <c>PropertyLocator</c> silently finds nothing for it against the
+    /// freshly re-parsed asset, so the next edit/duplicate on that row does nothing at all.
+    /// </summary>
+    public void ResetLoadedState()
+    {
+        if (Kind != TreeNodeKind.Asset) return;
+
+        var exportsGroup = Children.FirstOrDefault(c => c.Kind == TreeNodeKind.ExportsGroup);
+        if (exportsGroup == null) return;
+
+        exportsGroup.ExportsLoaded = false;
+        exportsGroup.IsExpanded = false;
+        exportsGroup.Children.Clear();
+        exportsGroup.Children.Add(LoadingPlaceholder);
     }
 }

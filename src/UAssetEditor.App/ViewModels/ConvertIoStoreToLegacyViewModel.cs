@@ -18,6 +18,9 @@ public enum LegacyOutputFormat
 /// <summary>One selectable entry in the Convert IoStore to Legacy dialog's output-format dropdown.</summary>
 public sealed record LegacyOutputFormatOption(LegacyOutputFormat Value, string Label);
 
+/// <summary>One selectable entry in the Convert IoStore to Legacy dialog's layer dropdown - see <see cref="RetocLayer"/>.</summary>
+public sealed record RetocLayerOption(RetocLayer Value, string Label);
+
 /// <summary>
 /// Backs the Convert IoStore to Legacy dialog - converts every entry of a chosen .utoc container
 /// into legacy format via retoc's to-legacy (<see cref="RetocProcess.ConvertToLegacyAsync"/>),
@@ -34,6 +37,7 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
     [ObservableProperty] private string _sourceUtocPath;
     [ObservableProperty] private string _outputPath = "";
     [ObservableProperty] private LegacyOutputFormat _outputFormat = LegacyOutputFormat.Folder;
+    [ObservableProperty] private RetocLayer _layer = RetocLayer.Modded;
     [ObservableProperty] private string _aesKeyHex;
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _isDone;
@@ -43,6 +47,10 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
 
     public IReadOnlyList<LegacyOutputFormatOption> OutputFormats { get; } =
         [new LegacyOutputFormatOption(LegacyOutputFormat.Folder, "Loose folder"), new LegacyOutputFormatOption(LegacyOutputFormat.Pak, "Legacy .pak")];
+
+    /// <summary>Which version of the source container's own overridden entries a Paks-folder-wide resolution returns - see <see cref="RetocLayer"/>. Meaningless (silently ignored) when the source has no enclosing Paks folder to widen against in the first place.</summary>
+    public IReadOnlyList<RetocLayerOption> Layers { get; } =
+        [new RetocLayerOption(RetocLayer.Modded, "Modded (this file's own edits)"), new RetocLayerOption(RetocLayer.Original, "Original (vanilla, ignore this file's edits)")];
 
     public bool IsNotRunning => !IsRunning;
 
@@ -89,21 +97,23 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
 
             // A standalone .utoc that only overrides a handful of a base game's assets can't
             // resolve imports into whatever container actually owns the rest on its own - see
-            // RetocPaksFolderResolver's own remarks for the real repro. When this source sits
-            // under a real Paks folder, point retoc there instead for that wider resolution
-            // context, but scope the -f filter to exactly this file's own entries first - an
-            // empty filter against the *whole* Paks folder would attempt to convert the entire
-            // game, not just what was actually asked for. Falls back to the plain single-file
-            // behavior (convert everything in it, no filter) whenever no Paks folder is found,
-            // or this file turns out to have no real packages of its own to scope to.
+            // RetocLayerResolver's own remarks for the real repro (and why a merged view, not the
+            // Paks folder itself, is required for Layer.Modded to actually apply this source's own
+            // edits rather than silently falling back to the base game's vanilla content for its
+            // own entries). Scope the -f filter to exactly this file's own entries first - an
+            // empty filter against the whole merged view would attempt to convert the entire game,
+            // not just what was actually asked for. Falls back to the plain single-file behavior
+            // (convert everything in it, no filter) whenever no Paks folder is found, or this file
+            // turns out to have no real packages of its own to scope to.
             var input = SourceUtocPath;
             IReadOnlyList<string> filters = [];
-            if (RetocPaksFolderResolver.FindEnclosingPaksFolder(SourceUtocPath) is { } paksFolder)
+            using var scope = RetocLayerResolver.Resolve(SourceUtocPath, Layer);
+            if (scope.InputDirectory != SourceUtocPath)
             {
                 var ownEntries = await RetocProcess.ListAsync(SourceUtocPath, aesKey, _cts.Token);
                 if (ownEntries.Count > 0)
                 {
-                    input = paksFolder;
+                    input = scope.InputDirectory;
                     filters = ownEntries;
                 }
             }

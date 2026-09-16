@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetEditor.App.Views;
@@ -30,6 +31,14 @@ public enum RuleKind
     AddTag,
     RemoveTag,
     ReplaceReference,
+    DuplicateElement,
+}
+
+/// <summary>One field override row in the "Duplicate Element" rule builder - a struct field's path relative to the newly-duplicated element itself (e.g. "RootBone", "PhysicsSettings.Damping") and the value to set it to.</summary>
+public sealed partial class FieldOverrideRowViewModel : ObservableObject
+{
+    [ObservableProperty] private string _path = "";
+    [ObservableProperty] private string _value = "";
 }
 
 public sealed record RuleListItem(string Description, EditRule Rule);
@@ -90,9 +99,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Set only while browsing a raw, not-yet-converted IoStore container (<see cref="LoadIoStoreAsync"/>) - the .utoc path <see cref="ConvertSelectedCommand"/> converts from. Null the rest of the time, including once conversion hands off to a normal loose-folder workspace.</summary>
     private string? _ioStoreContainerPath;
-
-    /// <summary>Set once <see cref="ConvertSelectedCommand"/> successfully hands off to a loose-folder workspace at this temp path - see <see cref="DisposeCurrentSource"/>, which is what actually deletes it once the workspace moves on.</summary>
-    private string? _ioStoreConvertedTempDir;
 
     // What to replay against the reopened context after a UE version/usmap/AES change -
     // whichever of these ran most recently, mirroring how SearchResults itself is always
@@ -176,12 +182,16 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<ConditionTermViewModel> ValueTerms { get; } = new();
     public ObservableCollection<ConditionTermViewModel> ReferenceTerms { get; } = new();
 
+    /// <summary>Feeds <see cref="SelectMatchingTreeItemsAsync"/> - persisted via BuildSession/ApplySession the same as the four search-scope term boxes above, so a name filter typed in a past session is still there next time instead of resetting empty.</summary>
+    public ObservableCollection<ConditionTermViewModel> TreeSelectNameTerms { get; } = new();
+
     /// <summary>Whether the floating Edit Rules panel is open - defaults to closed since it overlays the Search Results grid rather than resizing it, so it's opt-in per session rather than always in the way.</summary>
     [ObservableProperty] private bool _isRulesPaneExpanded;
 
     [NotifyPropertyChangedFor(
         nameof(SelectedRuleKindDescription), nameof(ShowRuleValue1), nameof(RuleValue1Label),
-        nameof(ShowRuleValue2), nameof(RuleValue2Label), nameof(ShowRuleOperation), nameof(ShowRuleRegex))]
+        nameof(ShowRuleValue2), nameof(RuleValue2Label), nameof(ShowRuleOperation), nameof(ShowRuleRegex),
+        nameof(ShowRuleOverrides))]
     [ObservableProperty] private RuleKind _selectedRuleKind = RuleKind.SetValue;
 
     /// <summary>Shown next to the rule-kind dropdown so what each option actually does isn't a guessing game from the enum name alone.</summary>
@@ -192,12 +202,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // kind - e.g. the numeric Operation dropdown (set/add/sub/mul/div) only means anything
     // for Numeric Adjust, and showing it (still selectable) alongside every other kind
     // invited picking something like "mul" while "Replace Text" was selected, which does
-    // nothing. Every kind but Remove Property needs RuleValue1; only Replace Text and
+    // nothing. Every kind but Remove Property and Duplicate Element needs RuleValue1 (the
+    // latter's own per-field values live in RuleOverrides instead); only Replace Text and
     // Replace Reference need RuleValue2, Regex, or a second value at all.
-    public bool ShowRuleValue1 => SelectedRuleKind != RuleKind.RemoveProperty;
+    public bool ShowRuleValue1 => SelectedRuleKind is not (RuleKind.RemoveProperty or RuleKind.DuplicateElement);
     public bool ShowRuleValue2 => SelectedRuleKind is RuleKind.ReplaceText or RuleKind.ReplaceReference;
     public bool ShowRuleOperation => SelectedRuleKind == RuleKind.NumericAdjust;
     public bool ShowRuleRegex => SelectedRuleKind is RuleKind.ReplaceText or RuleKind.ReplaceReference;
+    public bool ShowRuleOverrides => SelectedRuleKind == RuleKind.DuplicateElement;
 
     public string RuleValue1Label => SelectedRuleKind switch
     {
@@ -224,6 +236,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _ruleUseSkip;
     [ObservableProperty] private SkipComparison _ruleSkipComparison = SkipComparison.Eq;
     [ObservableProperty] private string _ruleSkipValue = "";
+
+    /// <summary>Field overrides for the "Duplicate Element" rule builder - see <see cref="FieldOverrideRowViewModel"/>.</summary>
+    public ObservableCollection<FieldOverrideRowViewModel> RuleOverrides { get; } = new();
 
     [ObservableProperty] private bool _createBackup = true;
 
@@ -267,6 +282,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         new(RuleKind.AddTag, "Add Tag", "Add a tag to a Tags array property."),
         new(RuleKind.RemoveTag, "Remove Tag", "Remove a tag from a Tags array property."),
         new(RuleKind.ReplaceReference, "Replace Reference", "Replace one object/asset reference with another, wherever it's used."),
+        new(RuleKind.DuplicateElement, "Duplicate Element", "Append a copy of a matched array's own last element, with optional field overrides on the copy."),
     ];
 
     public IReadOnlyList<SkipComparison> SkipComparisons { get; } = Enum.GetValues<SkipComparison>();
@@ -431,6 +447,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             SearchResults.Clear();
         }
+    }
+
+    /// <summary>Finds every currently-materialized Asset node whose path is in <paramref name="assetPaths"/>, anywhere in the tree - however deeply "compact folders" (see <see cref="AssetTreeItemViewModel"/>'s ctor) nested it.</summary>
+    private IEnumerable<AssetTreeItemViewModel> FindAssetNodes(HashSet<string> assetPaths)
+    {
+        IEnumerable<AssetTreeItemViewModel> Walk(AssetTreeItemViewModel node)
+        {
+            if (node.Kind == TreeNodeKind.Asset && node.FullPath != null && assetPaths.Contains(node.FullPath))
+                yield return node;
+            foreach (var child in node.Children)
+                foreach (var found in Walk(child))
+                    yield return found;
+        }
+
+        foreach (var root in RootTreeItems)
+            foreach (var found in Walk(root))
+                yield return found;
     }
 
     [RelayCommand]
@@ -1082,11 +1115,159 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Expands every <see cref="TreeNodeKind.Folder"/> node in the tree, leaving everything
+    /// else alone - deliberately never an Asset's "Exports" placeholder, or an Export/Property
+    /// node, since expanding either of those triggers a real parse/property load
+    /// (<see cref="MainWindow.AssetTree_Expanded"/>'s code-behind handler), which "expand
+    /// everything" must never do across a tree that can hold hundreds of thousands of assets,
+    /// some individually tens of gigabytes.
+    /// </summary>
+    [RelayCommand]
+    private void ExpandAllFolders()
+    {
+        void Expand(AssetTreeItemViewModel node)
+        {
+            if (node.Kind == TreeNodeKind.Folder) node.IsExpanded = true;
+            foreach (var child in node.Children)
+                Expand(child);
+        }
+        foreach (var root in RootTreeItems)
+            Expand(root);
+    }
+
+    /// <summary>Collapses every node in the tree, regardless of kind - unlike expanding, collapsing never loads anything, so this isn't restricted to folders the way <see cref="ExpandAllFolders"/> is.</summary>
+    [RelayCommand]
+    private void CollapseAllTree()
+    {
+        void Collapse(AssetTreeItemViewModel node)
+        {
+            node.IsExpanded = false;
+            foreach (var child in node.Children)
+                Collapse(child);
+        }
+        foreach (var root in RootTreeItems)
+            Collapse(root);
+    }
+
+    /// <summary>
+    /// Checks (never unchecks) every checkable node anywhere in the tree whose own Name matches
+    /// <see cref="TreeSelectNameTerms"/> - e.g. "Post_" to grab every physics-asset override
+    /// across every character folder at once instead of hand-checking each one. Safe to walk
+    /// into never-yet-expanded subtrees: this only ever reads a node's own Name, never triggers
+    /// the parse/property-load <see cref="ExpandAllFolders"/>'s own doc comment warns about.
+    /// </summary>
+    [RelayCommand]
+    private void SelectMatchingTreeItems()
+    {
+        var terms = TreeSelectNameTerms.Select(t => t.ToCore()).ToList();
+        if (terms.Count == 0) return;
+
+        void Check(AssetTreeItemViewModel node)
+        {
+            if (node.IsCheckable && ConditionMatcher.Matches(node.Name, terms, TextCompare.Contains))
+                node.IsChecked = true;
+            foreach (var child in node.Children)
+                Check(child);
+        }
+        foreach (var root in RootTreeItems)
+            Check(root);
+    }
+
+    /// <summary>Unchecks every checkable node anywhere in the tree, loaded or not - the counterpart to <see cref="SelectMatchingTreeItems"/> for starting a fresh selection.</summary>
+    [RelayCommand]
+    private void UnselectAllTreeItems()
+    {
+        void Uncheck(AssetTreeItemViewModel node)
+        {
+            if (node.IsCheckable) node.IsChecked = false;
+            foreach (var child in node.Children)
+                Uncheck(child);
+        }
+        foreach (var root in RootTreeItems)
+            Uncheck(root);
+    }
+
+    /// <summary>
+    /// Clones one array element (e.g. one "Chains" entry of a KawaiiPhysics node) and appends
+    /// the clone as the array's new last element - the interactive path to growing a
+    /// multi-entry array property without Unreal Editor graph surgery, since the array itself
+    /// already supports however many entries its owning node's compiled schema allows.
+    /// </summary>
+    [RelayCommand]
+    private void DuplicateArrayElement(AssetTreeItemViewModel? node) =>
+        MutateArrayElement(node, static (array, index) => ArrayElementEditor.Duplicate(array, index), "Duplicated element.");
+
+    /// <summary>Removes one array element - the undo path for an unwanted <see cref="DuplicateArrayElement"/>, or for trimming an array directly.</summary>
+    [RelayCommand]
+    private void RemoveArrayElement(AssetTreeItemViewModel? node) =>
+        MutateArrayElement(node, static (array, index) => ArrayElementEditor.RemoveAt(array, index), "Removed element.");
+
+    /// <summary>
+    /// Clones a top-level struct property (e.g. an existing "AnimGraphNode_KawaiiPhysics_N") as
+    /// a brand new, separately-declared class member - what DuplicateArrayElement can't do,
+    /// since a new class member isn't an array element of anything that already exists. Only
+    /// declares the new node and clones its default value; wiring it into the pose chain (its
+    /// AnimNodeData bookkeeping entry, and redirecting a ComponentPose.LinkID to splice it in)
+    /// is still a manual follow-up with the existing array-duplicate and grid-edit tools - see
+    /// <see cref="ClassPropertyDeclarer"/>'s own docs for why that's deliberate.
+    /// </summary>
+    [RelayCommand]
+    private void AddAnimGraphNode(AssetTreeItemViewModel? node)
+    {
+        if (node is not { Kind: TreeNodeKind.Property, IsTopLevelStructProperty: true, AssetPath: { } assetPath, PropertyPath: { } propertyPath } ||
+            node.Parent is not { } parent || _workspace == null)
+            return;
+
+        try
+        {
+            var asset = _workspace.GetOrOpen(assetPath);
+            var (newName, _) = ClassPropertyDeclarer.DeclareClonedProperty(asset, node.ExportIndex, propertyPath);
+
+            _dirtyAssetPaths.Add(assetPath);
+            parent.RefreshChildren(PropertyTreeExpander.GetExportRoot(asset.Exports[node.ExportIndex], asset));
+            StatusMessage = $"Added node '{newName}' - set its AnimNodeData entry and ComponentPose.LinkID by hand.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to add a cloned node from '{PropertyPath}' in '{AssetPath}'.", propertyPath, assetPath);
+            StatusMessage = "Failed to add node.";
+        }
+    }
+
+    private void MutateArrayElement(AssetTreeItemViewModel? node, Action<ArrayPropertyData, int> mutate, string doneMessage)
+    {
+        if (node is not { Kind: TreeNodeKind.Property, IsArrayElement: true, AssetPath: { } assetPath, PropertyPath: { } propertyPath } ||
+            node.Parent is not { } parent || _workspace == null)
+            return;
+
+        try
+        {
+            var asset = _workspace.GetOrOpen(assetPath);
+            var located = PropertyLocator.LocateArrayElement(asset, node.ExportIndex, propertyPath);
+            if (located is not { } target) return;
+
+            mutate(target.Array, target.Index);
+            _dirtyAssetPaths.Add(assetPath);
+            parent.RefreshChildren(PropertyTreeExpander.GetChildren(parent.Property!, parent.PropertyPath!, asset));
+            StatusMessage = doneMessage;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to edit array element '{PropertyPath}' in '{AssetPath}'.", propertyPath, assetPath);
+            StatusMessage = "Failed to edit array element.";
+        }
+    }
+
+    /// <summary>
     /// Converts the checked entries of a raw IoStore container (see
-    /// <see cref="LoadIoStoreAsync"/>) into legacy-format loose files via retoc's to-legacy,
-    /// then immediately opens the result through the normal <see cref="LoadFolderAsync"/>
-    /// pipeline - the whole point of converting is to hand off to the editing machinery this
-    /// app already has, not to build a second one.
+    /// <see cref="LoadIoStoreAsync"/>) into legacy-format loose files at a folder the user
+    /// picks, then immediately opens that folder through the normal
+    /// <see cref="LoadFolderAsync"/> pipeline - the whole point of converting is to hand off
+    /// to the editing machinery this app already has, not to build a second one. Matches
+    /// <see cref="ExtractSelectedCommand"/>/<see cref="RepackSelectedCommand"/> in asking for a
+    /// destination up front rather than defaulting to an app-managed temp folder - a real
+    /// folder the user chose and owns never needs the cleanup-on-close tracking an anonymous
+    /// temp folder otherwise would.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private async Task ConvertSelectedAsync()
@@ -1104,24 +1285,35 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        var dialog = new OpenFolderDialog { Title = "Convert selected to..." };
+        if (dialog.ShowDialog() != true) return;
+        var destination = dialog.FolderName;
+
         var utocPath = _ioStoreContainerPath;
-        var tempDir = Path.Combine(Path.GetTempPath(), "UAssetEditor_IoStore_" + Guid.NewGuid());
         var aesKey = ParseAesKey(PakAesKeyHex);
         var count = selected.Count;
 
         // A single-mod .utoc that only overrides a few of a base game's assets can't resolve
         // imports into whatever container actually owns the rest on its own (real repro - see
-        // RetocPaksFolderResolver's own remarks); pointing retoc at the whole enclosing Paks
-        // folder instead gives it that context, while `selected` (already a concrete,
-        // non-empty list from the guard above) keeps the actual conversion scoped to exactly
-        // the checked entries, not the whole folder's contents.
-        var input = RetocPaksFolderResolver.FindEnclosingPaksFolder(utocPath) ?? utocPath;
+        // RetocLayerResolver's own remarks); resolving through a merged view of the enclosing
+        // Paks folder instead gives it that context - and RetocLayer.Modded is what makes this
+        // .utoc's own edits actually apply rather than silently falling back to the base game's
+        // vanilla content for the very entries being converted, since retoc's own directory scan
+        // can't otherwise see a container sitting under "~mods" at all. Always Modded, not a user
+        // choice, here specifically: this builds an editable workspace *from* the browsed
+        // container, and there's no sensible reason to populate it with vanilla content instead
+        // of what's actually being browsed - the deliberate original-vs-modded choice belongs to
+        // the standalone Convert IoStore to Legacy dialog (ConvertIoStoreToLegacyViewModel.Layer),
+        // a diffing/export tool where picking vanilla on purpose is a real use case. `selected`
+        // (already a concrete, non-empty list from the guard above) keeps the actual conversion
+        // scoped to exactly the checked entries, not the whole merged view's contents.
+        using var scope = RetocLayerResolver.Resolve(utocPath, RetocLayer.Modded);
 
         IsBusy = true;
         StatusMessage = $"Converting {count} entr{(count == 1 ? "y" : "ies")} to legacy format...";
         try
         {
-            await RetocProcess.ConvertToLegacyAsync(input, tempDir, selected, aesKey);
+            await RetocProcess.ConvertToLegacyAsync(scope.InputDirectory, destination, selected, aesKey);
         }
         catch (Exception ex)
         {
@@ -1135,22 +1327,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         StatusMessage = $"Converted {count} entr{(count == 1 ? "y" : "ies")} - opening...";
-        await LoadFolderAsync(tempDir);
-
-        // Only track tempDir for cleanup once it's actually the live workspace - if
-        // LoadFolderAsync declined (unsaved edits in whatever was open before) or threw,
-        // _currentSource never became tempDir's LooseFolderAssetSource, and DisposeCurrentSource
-        // deleting it out from under that untouched previous workspace would be wrong. In that
-        // case nothing will ever open tempDir, so it's cleaned up directly here instead.
-        if (_currentSource is LooseFolderAssetSource)
-        {
-            _ioStoreConvertedTempDir = tempDir;
-        }
-        else
-        {
-            try { Directory.Delete(tempDir, recursive: true); }
-            catch { /* best effort - a leftover temp folder isn't worth failing over */ }
-        }
+        await LoadFolderAsync(destination);
     }
 
     private static bool MatchesAnySelectedPrefix(string entry, List<string> prefixes) =>
@@ -1432,6 +1609,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             RuleKind.AddTag => new AddTagRule { Tag = RuleValue1 },
             RuleKind.RemoveTag => new RemoveTagRule { Tag = RuleValue1 },
             RuleKind.ReplaceReference => new ReplaceReferenceRule { OldReference = RuleValue1, NewReference = RuleValue2, IsRegex = RuleIsRegex },
+            RuleKind.DuplicateElement => new DuplicateElementRule
+            {
+                Overrides = new(RuleOverrides
+                    .Where(o => o.Path.Trim().Length > 0)
+                    .Select(o => new FieldOverride { Path = o.Path.Trim(), Value = o.Value })
+                    .ToList()),
+            },
             _ => throw new NotSupportedException(),
         };
 
@@ -1440,6 +1624,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
     private void RemoveRule(RuleListItem item) => Rules.Remove(item);
+
+    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    private void AddOverrideRow() => RuleOverrides.Add(new FieldOverrideRowViewModel());
+
+    [RelayCommand(CanExecute = nameof(CanEditWorkspace))]
+    private void RemoveOverrideRow(FieldOverrideRowViewModel row) => RuleOverrides.Remove(row);
 
     [RelayCommand]
     private void PromoteToRule(SearchResultRow? row)
@@ -1580,6 +1770,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             foreach (var path in dirtyPaths)
                 _workspace.Close(path);
             _dirtyAssetPaths.Clear();
+
+            // The Browse tree (unlike SearchResults, just below) isn't re-populated by
+            // RefreshOpenContentAsync - any of its nodes already expanded under a reverted
+            // asset must be collapsed back to unloaded so re-expanding re-parses the fresh
+            // asset instead of showing structure that no longer exists after the revert.
+            var revertedPaths = new HashSet<string>(dirtyPaths, StringComparer.OrdinalIgnoreCase);
+            foreach (var assetNode in FindAssetNodes(revertedPaths))
+                assetNode.ResetLoadedState();
 
             await RefreshOpenContentAsync();
 
@@ -1869,20 +2067,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _currentSource = null;
         _currentPakSource = null;
         _unrepackedSavedPaths.Clear();
-
-        // ConvertSelectedCommand's temp conversion folder has no owner of its own the way
-        // PakAssetSource owns (and cleans up) its TempExtractionDirectory - LooseFolderAssetSource
-        // is deliberately not IDisposable, since for a real user-opened folder deleting it on
-        // close would be catastrophic. Only clean this one up specifically, and only once the
-        // workspace has actually moved on from it (this runs at the start of every Load*Async
-        // and from CloseWorkspace/Cleanup), so repeated convert-browse-convert cycles don't
-        // silently accumulate full copies of converted asset data across a session.
-        if (_ioStoreConvertedTempDir != null)
-        {
-            try { Directory.Delete(_ioStoreConvertedTempDir, recursive: true); }
-            catch { /* best effort - a leftover temp folder isn't worth failing over */ }
-            _ioStoreConvertedTempDir = null;
-        }
     }
 
     /// <summary>
@@ -1942,11 +2126,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SourcePath = SourcePath,
         DefaultEngineVersion = DefaultEngineVersion,
         UsmapPath = UsmapPath,
+        AesKeyHex = PakAesKeyHex,
         CreateBackup = CreateBackup,
         SelectedTreeAction = SelectedTreeAction,
         Scope = BuildScope(),
         Rules = new Collection<EditRule>(Rules.Select(r => r.Rule).ToList()),
         RecentSources = new Collection<RecentSourceEntry>(RecentSources.ToList()),
+        TreeSelectNameTerms = new Collection<ConditionTerm>(TreeSelectNameTerms.Select(t => t.ToCore()).ToList()),
     };
 
     private void ApplySession(EditorSession session)
@@ -1954,6 +2140,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SourcePath = session.SourcePath;
         DefaultEngineVersion = session.DefaultEngineVersion;
         UsmapPath = session.UsmapPath;
+        PakAesKeyHex = session.AesKeyHex;
         CreateBackup = session.CreateBackup;
         SelectedTreeAction = session.SelectedTreeAction;
 
@@ -1974,6 +2161,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         foreach (var recent in session.RecentSources)
             RecentSources.Add(recent);
         OnPropertyChanged(nameof(RecentSourceLabel));
+
+        TreeSelectNameTerms.Clear();
+        foreach (var term in session.TreeSelectNameTerms)
+            TreeSelectNameTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
     }
 
     private static string Describe(EditRule rule) => rule switch
@@ -1985,6 +2176,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         AddTagRule r => $"Add tag \"{r.Tag}\"",
         RemoveTagRule r => $"Remove tag \"{r.Tag}\"",
         ReplaceReferenceRule r => $"Replace reference \"{r.OldReference}\" -> \"{r.NewReference}\"" + (r.IsRegex ? " (regex)" : ""),
+        DuplicateElementRule r => r.Overrides.Count == 0
+            ? "Duplicate last element"
+            : $"Duplicate last element, set {string.Join(", ", r.Overrides.Select(o => o.Path))}",
         _ => rule.GetType().Name,
     };
 
