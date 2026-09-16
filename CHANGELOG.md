@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-16
+
+### Fixed
+- Some assets using Unreal's `FInstancedStruct` type anywhere in their data failed to parse at all and showed up as raw, unreadable bytes instead of editable properties - fixed by vendoring the underlying parsing library from its latest source instead of an older packaged version that predates its fix for this.
+- `append-clone` (CLI/scripting) could only add a property missing from an array, not one missing from a struct or from an export's own top-level property list - it now handles both.
+
 ## [1.1.1] - 2026-09-16
 
 ### Fixed
