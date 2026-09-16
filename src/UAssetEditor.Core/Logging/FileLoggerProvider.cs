@@ -38,6 +38,28 @@ public sealed class FileLoggerProvider : ILoggerProvider
             try { _queue.Add(line); } catch (InvalidOperationException) { /* queue completed during shutdown */ }
     }
 
+    /// <summary>Opens a writer for <paramref name="path"/>, or null if another process holds the file
+    /// (e.g. a second instance) or a transient disk issue prevents it - never throws.</summary>
+    private static StreamWriter? TryOpenWriter(string path)
+    {
+        FileStream? stream = null;
+        try
+        {
+            stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
+            return new StreamWriter(stream, Encoding.UTF8);
+        }
+        catch (IOException)
+        {
+            stream?.Dispose();
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            stream?.Dispose();
+            return null;
+        }
+    }
+
     private void WriteLoop()
     {
         // One file per calendar day - reopened whenever the date rolls over mid-run, so a
@@ -52,12 +74,24 @@ public sealed class FileLoggerProvider : ILoggerProvider
                 if (path != currentPath || writer == null)
                 {
                     writer?.Dispose();
-                    writer = new StreamWriter(new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read), Encoding.UTF8);
-                    currentPath = path;
+                    writer = TryOpenWriter(path);
+                    currentPath = writer != null ? path : null;
                 }
 
-                writer.WriteLine(line);
-                writer.Flush();
+                // Couldn't open the file this time (locked/denied) - drop the line, retry next one.
+                if (writer == null) continue;
+
+                try
+                {
+                    writer.WriteLine(line);
+                    writer.Flush();
+                }
+                catch (IOException)
+                {
+                    writer.Dispose();
+                    writer = null;
+                    currentPath = null;
+                }
             }
         }
         finally
