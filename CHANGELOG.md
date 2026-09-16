@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-16
+
+### Added
+- A new command-line tool (`UAssetEditor.Cli`) for scripting property edits and pak/IoStore operations without the GUI - useful for batch-editing many files at once.
+- Browse tree: right-click "Duplicate Array Element" and "Remove Array Element" on any array element, and "Add AnimGraphNode..." to clone a numbered class member as a genuinely new one.
+- Browse tree: "Expand All"/"Collapse All" buttons, and a "name contains" filter that can select every matching item at once.
+- Convert IoStore to Legacy: a "layer" picker (original/modded) for resolving a mod's own overridden entries either as its real edits or as the base game's vanilla content.
+- Long single-child folder chains in the Browse tree now compact into one row (matches VS Code's "compact folders").
+
+### Fixed
+- Resolving a mod's own IoStore overrides through its enclosing Paks folder could silently return the base game's vanilla content instead of the mod's real edits.
+- A property or class member with a numbered name (e.g. a second "Foo_1") could display identically to its sibling in the Browse tree and search results, making them indistinguishable.
+
 ## [1.0.3] - 2026-09-15
 
 ### Fixed
