@@ -1,3 +1,4 @@
+using UAssetAPI;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.PropertyAccess;
@@ -84,6 +85,31 @@ public class PropertyValueAccessorTests
 
         Assert.True(ok);
         Assert.Equal("Fat", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void TrySetStringValue_SetsObjectPropertyDataToMatchingImport()
+    {
+        var asset = TestAssets.CreateAsset();
+        asset.Imports.Add(new Import("/Script/Engine", "Package", FPackageIndex.FromRawIndex(0), "/Game/Textures/T_Wall", false, asset));
+        asset.Imports.Add(new Import("/Script/Engine", "Texture2D", FPackageIndex.FromImport(0), "T_Wall", false, asset));
+        var prop = new ObjectPropertyData(new FName(asset, "BaseColor")) { Value = FPackageIndex.FromRawIndex(0) };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "/Game/Textures/T_Wall.T_Wall", asset);
+
+        Assert.True(ok);
+        Assert.Equal("/Game/Textures/T_Wall.T_Wall", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void TrySetStringValue_RejectsObjectPropertyDataWithNoMatchingImport()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new ObjectPropertyData(new FName(asset, "BaseColor")) { Value = FPackageIndex.FromRawIndex(0) };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "/Game/Textures/T_DoesNotExist.T_DoesNotExist", asset);
+
+        Assert.False(ok);
     }
 
     [Fact]

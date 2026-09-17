@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-17
+
+### Added
+- Object/soft-object reference properties (e.g. a material's texture parameter) can now be set directly to another asset by full path (`/Game/Path/Asset.Asset`), resolved against the file's own existing import table - previously only scalars, strings, names, text and enums were settable.
+
+### Fixed
+- Vendored retoc (the underlying IoStore/Zen &lt;-&gt; legacy pak converter) picks up two real upstream fixes: a dependency-bundle bug that silently dropped a genuine cross-export preload dependency when rebuilding a package from legacy format, and completely missing write-side AES encryption support for the small companion `.pak` file some containers require alongside their `.utoc`/`.ucas`.
+
 ## [1.1.2] - 2026-09-16
 
 ### Fixed
@@ -72,7 +80,8 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.1.2...v1.2.0
 [1.0.3]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.0...v1.0.1

@@ -68,6 +68,11 @@ public static class PropertyValueAccessor
             case EnumPropertyData e:
                 e.Value = new FName(asset, newValue);
                 return true;
+            case ObjectPropertyData op:
+                var importIndex = ImportPathResolver.FindImportIndex(asset, newValue);
+                if (importIndex is null) return false;
+                op.Value = FPackageIndex.FromImport(importIndex.Value);
+                return true;
             default:
                 return false;
         }

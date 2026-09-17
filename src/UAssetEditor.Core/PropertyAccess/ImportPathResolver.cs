@@ -25,4 +25,18 @@ public static class ImportPathResolver
 
         return string.Join(".", parts);
     }
+
+    /// <summary>Finds the 0-based import index whose <see cref="GetFullPath"/> matches <paramref name="fullPath"/> exactly, or null if none does.</summary>
+    public static int? FindImportIndex(UAsset asset, string fullPath)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(fullPath);
+
+        for (var i = 0; i < asset.Imports.Count; i++)
+        {
+            if (GetFullPath(asset.Imports[i], asset) == fullPath)
+                return i;
+        }
+        return null;
+    }
 }
