@@ -3,3 +3,6 @@ obj/
 .vs/
 *.user
 TestResults
+
+# Scratch pak produced by manual pack/repack testing
+custom.pak
