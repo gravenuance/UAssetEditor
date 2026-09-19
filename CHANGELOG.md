@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-19
+
+### Added
+- Games whose paks use Unreal's older compression flags - Days Gone among them - can now be opened at all. Their assets are Oodle-compressed, which was being misread as a different codec entirely, so every read failed or produced nothing; Oodle is now supported and those assets extract and parse normally.
+- `duplicate-export` (command and script op) deep-clones a whole export - a top-level object with its own identity, like a PhysicsAsset's body or constraint - and can optionally add a reference to the clone into an existing list, the counterpart to `append-clone` for references rather than values.
+- `unpack` accepts `--filter` to extract only entries whose path contains the given text. Pulling a single asset out of a large game pak previously extracted the entire archive.
+- `--strict` opens an asset without the usual fallback, so a parse failure reports its real cause instead of being silently worked around.
+
+### Fixed
+- Reading the same asset or mappings file from several processes at once could fail, and did so by returning nothing rather than reporting an error - so a batch run could report assets as empty when it had actually failed to read them.
+- A rebuilt copy of the bundled native pak library was ignored once an older copy had been unpacked, so fixes to it appeared to have no effect.
+- Failures inside the pak library were reported as a bare "no result", making an unsupported compression method indistinguishable from a missing file.
+- An asset that failed to parse looked identical to one with no properties: no warning, no error, just empty exports. This now says what went wrong, and names a missing or mismatched mappings file or engine version as the usual cause.
+- `IntPoint` and plain byte properties read as blank and could not be set; both are now supported, alongside the existing handling for enum-backed bytes.
+- Cloning a numbered node could produce a name the save step couldn't match back to the property it declared.
+
 ## [1.2.0] - 2026-09-17
 
 ### Added
