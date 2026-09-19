@@ -19,6 +19,22 @@
     <ProjectReference Include="..\UAssetEditor.Core\UAssetEditor.Core.csproj" />
   </ItemGroup>
 
+  <!--
+    Oodle is the COMPRESS_Custom codec of legacy UE4 paks (ECompressionFlags 0x04) - Days
+    Gone's 30GB pak is entirely None-or-Oodle, so without this library those paks can be
+    listed but not read. repak_bind loads it by name from beside whichever executable hosts
+    it, and pak reads happen in THIS process, so it has to land next to the worker rather
+    than next to the app or CLI. See THIRD_PARTY_NOTICES.md.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\UAssetEditor.App\vendor\oo2core_9_win64.dll"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\UAssetEditor.App\vendor\oo2core_9_win64.dll')">
+      <Link>oo2core_9_win64.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
   <!-- Same stray-pdb fix as UAssetEditor.App.csproj: Core's own conditional
        DebugType=embedded doesn't reliably follow it through a ProjectReference during a
        single-file publish. -->

@@ -79,8 +79,14 @@ try
                         break;
                     }
 
-                    responsePayload = session.Reader.Get(session.Stream, request.EntryPath!);
-                    response = new PakWorkerResponse { Success = true, SessionId = request.SessionId };
+                    // Success was previously reported unconditionally here, even when Get()
+                    // returned null (any failure - missing entry, decompression failure,
+                    // anything) - the caller would get back an empty payload marked as a
+                    // successful read, with the real reason silently discarded. Surface it.
+                    responsePayload = session.Reader.Get(session.Stream, request.EntryPath!, out var readError);
+                    response = responsePayload != null
+                        ? new PakWorkerResponse { Success = true, SessionId = request.SessionId }
+                        : new PakWorkerResponse { Success = false, SessionId = request.SessionId, Error = readError ?? $"Failed to read '{request.EntryPath}'." };
                     break;
                 }
 

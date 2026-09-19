@@ -83,10 +83,49 @@ public enum PakCompression : byte
 
 public class PakBuilder : SafeHandleZeroOrMinusOneIsInvalid
 {
+    /// <summary>
+    /// The native library ships gzipped inside this assembly and is unpacked next to it on
+    /// first use. Extraction used to happen only when loading threw <see cref="DllNotFoundException"/>,
+    /// so once any copy existed on disk it was reused forever - a rebuilt native library was
+    /// silently ignored, and the stale copy kept answering calls. That cost real debugging
+    /// time (a fix appeared not to work because the old binary was still loaded), so the
+    /// unpacked file is now refreshed whenever it differs in size from the embedded copy.
+    /// </summary>
+    private static void EnsureNativeLibraryCurrent()
+    {
+        var isLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
+        var outPath = Path.Combine(AppContext.BaseDirectory, isLinux ? "repak_bind.so" : "repak_bind.dll");
+        var resourceName = isLinux ? "UAssetAPI.repak_bind.so.gz" : "UAssetAPI.repak_bind.dll.gz";
+
+        using var resource = typeof(PropertyData).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new DllNotFoundException("Failed to find resource: " + resourceName);
+        using var gzipStream = new GZipStream(resource, CompressionMode.Decompress);
+        using var embedded = new MemoryStream();
+        gzipStream.CopyTo(embedded);
+
+        // Size is enough to catch a rebuild and costs one stat; a hash would reread the whole
+        // file on every construction for no practical gain.
+        if (File.Exists(outPath) && new FileInfo(outPath).Length == embedded.Length) return;
+
+        try
+        {
+            File.WriteAllBytes(outPath, embedded.ToArray());
+        }
+        catch (IOException)
+        {
+            // Already loaded by this or another process - the on-disk copy can't be replaced
+            // while mapped, and whatever is loaded is what we have to use.
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
     public PakBuilder() : base(true)
     {
         try
         {
+            EnsureNativeLibraryCurrent();
             SetHandle(RePakInterop.pak_builder_new());
         }
         catch (Exception ex)
@@ -244,7 +283,16 @@ public class PakReader : SafeHandleZeroOrMinusOneIsInvalid
         return RePakInterop.pak_reader_version(handle);
     }
 
-    public byte[] Get(Stream stream, string path)
+    public byte[] Get(Stream stream, string path) => Get(stream, path, out _);
+
+    /// <summary>
+    /// Same as <see cref="Get(Stream, string)"/>, but also surfaces the real native error
+    /// message on failure (null on success) instead of collapsing every failure - a missing
+    /// entry, a decompression failure, anything - into a bare null with no way to tell them
+    /// apart. The plain overload above still returns null on any failure for existing
+    /// callers; use this one when the caller actually needs to know why.
+    /// </summary>
+    public byte[] Get(Stream stream, string path, out string error)
     {
         if (handle == IntPtr.Zero) throw new Exception("PakReader handle invalid");
 
@@ -252,12 +300,19 @@ public class PakReader : SafeHandleZeroOrMinusOneIsInvalid
 
         IntPtr bufferPtr;
         ulong length;
-        int result = RePakInterop.pak_reader_get(handle, path, streamCtx, out bufferPtr, out length);
+        IntPtr errorPtr;
+        int result = RePakInterop.pak_reader_get(handle, path, streamCtx, out bufferPtr, out length, out errorPtr);
 
         StreamCallbacks.Free(streamCtx.Context);
 
-        if (result != 0) return null;
+        if (result != 0)
+        {
+            error = errorPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(errorPtr) : null;
+            if (errorPtr != IntPtr.Zero) RePakInterop.pak_cstring_drop(errorPtr);
+            return null;
+        }
 
+        error = null;
         byte[] buffer = new byte[length];
         Marshal.Copy(bufferPtr, buffer, 0, (int)length);
 
