@@ -63,7 +63,25 @@ internal static class AssetIo
     public static UAsset Open(string path, ArgReader args)
     {
         if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
-        return ResilientAssetLoader.Open(path, ResolveVersion(args), ResolveMappings(args));
+        var version = ResolveVersion(args);
+        var mappings = ResolveMappings(args);
+
+        if (args.Flag("strict")) return ResilientAssetLoader.OpenStrict(path, version, mappings);
+
+        var asset = ResilientAssetLoader.Open(path, version, mappings, out var diagnostics);
+        if (diagnostics.ExportsSkipped)
+        {
+            // Without this the asset looks like it opened fine and simply has no properties,
+            // which reads as "nothing to edit here" rather than "this failed to parse" - the
+            // difference between moving on and passing --usmap/--version. Warnings go to
+            // stderr so they never pollute piped output.
+            Console.Error.WriteLine(
+                $"WARNING: {Path.GetFileName(path)} opened without property data - the structured parse failed, " +
+                $"so every export will read as empty. Cause: {diagnostics.FullParseFailure?.GetType().Name}: " +
+                $"{diagnostics.FullParseFailure?.Message} (re-run with --strict for the full stack; a missing or " +
+                "wrong --usmap/--version is the usual reason).");
+        }
+        return asset;
     }
 
     public static void Save(UAsset asset, string path, bool backup)

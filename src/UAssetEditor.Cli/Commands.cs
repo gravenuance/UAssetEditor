@@ -1,6 +1,8 @@
 using System.Text;
 using System.Text.Json;
 using UAssetAPI;
+using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.PropertyAccess;
@@ -168,6 +170,15 @@ internal static class Commands
         return 0;
     }
 
+    public static int DuplicateExport(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var asset = AssetIo.Open(path, args);
+        Console.WriteLine(ApplyDuplicateExport(asset, args));
+        MaybeSave(asset, path, args);
+        return 0;
+    }
+
     /// <summary>
     /// Runs a whole sequence of set/duplicate/remove/add-node ops against one asset opened
     /// once - the fix for the biggest cost of driving this CLI one verb at a time: each
@@ -208,7 +219,8 @@ internal static class Commands
                     "remove" => ApplyRemove(asset, opArgs),
                     "add-node" => ApplyAddNode(asset, opArgs),
                     "append-clone" => ApplyAppendClone(asset, opArgs),
-                    _ => throw new ArgException($"Unknown op '{opVerb}' (expects set/duplicate/remove/add-node/append-clone)."),
+                    "duplicate-export" => ApplyDuplicateExport(asset, opArgs),
+                    _ => throw new ArgException($"Unknown op '{opVerb}' (expects set/duplicate/remove/add-node/append-clone/duplicate-export)."),
                 };
                 Console.WriteLine($"[{lineNumber}] {opVerb}: {result}");
             }
@@ -330,6 +342,42 @@ internal static class Commands
             default:
                 throw new ArgException($"'{intoPath}' isn't an array or struct property.");
         }
+    }
+
+    /// <summary>
+    /// Deep-clones a whole export (e.g. a PhysicsAsset's SkeletalBodySetup/PhysicsConstraintTemplate
+    /// body, which is its own top-level export, not an array element within one - see
+    /// <see cref="ExportDuplicator"/>). Optionally also appends an object reference to the new
+    /// export into an existing array-of-object-references property (--into-export/--into-path) -
+    /// the array must already hold at least one element of the same reference type to clone from,
+    /// matching how <see cref="ApplyAppendClone"/>'s array case works.
+    /// </summary>
+    private static string ApplyDuplicateExport(UAsset asset, ArgReader args)
+    {
+        var sourceExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var newIndex = ExportDuplicator.Duplicate(asset, sourceExportIndex);
+        var result = $"Duplicated export [{sourceExportIndex}] -> [{newIndex}]";
+
+        var intoExport = args.Option("into-export");
+        var intoPath = args.Option("into-path");
+        if (intoExport == null && intoPath == null)
+            return result;
+        if (intoExport == null || intoPath == null)
+            throw new ArgException("--into-export and --into-path must be given together.");
+
+        var containerExportIndex = AssetIo.ResolveExportIndex(asset, intoExport);
+        var target = PropertyLocator.Locate(asset, containerExportIndex, intoPath)?.Property
+            ?? throw new ArgException($"No property at path '{intoPath}'.");
+
+        if (target is not ArrayPropertyData array)
+            throw new ArgException($"'{intoPath}' isn't an array property.");
+        if (array.Value is not { Length: > 0 } || array.Value[0] is not ObjectPropertyData)
+            throw new ArgException($"'{intoPath}' has no existing object-reference element to use as a template.");
+
+        var reference = (ObjectPropertyData)ArrayElementEditor.AppendClone(array, array.Value[0]);
+        reference.Value = FPackageIndex.FromExport(newIndex);
+
+        return $"{result}, appended reference -> {intoPath}[{array.Value.Length - 1}]";
     }
 
     /// <summary>

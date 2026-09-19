@@ -57,8 +57,15 @@ internal static class PakCommands
         var destination = args.Positional(1, "destination folder");
         if (!File.Exists(pakPath)) throw new ArgException($"File not found: {pakPath}");
 
+        // Without a filter this walks every entry, which on a real game pak (Days Gone's is
+        // 30GB / 216k entries) means a multi-minute run and a full-disk extraction when all
+        // the caller wanted was one asset.
+        var filter = args.Option("filter");
         using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args));
-        var result = PakUnpacker.Unpack(source, destination);
+        var result = PakUnpacker.Unpack(
+            source,
+            destination,
+            filter == null ? null : e => e.Contains(filter, StringComparison.OrdinalIgnoreCase));
 
         foreach (var (entry, reason) in result.FailedEntries)
             Console.WriteLine($"FAILED {entry}: {reason}");

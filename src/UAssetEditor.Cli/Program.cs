@@ -23,6 +23,7 @@ try
         "remove" => Commands.Remove(reader),
         "add-node" => Commands.AddNode(reader),
         "append-clone" => Commands.AppendClone(reader),
+        "duplicate-export" => Commands.DuplicateExport(reader),
         "script" => Commands.Script(reader),
         "batch" => Commands.Batch(reader),
         "pak-info" => PakCommands.PakInfo(reader),
@@ -105,8 +106,16 @@ static void PrintUsage()
               needed when the template lives on a different top-level object entirely, e.g. cloning one PhysicsAsset body's
               populated DefaultInstance field onto another body's.
 
+          uacli duplicate-export <file> --export <e> [--into-export <e> --into-path <p>] [--save] [--backup]
+              Deep-clone the whole export at --export (a top-level object with its own identity, not a PropertyData array
+              element within one - e.g. a PhysicsAsset's SkeletalBodySetup/PhysicsConstraintTemplate body/constraint) and
+              append it to the asset's own export list. With --into-export/--into-path, also appends an object reference to
+              the new export into that array property (must already hold at least one same-typed reference to clone from -
+              e.g. a PhysicsAsset's own SkeletalBodySetups/ConstraintSetup array), the object-reference counterpart to
+              'append-clone'. Follow up with 'set' to point the clone at its own bone/joint before use.
+
           uacli script <file> --ops <opsfile> [--save] [--backup]
-              Run several set/duplicate/remove/add-node/append-clone ops (one per line, same "--flag value" syntax minus the file/verb)
+              Run several set/duplicate/remove/add-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5
@@ -124,8 +133,10 @@ static void PrintUsage()
           uacli pak-list <pak> [--aes <hex>] [--filter <substring>]
               List every entry in a .pak ('*' marks a .uasset).
 
-          uacli unpack <pak> <destFolder> [--aes <hex>]
-              Extract every entry of a .pak to a loose folder.
+          uacli unpack <pak> <destFolder> [--aes <hex>] [--filter <substring>]
+              Extract a .pak's entries to a loose folder - every entry, or only those whose path contains
+              --filter. Always pass --filter when you want a few specific assets: a real game pak can be
+              tens of GB and hundreds of thousands of entries, and the unfiltered run extracts all of it.
 
           uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>]
               Build a new archive from a loose folder: a legacy .pak if <output> ends in ".pak" (--mount defaults to "../../../<folderName>/",

@@ -34,7 +34,9 @@ public class EditorSessionTests
             SchemaVersion = EditorSession.CurrentSchemaVersion,
             SourcePath = @"C:\Games\Example\Content.pak",
             UsmapPath = @"C:\Games\Example\Mappings.usmap",
-            AesKeyHex = "0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74",
+            // Shape-correct dummy (64 hex chars): this test only round-trips the field through
+            // JSON, so a real game's key would add nothing but put one in the repository.
+            AesKeyHex = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF",
             CreateBackup = false,
         };
 
