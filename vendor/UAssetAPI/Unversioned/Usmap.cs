@@ -1036,7 +1036,10 @@ namespace UAssetAPI.Unversioned
         /// <returns>A new MemoryStream that stores the binary data of the input file.</returns>
         public static MemoryStream PathToStream(string p)
         {
-            using (FileStream origStream = File.Open(p, FileMode.Open, FileAccess.Read))
+            // FileShare.Read: one .usmap is shared by every asset of a game, so parallel
+            // invocations all open this same path at once. The 3-arg overload's implicit
+            // FileShare.None made that fail intermittently with "used by another process".
+            using (FileStream origStream = File.Open(p, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 MemoryStream completeStream = new MemoryStream();
                 origStream.CopyTo(completeStream);

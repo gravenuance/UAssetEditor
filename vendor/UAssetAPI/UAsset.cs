@@ -559,7 +559,11 @@ namespace UAssetAPI
         /// <returns>A new MemoryStream that stores the binary data of the input file.</returns>
         public MemoryStream PathToStream(string p, bool loadUEXP = true)
         {
-            using (FileStream origStream = File.Open(p, FileMode.Open, FileAccess.Read))
+            // FileShare.Read (not the 3-arg overload's implicit FileShare.None): several
+            // processes routinely read the same asset at once - a batch driver fanning work
+            // out across cores, or two tools pointed at one game folder - and an exclusive
+            // handle turns that into a sporadic IOException on a pure read.
+            using (FileStream origStream = File.Open(p, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 MemoryStream completeStream = new MemoryStream();
                 origStream.CopyTo(completeStream);
@@ -572,7 +576,9 @@ namespace UAssetAPI
                         var targetFile = Path.ChangeExtension(p, "uexp");
                         if (File.Exists(targetFile))
                         {
-                            using (FileStream newStream = File.Open(targetFile, FileMode.Open))
+                            // FileMode.Open alone also implies FileAccess.ReadWrite, so this
+                            // used to demand write access just to read the companion file.
+                            using (FileStream newStream = File.Open(targetFile, FileMode.Open, FileAccess.Read, FileShare.Read))
                             {
                                 completeStream.Seek(0, SeekOrigin.End);
                                 newStream.CopyTo(completeStream);
