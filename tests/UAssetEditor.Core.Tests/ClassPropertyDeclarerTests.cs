@@ -1,5 +1,6 @@
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.PropertyTypes.Structs;
+using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Core.Tests;
@@ -22,7 +23,11 @@ public class ClassPropertyDeclarerTests
         // ClassPropertyDeclarer.DisplayName's own doc comment) - the new LoadedProperties entry
         // must follow that same convention, not just look right when read back through this tool.
         Assert.Contains(classExport.LoadedProperties, p => p.Name.Value?.Value == "AnimGraphNode_KawaiiPhysics" && p.Name.Number == 3);
-        Assert.Contains(cdo.Data, p => p.Name.Value?.Value == newName);
+        // The CDO's own default value must follow the exact same FName(String, Number) encoding
+        // as the class declaration above - confirmed against a real, working, shipped mod's own
+        // newly-added node (see ClassPropertyDeclarer's own doc comment): both sides need to agree
+        // for the unversioned property serializer to match the value back to its declaration.
+        Assert.Contains(cdo.Data, p => FNameDisplay.ToDisplayString(p.Name) == newName);
         Assert.Same(cdo.Data.Last(), value);
     }
 

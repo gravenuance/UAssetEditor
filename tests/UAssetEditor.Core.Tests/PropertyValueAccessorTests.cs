@@ -1,5 +1,6 @@
 using UAssetAPI;
 using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.PropertyAccess;
 
@@ -121,5 +122,90 @@ public class PropertyValueAccessorTests
         PropertyValueAccessor.UpdateIsZeroFlag(prop);
 
         Assert.True(prop.IsZero);
+    }
+
+    [Fact]
+    public void AsSearchableString_ReadsIntPointAsCommaPair()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new IntPointPropertyData(new FName(asset, "DropCount")) { Value = [2, 5] };
+
+        Assert.Equal("2,5", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void TrySetStringValue_SetsIntPointFromCommaPair()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new IntPointPropertyData(new FName(asset, "DropCount")) { Value = [0, 0] };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "3,7", asset);
+
+        Assert.True(ok);
+        Assert.Equal([3, 7], prop.Value);
+    }
+
+    [Fact]
+    public void TrySetStringValue_RejectsMalformedIntPoint()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new IntPointPropertyData(new FName(asset, "DropCount")) { Value = [1, 1] };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "not-a-pair", asset);
+
+        Assert.False(ok);
+        Assert.Equal([1, 1], prop.Value);
+    }
+
+    [Fact]
+    public void AsSearchableString_ReadsPlainByteAsNumber()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new BytePropertyData(new FName(asset, "Rarity")) { ByteType = BytePropertyType.Byte, Value = 3 };
+
+        Assert.Equal("3", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void AsSearchableString_ReadsEnumBackedByteByName()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new BytePropertyData(new FName(asset, "Rarity"))
+        {
+            ByteType = BytePropertyType.FName,
+            EnumType = new FName(asset, "ERarity"),
+            EnumValue = new FName(asset, "Legendary"),
+        };
+
+        Assert.Equal("Legendary", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void TrySetStringValue_SetsPlainByteFromNumber()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new BytePropertyData(new FName(asset, "Rarity")) { ByteType = BytePropertyType.Byte, Value = 0 };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "9", asset);
+
+        Assert.True(ok);
+        Assert.Equal((byte)9, prop.Value);
+    }
+
+    [Fact]
+    public void TrySetStringValue_SetsEnumBackedByteByName()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new BytePropertyData(new FName(asset, "Rarity"))
+        {
+            ByteType = BytePropertyType.FName,
+            EnumType = new FName(asset, "ERarity"),
+            EnumValue = new FName(asset, "Common"),
+        };
+
+        var ok = PropertyValueAccessor.TrySetStringValue(prop, "Legendary", asset);
+
+        Assert.True(ok);
+        Assert.Equal("Legendary", PropertyValueAccessor.AsSearchableString(prop, asset));
     }
 }

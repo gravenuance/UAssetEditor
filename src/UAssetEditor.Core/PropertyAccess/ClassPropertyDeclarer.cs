@@ -46,17 +46,19 @@ public static class ClassPropertyDeclarer
         if (classExport.LoadedProperties.FirstOrDefault(p => FNameDisplay.ToDisplayString(p.Name) == templateName) is not FStructProperty template)
             throw new InvalidOperationException($"'{templateName}' isn't a declared struct property on this class.");
 
-        var templateValue = cdo.Data.FirstOrDefault(p => p.Name.Value?.Value == templateName)
+        var templateValue = cdo.Data.FirstOrDefault(p => FNameDisplay.ToDisplayString(p.Name) == templateName)
             ?? throw new InvalidOperationException($"'{templateName}' has no default value on this export.");
 
         var (baseName, nextNumber) = NextAvailableName(templateName, classExport.LoadedProperties.Select(p => FNameDisplay.ToDisplayString(p.Name)));
         var newName = $"{baseName}_{nextNumber}";
 
-        // A real compiled anim-graph class declares every "Foo_N" sibling as FName(String="Foo",
+        // A real compiled anim-graph class declares every "Foo_N" sibling the same way on both
+        // the class's property declaration AND the CDO's own default value: FName(String="Foo",
         // Number=N+1) - Unreal's own FName.ToString() convention (Number 0 = no suffix, Number K
-        // >= 1 displays as "_{K-1}") - NOT as one literal "Foo_N" string with Number 0. The CDO's
-        // own Data list uses the opposite convention (the suffix baked into the string, Number 0 -
-        // confirmed against a real asset), which is why clonedValue.Name below stays as-is.
+        // >= 1 displays as "_{K-1}"). Confirmed against a real, working, shipped mod's own
+        // newly-added node (a prior version of this comment claimed the CDO used a different,
+        // baked-in-string convention - that was wrong, and produced a value name the unversioned
+        // property serializer couldn't match back to the declared property at save time).
         var clonedProperty = new FStructProperty
         {
             Name = new FName(asset, baseName, nextNumber + 1),
@@ -74,8 +76,17 @@ public static class ClassPropertyDeclarer
         classExport.LoadedProperties = [.. classExport.LoadedProperties, clonedProperty];
 
         var clonedValue = (PropertyData)templateValue.Clone();
-        clonedValue.Name = new FName(asset, newName);
+        clonedValue.Name = new FName(asset, baseName, nextNumber + 1);
         cdo.Data.Add(clonedValue);
+
+        // A genuinely new property can never be unversioned: unversioned serialization resolves
+        // property identity against the .usmap schema, which only ever describes what the real
+        // shipped game actually compiled - it cannot know about a node this mod just invented.
+        // Saving one still flagged PKG_UnversionedProperties throws at write time ("no valid
+        // property in class"). Tagged (versioned) properties are self-describing and need no
+        // schema match, so this is the only serialization mode that can carry a new property -
+        // dropping the flag here is required, not optional, the moment a node is added.
+        asset.PackageFlags &= ~EPackageFlags.PKG_UnversionedProperties;
 
         return (newName, clonedValue);
     }

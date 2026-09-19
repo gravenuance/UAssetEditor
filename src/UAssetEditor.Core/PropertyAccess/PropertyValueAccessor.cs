@@ -33,12 +33,18 @@ public static class PropertyValueAccessor
             SoftObjectPropertyData so => DescribeSoftObjectPath(so.Value),
             SoftObjectPathPropertyData sop => sop.Path?.Value,
             EnumPropertyData e => e.Value?.Value?.Value,
+            BytePropertyData bp => bp.ByteType == BytePropertyType.FName ? bp.EnumValue?.Value?.Value : bp.Value.ToString(CultureInfo.InvariantCulture),
+            IntPointPropertyData ip when ip.Value is { Length: 2 } v => $"{v[0]},{v[1]}",
             _ => null,
         };
     }
 
     public static bool TrySetStringValue(PropertyData prop, string newValue, UAsset asset)
     {
+        ArgumentNullException.ThrowIfNull(prop);
+        ArgumentNullException.ThrowIfNull(newValue);
+        ArgumentNullException.ThrowIfNull(asset);
+
         switch (prop)
         {
             case BoolPropertyData b when bool.TryParse(newValue, out var bv):
@@ -67,6 +73,20 @@ public static class PropertyValueAccessor
                 return true;
             case EnumPropertyData e:
                 e.Value = new FName(asset, newValue);
+                return true;
+            case BytePropertyData bp when bp.ByteType == BytePropertyType.FName:
+                bp.EnumValue = new FName(asset, newValue);
+                return true;
+            case BytePropertyData bp when byte.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var byv):
+                bp.Value = byv;
+                return true;
+            case IntPointPropertyData ip:
+                var parts = newValue.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length != 2
+                    || !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var x)
+                    || !int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var y))
+                    return false;
+                ip.Value = [x, y];
                 return true;
             case ObjectPropertyData op:
                 var importIndex = ImportPathResolver.FindImportIndex(asset, newValue);
@@ -99,6 +119,8 @@ public static class PropertyValueAccessor
             StrPropertyData s => string.IsNullOrEmpty(s.Value?.Value),
             NamePropertyData n => string.IsNullOrEmpty(n.Value?.Value?.Value),
             TextPropertyData t => string.IsNullOrEmpty(t.Value?.Value),
+            BytePropertyData { ByteType: BytePropertyType.Byte } bp => bp.Value == 0,
+            IntPointPropertyData ip => ip.Value is null or [0, 0],
             _ => prop.IsZero,
         };
     }
