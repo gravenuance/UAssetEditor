@@ -47,8 +47,10 @@ public static class RetocLayerResolver
         if (paksFolder == null)
             return RetocInputScope.Unwidened(utocPath);
 
-        var targetIsLoose = string.Equals(Path.GetFullPath(Path.GetDirectoryName(utocPath)!), Path.GetFullPath(paksFolder), StringComparison.OrdinalIgnoreCase);
-        if (layer == RetocLayer.Original && !targetIsLoose)
+        // A "_P" (patch) container loose in Paks is a mod; a base-game chunk there is the vanilla content itself.
+        var targetIsLooseMod = string.Equals(Path.GetFullPath(Path.GetDirectoryName(utocPath)!), Path.GetFullPath(paksFolder), StringComparison.OrdinalIgnoreCase)
+            && Path.GetFileNameWithoutExtension(utocPath).EndsWith("_P", StringComparison.OrdinalIgnoreCase);
+        if (layer == RetocLayer.Original && !targetIsLooseMod)
             return RetocInputScope.Widened(paksFolder, temporaryDirectory: null);
 
         // Must land on the SAME VOLUME as paksFolder - hard links can't cross drives, and

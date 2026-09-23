@@ -87,6 +87,22 @@ public class RetocLayerResolverTests
     }
 
     [Fact]
+    public void Resolve_Original_KeepsABaseGameContainerItWasPointedAt()
+    {
+        var (workDir, paksFolder, _) = CreateFixture();
+        try
+        {
+            using var scope = RetocLayerResolver.Resolve(Path.Combine(paksFolder, "pakchunk0-Windows.utoc"), RetocLayer.Original);
+
+            Assert.Equal("base-toc", File.ReadAllText(Path.Combine(scope.InputDirectory, "pakchunk0-Windows.utoc")));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Resolve_Modded_BuildsAScratchDirectoryContainingBothTheBaseGameAndTheModsOwnContainer()
     {
         var (workDir, paksFolder, modUtoc) = CreateFixture();
