@@ -47,7 +47,8 @@ public static class RetocLayerResolver
         if (paksFolder == null)
             return RetocInputScope.Unwidened(utocPath);
 
-        if (layer == RetocLayer.Original)
+        var targetIsLoose = string.Equals(Path.GetFullPath(Path.GetDirectoryName(utocPath)!), Path.GetFullPath(paksFolder), StringComparison.OrdinalIgnoreCase);
+        if (layer == RetocLayer.Original && !targetIsLoose)
             return RetocInputScope.Widened(paksFolder, temporaryDirectory: null);
 
         // Must land on the SAME VOLUME as paksFolder - hard links can't cross drives, and
@@ -61,12 +62,13 @@ public static class RetocLayerResolver
         // guaranteed writable whenever Paks itself is.
         var scratchRoot = Path.Combine(Directory.GetParent(paksFolder)!.FullName, ".uae-retoc-temp");
         Directory.CreateDirectory(scratchRoot);
-        var scratch = Path.Combine(scratchRoot, "modded-" + Guid.NewGuid().ToString("N"));
+        var scratch = Path.Combine(scratchRoot, (layer == RetocLayer.Original ? "original-" : "modded-") + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(scratch);
         try
         {
-            LinkContainersFrom(paksFolder, scratch);
-            LinkContainer(utocPath, scratch);
+            // A mod sitting directly in Paks would otherwise leak into the "vanilla" view.
+            LinkContainersFrom(paksFolder, scratch, exclude: layer == RetocLayer.Original ? utocPath : null);
+            if (layer == RetocLayer.Modded) LinkContainer(utocPath, scratch);
         }
         catch
         {
@@ -77,10 +79,13 @@ public static class RetocLayerResolver
         return RetocInputScope.Widened(scratch, scratch);
     }
 
-    private static void LinkContainersFrom(string sourceFolder, string destFolder)
+    private static void LinkContainersFrom(string sourceFolder, string destFolder, string? exclude)
     {
         foreach (var utoc in Directory.EnumerateFiles(sourceFolder, "*.utoc"))
+        {
+            if (exclude != null && string.Equals(Path.GetFullPath(utoc), Path.GetFullPath(exclude), StringComparison.OrdinalIgnoreCase)) continue;
             LinkContainer(utoc, destFolder);
+        }
     }
 
     private static void LinkContainer(string utocPath, string destFolder)

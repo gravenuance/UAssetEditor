@@ -66,6 +66,27 @@ public class RetocLayerResolverTests
     }
 
     [Fact]
+    public void Resolve_Original_LeavesOutAModSittingDirectlyInThePaksFolder()
+    {
+        var (workDir, paksFolder, _) = CreateFixture();
+        var modUtoc = Path.Combine(paksFolder, "zLooseMod_9999999_P.utoc");
+        File.WriteAllText(modUtoc, "loose-toc");
+        File.WriteAllText(Path.ChangeExtension(modUtoc, ".ucas"), "loose-cas");
+        try
+        {
+            using var scope = RetocLayerResolver.Resolve(modUtoc, RetocLayer.Original);
+
+            Assert.False(File.Exists(Path.Combine(scope.InputDirectory, "zLooseMod_9999999_P.utoc")));
+            Assert.False(File.Exists(Path.Combine(scope.InputDirectory, "zLooseMod_9999999_P.ucas")));
+            Assert.Equal("base-toc", File.ReadAllText(Path.Combine(scope.InputDirectory, "pakchunk0-Windows.utoc")));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Resolve_Modded_BuildsAScratchDirectoryContainingBothTheBaseGameAndTheModsOwnContainer()
     {
         var (workDir, paksFolder, modUtoc) = CreateFixture();

@@ -18,6 +18,7 @@ All notable changes to this project are documented here.
 - `dump`, `search` and `set` handle 8/16-bit and unsigned integers, such as an animation node's data entries, which used to show as blank.
 
 ### Fixed
+- `to-legacy --layer original` no longer returns the mod's own content when the mod sits directly in the Paks folder rather than in `~mods`.
 - `add-node` now saves. Adding a physics node used to switch the file to a format it could not write, so every save failed; the file keeps its normal format and the new node is written like any other.
 - A cancelled conversion no longer sometimes produces output anyway.
 
