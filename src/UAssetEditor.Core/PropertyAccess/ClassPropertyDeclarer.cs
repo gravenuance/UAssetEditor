@@ -101,7 +101,7 @@ public static class ClassPropertyDeclarer
     /// LoadedProperties entries don't carry their "_N" suffix in the string at all, only in
     /// FName's own Number field.
     /// </summary>
-    private static (string BaseName, int NextNumber) NextAvailableName(string templateName, IEnumerable<string> existingDisplayNames)
+    internal static (string BaseName, int NextNumber) NextAvailableName(string templateName, IEnumerable<string> existingDisplayNames)
     {
         var underscoreIndex = templateName.LastIndexOf('_');
         var baseName = underscoreIndex >= 0 && int.TryParse(templateName[(underscoreIndex + 1)..], out _)

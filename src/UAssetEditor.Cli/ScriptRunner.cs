@@ -23,6 +23,8 @@ internal static class ScriptRunner
         ["append-clone"] = Commands.ApplyAppendClone,
         ["duplicate-export"] = Commands.ApplyDuplicateExport,
         ["dump"] = Commands.ApplyDump,
+        ["bypass-node"] = Commands.ApplyBypassNode,
+        ["graft-nodes"] = Commands.ApplyGraftNodes,
     };
 
     public static int Run(ArgReader args)
@@ -72,7 +74,7 @@ internal static class ScriptRunner
         {
             try
             {
-                var result = Ops[op.Verb](asset, op.Args);
+                var result = Ops[op.Verb](asset, op.Args.WithOpenSettingsFrom(args));
                 if (op.Verb == "dump") output.Append(result);
                 else output.AppendLine($"[{op.Line}] {op.Verb}: {result}");
             }

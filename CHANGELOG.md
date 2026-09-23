@@ -5,6 +5,9 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- `graft-nodes` (script op) copies animation nodes from another animation blueprint and chains them in just before the output, bringing their node-table rows, node types and imports and re-creating every name in the target. This puts physics into blueprints that have none, like the lobby ones.
+- `bypass-node` (script op) takes a node out of the pose chain without renumbering any other node.
+- `imports` lists a file's imports, and `exports --members` lists each class's declared fields.
 - `dump` works as a script op, so one `script --plan` run can dump many assets. Dumping 179 physics assets took 10 s this way; separate runs took about 116 s.
 - `script --plan` edits many assets in one run: each plan line pairs an asset with its ops file, assets run in parallel, and the usmap loads once. Opening and saving 138 physics assets took 56 s as separate runs and 9 s this way.
 - An unknown or misspelled option (for example `--aes-key` instead of `--aes`) is now an error with a suggestion. It used to be silently ignored.

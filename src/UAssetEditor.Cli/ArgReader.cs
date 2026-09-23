@@ -19,8 +19,8 @@ internal sealed class ArgReader
     // Every --name any command reads. Checked up front so a typo fails before anything runs, not after.
     private static readonly HashSet<string> KnownNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "aes", "apply", "backup", "compression", "depth", "export", "export-name", "filter", "from", "from-export",
-        "into", "into-export", "into-path", "jobs", "layer", "mount", "no-paks-resolve", "ops", "pak-version", "path", "plan",
+        "aes", "apply", "backup", "compression", "depth", "export", "export-name", "filter", "from", "from-export", "from-file", "nodes",
+        "into", "into-export", "into-path", "jobs", "layer", "members", "mount", "no-paks-resolve", "ops", "pak-version", "path", "plan",
         "property-name", "reference", "regex", "ruleset", "save", "strict", "template", "usmap", "value", "version",
     };
 
@@ -66,6 +66,22 @@ internal sealed class ArgReader
     public string RequireOption(string name) => Option(name) ?? throw new ArgException($"Missing --{name}");
 
     public bool Flag(string name) => _flags.Contains(name);
+
+    /// <summary>These arguments plus how the run opens assets (--version, --usmap, --strict), unless already given.</summary>
+    public ArgReader WithOpenSettingsFrom(ArgReader run)
+    {
+        ArgumentNullException.ThrowIfNull(run);
+        var merged = new ArgReader([]);
+        merged._positional.AddRange(_positional);
+        foreach (var (key, value) in _options) merged._options[key] = value;
+        merged._flags.UnionWith(_flags);
+        foreach (var name in (string[])["version", "usmap"])
+        {
+            if (!merged._options.ContainsKey(name) && run.Option(name) is { } value) merged._options[name] = value;
+        }
+        if (run.Flag("strict")) merged._flags.Add("strict");
+        return merged;
+    }
 
     private static string Suggestion(string name)
     {

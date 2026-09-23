@@ -73,6 +73,29 @@ public class AnimNodeSplicerTests
         Assert.Throws<InvalidOperationException>(() => AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, "UberGraphFrame"));
     }
 
+    [Fact]
+    public void Bypass_LetsTheReaderSkipTheNodeAndShiftsNoIndex()
+    {
+        var graph = AnimGraph.Create();
+
+        var bypassed = AnimNodeSplicer.Bypass(graph.Asset, graph.CdoIndex, Kawaii);
+
+        Assert.Equal(new BypassedAnimNode(Kawaii, 2, "AnimGraphNode_ToLocal", 1), bypassed);
+        Assert.Equal(1, graph.LinkOf("AnimGraphNode_ToLocal"));
+        Assert.Equal([0, 1, 2, 3], graph.NodeDataIndices());
+    }
+
+    [Fact]
+    public void Bypass_RefusesTheOutputNode_AndChangesNothing()
+    {
+        var graph = AnimGraph.Create();
+        var before = graph.Snapshot();
+
+        Assert.Throws<InvalidOperationException>(() => AnimNodeSplicer.Bypass(graph.Asset, graph.CdoIndex, "AnimGraphNode_Root"));
+
+        Assert.Equal(before, graph.Snapshot());
+    }
+
     private sealed record AnimGraph(UAsset Asset, ClassExport Class, NormalExport Cdo, int CdoIndex)
     {
         public static AnimGraph Create()

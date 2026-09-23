@@ -19,6 +19,7 @@ try
     return verb switch
     {
         "exports" => Commands.Exports(reader),
+        "imports" => Commands.Imports(reader),
         "tree" => Commands.Tree(reader),
         "dump" => Commands.Dump(reader),
         "search" => Commands.Search(reader),
@@ -76,8 +77,11 @@ static void PrintUsage()
         --export accepts either a 0-based index or a (sub)string match against the export's name.
         A property --path uses the same scheme the app's tree/search use: "Foo.Bar" for a struct field, "Tags[2]" for an array element.
 
-          uacli exports <file>
-              List every export: index, name, export type.
+          uacli exports <file> [--members]
+              List every export: index, name, export type. --members also lists each class/struct's declared fields.
+
+          uacli imports <file>
+              List every import: index, full object path, class.
 
           uacli tree <file> --export <e> [--path <p>] [--depth <n>]
               Print the Browse-tree shape (struct/array/map nodes only) under an export, or under one property if --path is given.
@@ -106,6 +110,13 @@ static void PrintUsage()
               Add a copy of an anim-graph node (e.g. AnimGraphNode_KawaiiPhysics_3) wired in right after it: the copy reads the
               template's pose and whatever read the template now reads the copy. Adds its AnimNodeData row too. Refuses, changing
               nothing, unless the template has one pose input and exactly one reader.
+
+          uacli script ops only: bypass-node --export <cdo> --template <NodeName>
+              Take a node out of the pose chain: whatever read it now reads its input. The node stays, unreachable.
+
+          uacli script ops only: graft-nodes --export <cdo> --from-file <donor.uasset> [--from-export <cdo>] --nodes <A,B,...>
+              Copy anim-graph nodes from another compiled AnimBP and chain them just before this one's Root, in order,
+              with their node-table rows, node types and imports. Refuses, changing nothing, if the node data can't carry over.
 
           uacli append-clone <file> --export <e> --from <sourcePath> [--into <containerPath>] [--from-export <e>] [--save] [--backup]
               Deep-clone the property at --from and append it into --into, which may be an array (appended as the new last

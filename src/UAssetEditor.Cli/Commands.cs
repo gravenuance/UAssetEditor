@@ -21,16 +21,34 @@ namespace UAssetEditor.Cli;
 /// </summary>
 internal static class Commands
 {
+    public static int Imports(ArgReader args)
+    {
+        var asset = AssetIo.Open(args.Positional(0, "file"), args);
+        for (var i = 0; i < asset.Imports.Count; i++)
+        {
+            var import = asset.Imports[i];
+            Console.WriteLine($"[{i}] {ImportPathResolver.GetFullPath(import, asset)} ({import.ClassName.Value?.Value})");
+        }
+        return 0;
+    }
+
     public static int Exports(ArgReader args)
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
+        var members = args.Flag("members");
 
         for (var i = 0; i < asset.Exports.Count; i++)
         {
             var export = asset.Exports[i];
             var name = export.ObjectName.Value?.Value ?? "";
             Console.WriteLine($"[{i}] {name} ({export.GetType().Name})");
+            if (!members || export is not UAssetAPI.ExportTypes.StructExport structExport || structExport.LoadedProperties == null) continue;
+            for (var m = 0; m < structExport.LoadedProperties.Length; m++)
+            {
+                var member = structExport.LoadedProperties[m];
+                Console.WriteLine($"    {m}: {FNameDisplay.ToDisplayString(member.Name)} ({member.SerializedType?.Value?.Value})");
+            }
         }
 
         return 0;
@@ -256,6 +274,24 @@ internal static class Commands
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var node = AnimNodeSplicer.SpliceAfter(asset, cdoExportIndex, args.RequireOption("template"));
         return $"Spliced '{node.Name}' (node {node.NodeIndex}) after '{node.TemplateName}' (node {node.TemplateIndex}); '{node.ConsumerName}' now reads node {node.NodeIndex}";
+    }
+
+    internal static string ApplyBypassNode(UAsset asset, ArgReader args)
+    {
+        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var node = AnimNodeSplicer.Bypass(asset, cdoExportIndex, args.RequireOption("template"));
+        return $"Bypassed '{node.Name}' (node {node.NodeIndex}); '{node.ReaderName}' now reads node {node.NowReads}";
+    }
+
+    internal static string ApplyGraftNodes(UAsset asset, ArgReader args)
+    {
+        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var donor = AssetIo.Open(args.RequireOption("from-file"), args);
+        var donorCdoIndex = AssetIo.ResolveExportIndex(donor, args.Option("from-export") ?? args.RequireOption("export"));
+        var nodes = args.RequireOption("nodes").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var grafted = AnimNodeGrafter.GraftBeforeRoot(asset, cdoExportIndex, donor, donorCdoIndex, nodes);
+        return "Grafted before Root: " + string.Join(" -> ", grafted.Select(g => $"{g.DonorName} as '{g.Name}' (node {g.NodeIndex})"));
     }
 
     internal static string ApplyAppendClone(UAsset asset, ArgReader args)
