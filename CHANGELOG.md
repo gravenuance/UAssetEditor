@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ### Added
 - `graft-nodes` (script op) copies animation nodes from another animation blueprint and chains them in just before the output, bringing their node-table rows, node types and imports and re-creating every name in the target. This puts physics into blueprints that have none, like the lobby ones.
+- `check-graph` (script op) confirms an animation blueprint has a node-table row and an exposed-value handler for every node, the check a build should pass before shipping.
 - `bypass-node` (script op) takes a node out of the pose chain without renumbering any other node.
 - `imports` lists a file's imports, and `exports --members` lists each class's declared fields.
 - `dump` works as a script op, so one `script --plan` run can dump many assets. Dumping 179 physics assets took 10 s this way; separate runs took about 116 s.

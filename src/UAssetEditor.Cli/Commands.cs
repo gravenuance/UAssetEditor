@@ -283,6 +283,12 @@ internal static class Commands
         return $"Bypassed '{node.Name}' (node {node.NodeIndex}); '{node.ReaderName}' now reads node {node.NowReads}";
     }
 
+    internal static string ApplyCheckGraph(UAsset asset, ArgReader args)
+    {
+        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        return $"Graph consistent: {AnimGraphValidator.Validate(asset, cdoExportIndex)} nodes, each with a row and a handler";
+    }
+
     internal static string ApplyGraftNodes(UAsset asset, ArgReader args)
     {
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));

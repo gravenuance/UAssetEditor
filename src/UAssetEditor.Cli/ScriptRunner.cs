@@ -24,6 +24,7 @@ internal static class ScriptRunner
         ["duplicate-export"] = Commands.ApplyDuplicateExport,
         ["dump"] = Commands.ApplyDump,
         ["bypass-node"] = Commands.ApplyBypassNode,
+        ["check-graph"] = Commands.ApplyCheckGraph,
         ["graft-nodes"] = Commands.ApplyGraftNodes,
     };
 

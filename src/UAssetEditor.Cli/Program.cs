@@ -118,6 +118,9 @@ static void PrintUsage()
               Copy anim-graph nodes from another compiled AnimBP and chain them just before this one's Root, in order,
               with their node-table rows, node types and imports. Refuses, changing nothing, if the node data can't carry over.
 
+          uacli script ops only: check-graph --export <cdo>
+              Confirm every anim-graph node has its node-table row and exposed-value handler; reported as skipped when not.
+
           uacli append-clone <file> --export <e> --from <sourcePath> [--into <containerPath>] [--from-export <e>] [--save] [--backup]
               Deep-clone the property at --from and append it into --into, which may be an array (appended as the new last
               element - for one with no existing element of its own to 'duplicate' from, e.g. an empty ExcludeBones list) or a

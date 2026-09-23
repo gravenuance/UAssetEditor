@@ -97,6 +97,24 @@ public class AnimNodeSplicerTests
     }
 
     [Fact]
+    public void Validate_CountsTheNodesOfAConsistentGraph()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlers(graph.Asset, graph.Cdo, "None", "None", "None", "None");
+
+        Assert.Equal(4, AnimGraphValidator.Validate(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
+    public void Validate_RefusesHandlersThatDisagreeWithTheNodes()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlers(graph.Asset, graph.Cdo, "None", "None", "None");
+
+        Assert.Throws<InvalidOperationException>(() => AnimGraphValidator.Validate(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
     public void Bypass_LetsTheReaderSkipTheNodeAndShiftsNoIndex()
     {
         var graph = AnimGraph.Create();
