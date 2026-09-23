@@ -8,7 +8,7 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// <summary>Where <see cref="AnimNodeSplicer.SpliceAfter"/> put the new node and which link now reads from it.</summary>
 public sealed record SplicedAnimNode(string Name, int NodeIndex, string TemplateName, int TemplateIndex, string ConsumerName);
 
-/// <summary>Which node <see cref="AnimNodeSplicer.Bypass"/> took out of the pose chain and what now reads past it.</summary>
+/// <summary>Which node <see cref="AnimNodeSplicer.Bypass"/> took out of the pose chain and which readers now read past it.</summary>
 public sealed record BypassedAnimNode(string Name, int NodeIndex, string ReaderName, int NowReads);
 
 /// <summary>
@@ -42,7 +42,7 @@ public static class AnimNodeSplicer
     }
 
     /// <summary>
-    /// Takes a node out of the pose chain: whatever read it now reads its input. The node stays in the
+    /// Takes a node out of the pose chain: everything that read it now reads its input. The node stays in the
     /// class, unreachable, so no other node's index shifts; the engine only evaluates what Root reaches.
     /// </summary>
     public static BypassedAnimNode Bypass(UAsset asset, int cdoExportIndex, string nodeName)
@@ -53,11 +53,11 @@ public static class AnimNodeSplicer
         var index = graph.IndexOf(nodeName);
         var input = graph.SingleInputOf(nodeName).Value;
         var readers = graph.ReadersOf(index);
-        if (readers.Count != 1)
-            throw new InvalidOperationException($"'{nodeName}' feeds {readers.Count} pose inputs; bypassing needs exactly one.");
+        if (readers.Count == 0)
+            throw new InvalidOperationException($"Nothing reads '{nodeName}', so it isn't in the pose chain.");
 
-        readers[0].Link.Value = input;
-        return new BypassedAnimNode(nodeName, index, readers[0].Node, input);
+        foreach (var reader in readers) reader.Link.Value = input;
+        return new BypassedAnimNode(nodeName, index, string.Join(", ", readers.Select(r => r.Node)), input);
     }
 
     /// <summary>The class's anim-graph nodes in node-index order.</summary>

@@ -48,10 +48,32 @@ public class AnimNodeGrafterTests
     }
 
     [Fact]
-    public void GraftBeforeRoot_RefusesWhenFoldedConstantsDiffer_AndChangesNothing()
+    public void GraftBeforeRoot_PointsCopiedEntriesAtTheSameConstantWhereverTheTargetKeepsIt()
     {
         var donor = Blueprint.Donor();
-        var target = Blueprint.Target(constantAtTwo: "NameProperty:__NameProperty");
+        var target = Blueprint.Target(constants: ["StructProperty:__StructProperty", "NameProperty:__NameProperty", "NameProperty:__NameProperty"]);
+
+        AnimNodeGrafter.GraftBeforeRoot(target.Asset, target.CdoIndex, donor.Asset, donor.CdoIndex, [Kawaii]);
+
+        Assert.Equal([0u, uint.MaxValue], target.EntriesOfRow(2));
+    }
+
+    [Fact]
+    public void GraftBeforeRoot_TellsStructConstantsApartByTheirStructType()
+    {
+        var donor = Blueprint.Donor();
+        var target = Blueprint.Target(constants: ["StructProperty:__StructProperty:FloatRange", "NameProperty:__NameProperty", "StructProperty:__StructProperty"]);
+
+        AnimNodeGrafter.GraftBeforeRoot(target.Asset, target.CdoIndex, donor.Asset, donor.CdoIndex, [Kawaii]);
+
+        Assert.Equal([2u, uint.MaxValue], target.EntriesOfRow(2));
+    }
+
+    [Fact]
+    public void GraftBeforeRoot_RefusesWhenTheTargetLacksTheConstant_AndChangesNothing()
+    {
+        var donor = Blueprint.Donor();
+        var target = Blueprint.Target(constants: ["NameProperty:__NameProperty", "NameProperty:__NameProperty", "NameProperty:__NameProperty"]);
         var before = target.Snapshot();
 
         Assert.Throws<InvalidOperationException>(() =>
@@ -80,7 +102,9 @@ public class AnimNodeGrafterTests
         private readonly MapPropertyData _types;
         private readonly NormalExport _cdo;
 
-        private Blueprint(string className, string constantAtTwo)
+        private static readonly string[] DefaultConstants = ["NameProperty:__NameProperty", "NameProperty:__NameProperty", "StructProperty:__StructProperty"];
+
+        private Blueprint(string className, string[] constants)
         {
             Asset = TestAssets.CreateAsset();
             _cdo = new NormalExport(Asset, []) { ObjectName = new FName(Asset, $"Default__{className}"), Data = [] };
@@ -89,9 +113,7 @@ public class AnimNodeGrafterTests
             {
                 Asset = Asset,
                 ObjectName = new FName(Asset, "AnimBlueprintGeneratedConstantData"),
-                LoadedProperties = new[] { "NameProperty:__NameProperty", "NameProperty:__NameProperty", constantAtTwo }
-                    .Select((kind, i) => (FProperty)new FGenericProperty { Name = new FName(Asset, kind.Split(':')[1], i + 10), SerializedType = new FName(Asset, kind.Split(':')[0]) })
-                    .ToArray(),
+                LoadedProperties = constants.Select((kind, i) => Constant(kind.Split(':'), i)).ToArray(),
                 OuterIndex = new FPackageIndex(0),
                 SuperStruct = new FPackageIndex(0),
             });
@@ -119,7 +141,7 @@ public class AnimNodeGrafterTests
 
         public static Blueprint Donor()
         {
-            var b = new Blueprint("Post_Physics_C", "StructProperty:__StructProperty");
+            var b = new Blueprint("Post_Physics_C", DefaultConstants);
             b.Add("AnimGraphNode_Root", "/Script/Engine", "AnimNode_Root", "Result", "PoseLink", 2);
             b.Add("AnimGraphNode_LocalToComponentSpace", "/Script/Engine", "AnimNode_ConvertLocalToComponentSpace", "LocalPose", "PoseLink", -1);
             b.Add(Kawaii, "/Script/KawaiiPhysics", "AnimNode_KawaiiPhysics", "ComponentPose", "ComponentSpacePoseLink", 1,
@@ -127,9 +149,9 @@ public class AnimNodeGrafterTests
             return b.Seal();
         }
 
-        public static Blueprint Target(string constantAtTwo = "StructProperty:__StructProperty")
+        public static Blueprint Target(string[]? constants = null)
         {
-            var b = new Blueprint("Post_Lobby_Physics_C", constantAtTwo);
+            var b = new Blueprint("Post_Lobby_Physics_C", constants ?? DefaultConstants);
             b.Add("AnimGraphNode_Root", "/Script/Engine", "AnimNode_Root", "Result", "PoseLink", 1);
             b.Add("AnimGraphNode_LinkedInputPose", "/Script/Engine", "AnimNode_LinkedInputPose", "InputPose", "PoseLink", -1);
             return b.Seal();
@@ -140,6 +162,8 @@ public class AnimNodeGrafterTests
         public int LinkOf(string node) => ((IntPropertyData)Node(node).Value.OfType<StructPropertyData>().First().Value[0]).Value;
 
         public int[] RowIndices() => Rows().Select(r => r.Value.OfType<IntPropertyData>().Single().Value).ToArray();
+
+        public uint[] EntriesOfRow(int row) => Rows().ElementAt(row).Value.OfType<ArrayPropertyData>().Single().Value.Cast<UInt32PropertyData>().Select(e => e.Value).ToArray();
 
         public int[] RowInterfaces() => Rows().Select(r => r.Value.OfType<ObjectPropertyData>().Single().Value.Index).ToArray();
 
@@ -171,6 +195,11 @@ public class AnimNodeGrafterTests
             if (!_types.Value.Keys.Any(k => ((ObjectPropertyData)k).Value.Index == structImport.Index))
                 _types.Value.Add(new ObjectPropertyData(new FName(Asset, "NodeTypeMap")) { Value = structImport }, new StructPropertyData(new FName(Asset, "NodeTypeMap")) { StructType = new FName(Asset, "AnimNodeStructData"), Value = [] });
         }
+
+        // "Type:Name[:Struct]" - struct constants name the struct they hold; the default is the shared AnimNodeFunctionRef.
+        private FProperty Constant(string[] kind, int i) => kind[0] == "StructProperty"
+            ? new FStructProperty { Name = new FName(Asset, kind[1], i + 10), SerializedType = new FName(Asset, kind[0]), Struct = Import("/Script/Engine", kind.Length > 2 ? kind[2] : "AnimNodeFunctionRef") }
+            : new FGenericProperty { Name = new FName(Asset, kind[1], i + 10), SerializedType = new FName(Asset, kind[0]) };
 
         private FPackageIndex Import(string package, string objectName)
         {

@@ -34,11 +34,13 @@ public static class AnimNodeGrafter
         var toTypes = to.NodeTypeMap ?? throw new InvalidOperationException("The target class has no NodeTypeMap.");
         var fromTypes = from.NodeTypeMap ?? throw new InvalidOperationException("The donor class has no NodeTypeMap.");
         var rootInput = to.SingleInputOf(to.SingleNodeOfType("AnimNode_Root"));
+        var constantMap = FoldedConstantMap(donor, target);
         foreach (var node in donorNodes)
         {
             from.IndexOf(node);
             from.SingleInputOf(node);
-            RequireSameFoldedConstants(from, to, RowOf(from, node));
+            foreach (var entry in EntriesOf(RowOf(from, node)).Where(e => e.Value != UnfoldedEntry && !constantMap.ContainsKey(e.Value)))
+                throw new InvalidOperationException($"'{node}' uses folded constant #{entry.Value}, which the target has no single match for.");
         }
 
         var copier = new CrossAssetCopier(donor, target);
@@ -78,6 +80,7 @@ public static class AnimNodeGrafter
 
             var row = (StructPropertyData)copier.Copy(RowOf(from, donorName));
             AnimNodeSplicer.SetNodeIndex(row, newIndex);
+            foreach (var entry in EntriesOf(row).Where(e => e.Value != UnfoldedEntry)) entry.Value = constantMap[entry.Value];
             to.NodeData.Value = [.. to.NodeData.Value ?? [], row];
 
             AddNodeTypeIfMissing(copier, from, to, fromTypes, toTypes, donorName);
@@ -110,17 +113,24 @@ public static class AnimNodeGrafter
     private static string TypeKey(UAsset asset, FPackageIndex index) =>
         index.IsImport() ? ImportPathResolver.GetFullPath(index.ToImport(asset), asset) : "";
 
-    /// <summary>A row's entries index the class's folded-constant struct; they only carry over if that slot means the same in both.</summary>
-    private static void RequireSameFoldedConstants(AnimGraph from, AnimGraph to, StructPropertyData row)
+    private static IEnumerable<UInt32PropertyData> EntriesOf(StructPropertyData row) =>
+        row.Value.OfType<ArrayPropertyData>().FirstOrDefault(p => FNameDisplay.ToDisplayString(p.Name) == "Entries")?.Value?.OfType<UInt32PropertyData>() ?? [];
+
+    /// <summary>
+    /// A row's entries index the class's folded-constant struct, whose member order differs between
+    /// blueprints. Donor slot -> target slot of the same kind, for kinds the target holds exactly once.
+    /// </summary>
+    private static Dictionary<uint, uint> FoldedConstantMap(UAsset donor, UAsset target)
     {
-        var entries = row.Value.OfType<ArrayPropertyData>().FirstOrDefault(p => FNameDisplay.ToDisplayString(p.Name) == "Entries")?.Value ?? [];
-        var fromMembers = ConstantMembers(from.Asset);
-        var toMembers = ConstantMembers(to.Asset);
-        foreach (var entry in entries.OfType<UInt32PropertyData>().Select(e => e.Value).Where(v => v != UnfoldedEntry).Distinct())
+        var fromMembers = ConstantMembers(donor);
+        var toMembers = ConstantMembers(target);
+        var map = new Dictionary<uint, uint>();
+        for (var i = 0; i < fromMembers.Count; i++)
         {
-            if (entry >= fromMembers.Count || entry >= toMembers.Count || fromMembers[(int)entry] != toMembers[(int)entry])
-                throw new InvalidOperationException($"Folded constant #{entry} differs between donor and target; this node can't be copied as is.");
+            var matches = Enumerable.Range(0, toMembers.Count).Where(j => toMembers[j] == fromMembers[i]).ToList();
+            if (matches.Count == 1) map[(uint)i] = (uint)matches[0];
         }
+        return map;
     }
 
     private static List<string> ConstantMembers(UAsset asset)
@@ -128,7 +138,9 @@ public static class AnimNodeGrafter
         var constants = asset.Exports.OfType<StructExport>().FirstOrDefault(e => e is not ClassExport && e.ObjectName.ToString() == ConstantDataName)
             ?? throw new InvalidOperationException($"No {ConstantDataName} in {asset.FilePath}.");
         // "__StructProperty_12" and "__StructProperty_114" are the same slot; only the compile-order suffix differs.
-        return constants.LoadedProperties.Select(p => $"{p.SerializedType?.Value?.Value}:{StripNumber(FNameDisplay.ToDisplayString(p.Name))}").ToList();
+        // A struct constant is identified by the struct it holds; several different ones can share the "__StructProperty" name.
+        return constants.LoadedProperties.Select(p =>
+            $"{p.SerializedType?.Value?.Value}:{StripNumber(FNameDisplay.ToDisplayString(p.Name))}:{(p is FStructProperty s ? AnimGraph.StructName(asset, s.Struct) : "")}").ToList();
     }
 
     private static string StripNumber(string name)

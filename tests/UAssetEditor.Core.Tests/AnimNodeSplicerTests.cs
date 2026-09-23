@@ -86,6 +86,20 @@ public class AnimNodeSplicerTests
     }
 
     [Fact]
+    public void Bypass_RewiresEveryReaderOfTheNode()
+    {
+        var graph = AnimGraph.Create();
+        AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii);
+        ((IntPropertyData)((StructPropertyData)((StructPropertyData)graph.Cdo.Data.Single(p => FNameDisplay.ToDisplayString(p.Name) == "AnimGraphNode_KawaiiPhysics_1")).Value[0]).Value[0]).Value = 2;
+        ((IntPropertyData)((StructPropertyData)((StructPropertyData)graph.Cdo.Data.Single(p => FNameDisplay.ToDisplayString(p.Name) == "AnimGraphNode_ToLocal")).Value[0]).Value[0]).Value = 2;
+
+        AnimNodeSplicer.Bypass(graph.Asset, graph.CdoIndex, Kawaii);
+
+        Assert.Equal(1, graph.LinkOf("AnimGraphNode_ToLocal"));
+        Assert.Equal(1, graph.LinkOf("AnimGraphNode_KawaiiPhysics_1"));
+    }
+
+    [Fact]
     public void Bypass_RefusesTheOutputNode_AndChangesNothing()
     {
         var graph = AnimGraph.Create();
