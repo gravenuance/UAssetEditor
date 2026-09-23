@@ -22,6 +22,7 @@ try
         "duplicate" => Commands.Duplicate(reader),
         "remove" => Commands.Remove(reader),
         "add-node" => Commands.AddNode(reader),
+        "splice-node" => Commands.SpliceNode(reader),
         "append-clone" => Commands.AppendClone(reader),
         "duplicate-export" => Commands.DuplicateExport(reader),
         "script" => Commands.Script(reader),
@@ -93,7 +94,12 @@ static void PrintUsage()
 
           uacli add-node <file> --export <e> --template <PropertyName> [--save] [--backup]
               Declare a brand-new top-level class property by cloning --template's declaration and CDO value (see ClassPropertyDeclarer).
-              Does not touch AnimNodeData or ComponentPose.LinkID - splice those in by hand with 'duplicate'/'set' afterward.
+              Does not touch AnimNodeData or ComponentPose.LinkID - use splice-node for a working anim-graph node.
+
+          uacli splice-node <file> --export <cdo> --template <NodeName> [--save] [--backup]
+              Add a copy of an anim-graph node (e.g. AnimGraphNode_KawaiiPhysics_3) wired in right after it: the copy reads the
+              template's pose and whatever read the template now reads the copy. Adds its AnimNodeData row too. Refuses, changing
+              nothing, unless the template has one pose input and exactly one reader.
 
           uacli append-clone <file> --export <e> --from <sourcePath> [--into <containerPath>] [--from-export <e>] [--save] [--backup]
               Deep-clone the property at --from and append it into --into, which may be an array (appended as the new last
@@ -115,7 +121,7 @@ static void PrintUsage()
               'append-clone'. Follow up with 'set' to point the clone at its own bone/joint before use.
 
           uacli script <file> --ops <opsfile> [--save] [--backup]
-              Run several set/duplicate/remove/add-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
+              Run several set/duplicate/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5

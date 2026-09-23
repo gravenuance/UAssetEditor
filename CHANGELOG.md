@@ -5,6 +5,7 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- `splice-node` (command and script op) adds a working copy of an animation node, such as a KawaiiPhysics node, wired into the pose chain right after the original, with its node-table row. It refuses, changing nothing, when the wiring is ambiguous.
 - `dump`, `search` and `set` handle 8/16-bit and unsigned integers, such as an animation node's data entries, which used to show as blank.
 
 ### Fixed

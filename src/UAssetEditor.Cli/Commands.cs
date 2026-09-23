@@ -152,6 +152,15 @@ internal static class Commands
         return 0;
     }
 
+    public static int SpliceNode(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var asset = AssetIo.Open(path, args);
+        Console.WriteLine(ApplySpliceNode(asset, args));
+        MaybeSave(asset, path, args);
+        return 0;
+    }
+
     public static int AddNode(ArgReader args)
     {
         var path = args.Positional(0, "file");
@@ -218,9 +227,10 @@ internal static class Commands
                     "duplicate" => ApplyDuplicate(asset, opArgs),
                     "remove" => ApplyRemove(asset, opArgs),
                     "add-node" => ApplyAddNode(asset, opArgs),
+                    "splice-node" => ApplySpliceNode(asset, opArgs),
                     "append-clone" => ApplyAppendClone(asset, opArgs),
                     "duplicate-export" => ApplyDuplicateExport(asset, opArgs),
-                    _ => throw new ArgException($"Unknown op '{opVerb}' (expects set/duplicate/remove/add-node/append-clone/duplicate-export)."),
+                    _ => throw new ArgException($"Unknown op '{opVerb}' (expects set/duplicate/remove/add-node/splice-node/append-clone/duplicate-export)."),
                 };
                 Console.WriteLine($"[{lineNumber}] {opVerb}: {result}");
             }
@@ -305,6 +315,13 @@ internal static class Commands
 
         var (newName, _) = ClassPropertyDeclarer.DeclareClonedProperty(asset, cdoExportIndex, templateName);
         return $"Declared '{newName}' (cloned from '{templateName}')";
+    }
+
+    private static string ApplySpliceNode(UAsset asset, ArgReader args)
+    {
+        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var node = AnimNodeSplicer.SpliceAfter(asset, cdoExportIndex, args.RequireOption("template"));
+        return $"Spliced '{node.Name}' (node {node.NodeIndex}) after '{node.TemplateName}' (node {node.TemplateIndex}); '{node.ConsumerName}' now reads node {node.NodeIndex}";
     }
 
     private static string ApplyAppendClone(UAsset asset, ArgReader args)

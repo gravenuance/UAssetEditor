@@ -81,7 +81,7 @@ public static class ClassPropertyDeclarer
         return (newName, clonedValue);
     }
 
-    private static ClassExport? FindOwningClass(UAsset asset, int cdoExportIndex)
+    internal static ClassExport? FindOwningClass(UAsset asset, int cdoExportIndex)
     {
         foreach (var export in asset.Exports)
         {
