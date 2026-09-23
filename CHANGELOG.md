@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `dump`, `search` and `set` handle 8/16-bit and unsigned integers, such as an animation node's data entries, which used to show as blank.
+
 ### Fixed
 - `add-node` now saves. Adding a physics node used to switch the file to a format it could not write, so every save failed; the file keeps its normal format and the new node is written like any other.
 - A cancelled conversion no longer sometimes produces output anyway.

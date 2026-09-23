@@ -46,6 +46,46 @@ public class PropertyValueAccessorTests
         Assert.Equal(5, prop.Value);
     }
 
+    public static TheoryData<string, string, string> SizedIntegers => new()
+    {
+        { "Int8", "-128", "128" },
+        { "Int16", "32767", "32768" },
+        { "UInt16", "65535", "-1" },
+        { "UInt32", "4294967295", "-1" },
+        { "UInt64", "18446744073709551615", "-1" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SizedIntegers))]
+    public void SizedIntegers_RoundTripAtTheirLimitsAndRejectOutOfRange(string kind, string limit, string outOfRange)
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = CreateSizedInteger(asset, kind);
+
+        Assert.True(prop.IsZero);
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, limit, asset));
+        PropertyValueAccessor.UpdateIsZeroFlag(prop);
+
+        Assert.Equal(limit, PropertyValueAccessor.AsSearchableString(prop, asset));
+        Assert.False(prop.IsZero);
+        Assert.False(PropertyValueAccessor.TrySetStringValue(prop, outOfRange, asset));
+        Assert.Equal(limit, PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    private static PropertyData CreateSizedInteger(UAsset asset, string kind)
+    {
+        var name = new FName(asset, "Value");
+        return kind switch
+        {
+            "Int8" => new Int8PropertyData(name) { IsZero = true },
+            "Int16" => new Int16PropertyData(name) { IsZero = true },
+            "UInt16" => new UInt16PropertyData(name) { IsZero = true },
+            "UInt32" => new UInt32PropertyData(name) { IsZero = true },
+            "UInt64" => new UInt64PropertyData(name) { IsZero = true },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+    }
+
     [Theory]
     [InlineData(0, true)]
     [InlineData(5, false)]

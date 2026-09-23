@@ -24,6 +24,11 @@ public static class PropertyValueAccessor
             BoolPropertyData b => b.Value.ToString(),
             IntPropertyData i => i.Value.ToString(CultureInfo.InvariantCulture),
             Int64PropertyData i64 => i64.Value.ToString(CultureInfo.InvariantCulture),
+            Int8PropertyData i8 => i8.Value.ToString(CultureInfo.InvariantCulture),
+            Int16PropertyData i16 => i16.Value.ToString(CultureInfo.InvariantCulture),
+            UInt16PropertyData u16 => u16.Value.ToString(CultureInfo.InvariantCulture),
+            UInt32PropertyData u32 => u32.Value.ToString(CultureInfo.InvariantCulture),
+            UInt64PropertyData u64 => u64.Value.ToString(CultureInfo.InvariantCulture),
             FloatPropertyData f => f.Value.ToString(CultureInfo.InvariantCulture),
             DoublePropertyData d => d.Value.ToString(CultureInfo.InvariantCulture),
             StrPropertyData s => s.Value?.Value,
@@ -55,6 +60,21 @@ public static class PropertyValueAccessor
                 return true;
             case Int64PropertyData i64 when long.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var lv):
                 i64.Value = lv;
+                return true;
+            case Int8PropertyData i8 when sbyte.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i8v):
+                i8.Value = i8v;
+                return true;
+            case Int16PropertyData i16 when short.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i16v):
+                i16.Value = i16v;
+                return true;
+            case UInt16PropertyData u16 when ushort.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var u16v):
+                u16.Value = u16v;
+                return true;
+            case UInt32PropertyData u32 when uint.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var u32v):
+                u32.Value = u32v;
+                return true;
+            case UInt64PropertyData u64 when ulong.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var u64v):
+                u64.Value = u64v;
                 return true;
             case FloatPropertyData fp when float.TryParse(newValue, NumberStyles.Float, CultureInfo.InvariantCulture, out var fv):
                 fp.Value = fv;
@@ -114,6 +134,11 @@ public static class PropertyValueAccessor
             BoolPropertyData b => !b.Value,
             IntPropertyData i => i.Value == 0,
             Int64PropertyData i64 => i64.Value == 0,
+            Int8PropertyData i8 => i8.Value == 0,
+            Int16PropertyData i16 => i16.Value == 0,
+            UInt16PropertyData u16 => u16.Value == 0,
+            UInt32PropertyData u32 => u32.Value == 0,
+            UInt64PropertyData u64 => u64.Value == 0,
             FloatPropertyData f => f.Value == 0f,
             DoublePropertyData d => d.Value == 0d,
             StrPropertyData s => string.IsNullOrEmpty(s.Value?.Value),
