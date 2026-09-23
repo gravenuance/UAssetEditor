@@ -272,12 +272,16 @@ internal static class Commands
         var propertyPath = args.RequireOption("path");
         var newValue = args.RequireOption("value");
 
-        var node = PropertyLocator.Locate(asset, exportIndex, propertyPath)
+        var existing = PropertyLocator.Locate(asset, exportIndex, propertyPath);
+        var node = existing ?? PropertyLocator.LocateOrCreate(asset, exportIndex, propertyPath)
             ?? throw new ArgException($"No property at path '{propertyPath}'.");
 
-        var oldValue = PropertyValueAccessor.AsSearchableString(node.Property, asset);
+        var oldValue = existing == null ? "(default)" : PropertyValueAccessor.AsSearchableString(node.Property, asset);
         if (!PropertyValueAccessor.TrySetStringValue(node.Property, newValue, asset))
-            throw new ArgException($"'{propertyPath}' ({node.Property.GetType().Name}) isn't a settable scalar/string/name/text property.");
+        {
+            if (existing == null) node.Owner?.RemoveAt(node.OwnerIndex);
+            throw new ArgException($"'{propertyPath}' ({node.Property.GetType().Name}) can't take the value '{newValue}'.");
+        }
         PropertyValueAccessor.UpdateIsZeroFlag(node.Property);
 
         return $"{propertyPath}: {oldValue} -> {newValue}";

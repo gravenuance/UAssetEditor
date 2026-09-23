@@ -179,10 +179,17 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         }
     }
 
-    public override void ResolveAncestries(UAsset asset, AncestryInfo ancestrySoFar)
+    /// <summary>The ancestry this struct's own fields carry, given the struct's ancestry.</summary>
+    public AncestryInfo ChildAncestry(UAsset asset, AncestryInfo ancestrySoFar)
     {
         var ancestryNew = (AncestryInfo)ancestrySoFar.Clone();
         ancestryNew.SetAsParent(StructType, FName.DefineDummy(asset, asset.InternalAssetPath + (ancestrySoFar.Ancestors.Count == 0 ? string.Empty : ("." + ancestrySoFar.Parent))));
+        return ancestryNew;
+    }
+
+    public override void ResolveAncestries(UAsset asset, AncestryInfo ancestrySoFar)
+    {
+        var ancestryNew = ChildAncestry(asset, ancestrySoFar);
 
         if (Value != null)
         {

@@ -5,6 +5,11 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- `set` can set a field that sits at its default, such as a physics node's gravity vector or wind switch. Such fields aren't stored in the file, so `set` used to report them missing; it now adds them first. Misspelled field names are still refused.
+- Vector, rotator and quaternion values show as `x,y,z` (or `pitch,yaw,roll`) and can be set the same way; they used to show blank.
+
+### Changed
+- Editing is faster: a `set` or other path lookup follows the path instead of scanning the whole asset. 300 edits in one `script` call on a large physics asset went from about 2.8 s to no measurable cost.
 - `splice-node` (command and script op) adds a working copy of an animation node, such as a KawaiiPhysics node, wired into the pose chain right after the original, with its node-table row. It refuses, changing nothing, when the wiring is ambiguous.
 - `dump`, `search` and `set` handle 8/16-bit and unsigned integers, such as an animation node's data entries, which used to show as blank.
 

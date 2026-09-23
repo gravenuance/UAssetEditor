@@ -84,7 +84,8 @@ static void PrintUsage()
               Search one asset or every .uasset under a folder. Terms are substring matches unless --regex is given.
 
           uacli set <file> --export <e> --path <p> --value <v> [--save] [--backup]
-              Set a scalar/string/name/text property's value.
+              Set a scalar/string/name/text/enum/vector property's value (vectors as "x,y,z", rotators as "pitch,yaw,roll").
+              A field left out because it sits at its default is created from the usmap schema first.
 
           uacli duplicate <file> --export <e> --path <p> [--save] [--backup]
               Deep-clone the array element at --path, appended as the array's new last element.

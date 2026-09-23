@@ -1,3 +1,10 @@
+using System.Collections.Concurrent;
+using UAssetAPI;
+using UAssetAPI.ExportTypes;
+using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
+using UAssetAPI.UnrealTypes;
+using UAssetAPI.Unversioned;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Core.Tests;
@@ -105,5 +112,105 @@ public class PropertyLocatorTests
         TestAssets.CreateSampleExport(asset);
 
         Assert.Null(PropertyLocator.LocateArrayElement(asset, 0, "NoSuchArray[0]"));
+    }
+
+    [Fact]
+    public void Locate_AgreesWithAWholeTreeWalkOnEveryPath()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        TestAssets.AddNestedStruct(asset, export);
+        TestAssets.AddStructArray(asset, export, "Chains", 1, 2, 3);
+        export.Data.Add(TestAssets.CreateSampleMap(asset));
+
+        foreach (var expected in PropertyWalker.Walk(export))
+        {
+            var actual = PropertyLocator.Locate(asset, 0, expected.Path);
+            Assert.NotNull(actual);
+            Assert.Same(expected.Property, actual!.Property);
+            Assert.Same(expected.Owner, actual.Owner);
+            Assert.Equal(expected.OwnerIndex, actual.OwnerIndex);
+        }
+    }
+
+    [Fact]
+    public void LocateOrCreate_AddsAFieldSittingAtItsDefaultFromTheSchema()
+    {
+        var (asset, node) = CreateNodeWithSchema();
+
+        var created = PropertyLocator.LocateOrCreate(asset, 0, "Node.Scale");
+
+        var scale = Assert.IsType<FloatPropertyData>(created?.Property);
+        Assert.True(scale.IsZero);
+        Assert.Equal("TestNodeType", scale.Ancestry.Parent.ToString());
+        Assert.Contains(scale, node.Value);
+    }
+
+    [Fact]
+    public void LocateOrCreate_AddsAVectorStructReadyToSet()
+    {
+        var (asset, _) = CreateNodeWithSchema();
+
+        var created = PropertyLocator.LocateOrCreate(asset, 0, "Node.Gravity.Gravity");
+
+        Assert.NotNull(created);
+        Assert.True(PropertyValueAccessor.TrySetStringValue(created!.Property, "0,0,-980", asset));
+        Assert.Equal("0,0,-980", PropertyValueAccessor.AsSearchableString(PropertyLocator.Locate(asset, 0, "Node.Gravity.Gravity")!.Property, asset));
+    }
+
+    [Fact]
+    public void LocateOrCreate_LeavesTheAssetAloneForANameTheSchemaDoesNotKnow()
+    {
+        var (asset, node) = CreateNodeWithSchema();
+
+        Assert.Null(PropertyLocator.LocateOrCreate(asset, 0, "Node.Scael"));
+        Assert.Single(node.Value);
+    }
+
+    [Fact]
+    public void LocateOrCreate_UndoesPartialCreationWhenALaterStepFails()
+    {
+        var (asset, node) = CreateNodeWithSchema();
+
+        Assert.Null(PropertyLocator.LocateOrCreate(asset, 0, "Node.Gravity.Nope"));
+        Assert.Single(node.Value);
+    }
+
+    [Fact]
+    public void LocateOrCreate_NeverInventsArrayElements()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        var before = export.Data.Count;
+
+        Assert.Null(PropertyLocator.LocateOrCreate(asset, 0, "Tags[5]"));
+        Assert.Equal(before, export.Data.Count);
+    }
+
+    private static (UAsset Asset, StructPropertyData Node) CreateNodeWithSchema()
+    {
+        var asset = TestAssets.CreateAsset();
+        var props = new ConcurrentDictionary<int, UsmapProperty>
+        {
+            [0] = new("Value", 0, 0, 1, new UsmapPropertyData(UsmapPropertyType.IntProperty)),
+            [1] = new("Scale", 1, 0, 1, new UsmapPropertyData(UsmapPropertyType.FloatProperty)),
+            [2] = new("Gravity", 2, 0, 1, new UsmapStructData("Vector")),
+        };
+        asset.Mappings = new Usmap
+        {
+            Schemas = new Dictionary<string, UsmapSchema>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["TestNodeType"] = new UsmapSchema("TestNodeType", null, props.Count, props, true, null),
+            },
+        };
+
+        var node = new StructPropertyData(new FName(asset, "Node"))
+        {
+            StructType = new FName(asset, "TestNodeType"),
+            Value = [new IntPropertyData(new FName(asset, "Value")) { Value = 1 }],
+        };
+        asset.Exports.Add(new NormalExport(asset, []) { ObjectName = new FName(asset, "Export"), Data = [node] });
+        node.ResolveAncestries(asset, new AncestryInfo());
+        return (asset, node);
     }
 }
