@@ -161,8 +161,9 @@ internal sealed class AnimGraph
         }
     }
 
-    public static string StructName(UAsset asset, FPackageIndex structIndex) =>
-        structIndex.IsImport() ? structIndex.ToImport(asset).ObjectName.ToString()
+    public static string StructName(UAsset asset, FPackageIndex? structIndex) =>
+        structIndex is null ? ""
+        : structIndex.IsImport() ? structIndex.ToImport(asset)?.ObjectName?.ToString() ?? ""
         : structIndex.IsExport() ? asset.Exports[structIndex.Index - 1].ObjectName.ToString()
         : "";
 }

@@ -1221,11 +1221,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var asset = _workspace.GetOrOpen(assetPath);
-            var (newName, _) = ClassPropertyDeclarer.DeclareClonedProperty(asset, node.ExportIndex, propertyPath);
+            var spliced = AnimNodeSplicer.SpliceAfter(asset, node.ExportIndex, propertyPath);
 
             _dirtyAssetPaths.Add(assetPath);
             parent.RefreshChildren(PropertyTreeExpander.GetExportRoot(asset.Exports[node.ExportIndex], asset));
-            StatusMessage = $"Added node '{newName}' - set its AnimNodeData entry and ComponentPose.LinkID by hand.";
+            StatusMessage = $"Added '{spliced.Name}' after '{propertyPath}'.";
         }
         catch (Exception ex)
         {

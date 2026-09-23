@@ -22,6 +22,7 @@ All notable changes to this project are documented here.
 - `dump`, `search` and `set` handle 8/16-bit and unsigned integers, such as an animation node's data entries, which used to show as blank.
 
 ### Fixed
+- `add-node` refuses animation nodes and points to `splice-node`. A node added that way had no node-table row or handler, which crashes the game the same way. The app's "Add node" action now splices instead, so the new node comes fully wired.
 - Nodes added by `splice-node` and `graft-nodes` now get their own entry in the blueprint's exposed-value handler list. The game looks that list up by node index without a range check, so each added node read memory past its end, which crashed the game now and then while characters were loading. Edits to a blueprint whose list already disagrees with its nodes are refused.
 - `to-legacy --layer original` no longer returns the mod's own content when the mod sits directly in the Paks folder rather than in `~mods`.
 - `add-node` now saves. Adding a physics node used to switch the file to a format it could not write, so every save failed; the file keeps its normal format and the new node is written like any other.

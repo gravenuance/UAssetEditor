@@ -222,7 +222,7 @@ internal static class TestAssets
     /// ClassDefaultObject points back to the CDO export that carries the actual value.
     /// </summary>
     public static (ClassExport ClassExport, NormalExport Cdo) CreateClassWithNode(
-        UAsset asset, string nodePropertyName, string className = "TestClass_C", string cdoName = "Default__TestClass_C")
+        UAsset asset, string nodePropertyName, string className = "TestClass_C", string cdoName = "Default__TestClass_C", string structType = "TestNodeType")
     {
         var cdo = new NormalExport(asset, Array.Empty<byte>())
         {
@@ -231,14 +231,14 @@ internal static class TestAssets
             {
                 new StructPropertyData(new FName(asset, nodePropertyName))
                 {
-                    StructType = new FName(asset, "TestNodeType"),
+                    StructType = new FName(asset, structType),
                     Value = new List<PropertyData> { new IntPropertyData(new FName(asset, "Value")) { Value = 1 } },
                 },
             },
         };
         asset.Exports.Add(cdo);
         var cdoIndex = asset.Exports.Count - 1;
-        asset.Imports.Add(new Import("/Script/CoreUObject", "ScriptStruct", FPackageIndex.FromRawIndex(0), "TestNodeType", false, asset));
+        asset.Imports.Add(new Import("/Script/CoreUObject", "ScriptStruct", FPackageIndex.FromRawIndex(0), structType, false, asset));
 
         var classExport = new ClassExport
         {

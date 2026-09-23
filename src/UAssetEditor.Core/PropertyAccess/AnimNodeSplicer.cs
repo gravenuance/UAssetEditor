@@ -30,7 +30,7 @@ public static class AnimNodeSplicer
         if (readers.Count != 1)
             throw new InvalidOperationException($"'{templateName}' feeds {readers.Count} pose inputs; splicing needs exactly one.");
 
-        var (newName, newValue) = ClassPropertyDeclarer.DeclareClonedProperty(asset, cdoExportIndex, templateName);
+        var (newName, newValue) = ClassPropertyDeclarer.DeclareClone(asset, cdoExportIndex, templateName);
         var newIndex = graph.NodeNames.Count;
 
         AnimGraph.PoseLinksIn(newValue)[0].Value = templateIndex;

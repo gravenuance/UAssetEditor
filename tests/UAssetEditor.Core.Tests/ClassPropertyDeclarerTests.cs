@@ -33,6 +33,20 @@ public class ClassPropertyDeclarerTests
     }
 
     [Fact]
+    public void DeclareClonedProperty_RefusesAnAnimationNode_AndChangesNothing()
+    {
+        var asset = TestAssets.CreateAsset();
+        var (classExport, cdo) = TestAssets.CreateClassWithNode(asset, "AnimGraphNode_KawaiiPhysics_1", structType: "AnimNode_KawaiiPhysics");
+
+        var error = Assert.Throws<InvalidOperationException>(() =>
+            ClassPropertyDeclarer.DeclareClonedProperty(asset, asset.Exports.IndexOf(cdo), "AnimGraphNode_KawaiiPhysics_1"));
+
+        Assert.Contains("splice-node", error.Message, StringComparison.Ordinal);
+        Assert.Single(classExport.LoadedProperties);
+        Assert.Single(cdo.Data);
+    }
+
+    [Fact]
     public void DeclareClonedProperty_StaysUnversionedAndTeachesTheWriterTheNewMember()
     {
         var asset = TestAssets.CreateAsset();

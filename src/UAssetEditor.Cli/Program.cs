@@ -104,7 +104,7 @@ static void PrintUsage()
 
           uacli add-node <file> --export <e> --template <PropertyName> [--save] [--backup]
               Declare a brand-new top-level class property by cloning --template's declaration and CDO value (see ClassPropertyDeclarer).
-              Does not touch AnimNodeData or ComponentPose.LinkID - use splice-node for a working anim-graph node.
+              Refuses anim-graph nodes: use splice-node, which also adds the node's row, wiring and handler.
 
           uacli splice-node <file> --export <cdo> --template <NodeName> [--save] [--backup]
               Add a copy of an anim-graph node (e.g. AnimGraphNode_KawaiiPhysics_3) wired in right after it: the copy reads the

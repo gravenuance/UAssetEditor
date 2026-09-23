@@ -15,8 +15,8 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// of anything that already exists.
 ///
 /// Deliberately narrow: this only declares the property (appended last, so no existing node
-/// index shifts) and clones its CDO default value. AnimNodeData and ComponentPose.LinkID
-/// wiring are the caller's job.
+/// index shifts) and clones its CDO default value. An animation node also needs its node-table
+/// row, pose wiring and exposed-value handler, so those go through <see cref="AnimNodeSplicer"/>.
 /// </summary>
 public static class ClassPropertyDeclarer
 {
@@ -29,6 +29,16 @@ public static class ClassPropertyDeclarer
     /// top-level property.
     /// </summary>
     public static (string NewName, PropertyData Value) DeclareClonedProperty(UAsset asset, int cdoExportIndex, string templateName)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        if (FindOwningClass(asset, cdoExportIndex)?.LoadedProperties.FirstOrDefault(p => FNameDisplay.ToDisplayString(p.Name) == templateName) is FStructProperty declared
+            && AnimGraph.StructName(asset, declared.Struct).StartsWith("AnimNode_", StringComparison.Ordinal))
+            throw new InvalidOperationException($"'{templateName}' is an animation node; use splice-node, which also adds its node-table row, wiring and handler.");
+        return DeclareClone(asset, cdoExportIndex, templateName);
+    }
+
+    /// <summary>The clone itself, with no check on what is cloned; <see cref="AnimNodeSplicer"/> uses it and does the rest of an animation node's wiring.</summary>
+    internal static (string NewName, PropertyData Value) DeclareClone(UAsset asset, int cdoExportIndex, string templateName)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(templateName);
