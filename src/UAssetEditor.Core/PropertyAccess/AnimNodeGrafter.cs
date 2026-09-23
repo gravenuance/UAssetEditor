@@ -84,12 +84,14 @@ public static class AnimNodeGrafter
             to.NodeData.Value = [.. to.NodeData.Value ?? [], row];
 
             AddNodeTypeIfMissing(copier, from, to, fromTypes, toTypes, donorName);
+            to.AddEmptyHandler();
 
             grafted.Add(new GraftedAnimNode(donorName, name, newIndex));
             previous = newIndex;
         }
 
         rootInput.Value = previous;
+        to.SaveSparseData();
         to.NodeData.ResolveAncestries(target, to.NodeData.Ancestry);
         toTypes.ResolveAncestries(target, toTypes.Ancestry);
         target.RegisterStructSchema(to.Class);

@@ -10,14 +10,19 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// <summary>
 /// A compiled Animation Blueprint's node graph as stored: a node's index is its position among the
 /// class's AnimNode_* members, every PoseLink.LinkID holds the index of the node feeding it, and the
-/// class's AnimNodeData table has one row per node.
+/// class's AnimNodeData table has one row per node, as does the exposed-value handler list in its
+/// sparse data. The engine indexes that list by node index unchecked, so a node without a handler
+/// reads past its end.
 /// </summary>
 internal sealed class AnimGraph
 {
     private const string AnimNodeDataName = "AnimNodeData";
     private const string NodeTypeMapName = "NodeTypeMap";
+    private const string HandlersPath = "AnimBlueprintExtension_Base.ExposedValueHandlers";
 
-    private AnimGraph(UAsset asset, int cdoIndex, NormalExport cdo, int classIndex, ClassExport classExport, List<string> nodeNames, ArrayPropertyData nodeData)
+    private readonly SparseClassData? _sparseData;
+
+    private AnimGraph(UAsset asset, int cdoIndex, NormalExport cdo, int classIndex, ClassExport classExport, List<string> nodeNames, ArrayPropertyData nodeData, SparseClassData? sparseData)
     {
         Asset = asset;
         CdoIndex = cdoIndex;
@@ -26,7 +31,9 @@ internal sealed class AnimGraph
         Class = classExport;
         NodeNames = nodeNames;
         NodeData = nodeData;
+        _sparseData = sparseData;
     }
+
 
     public UAsset Asset { get; }
     public int CdoIndex { get; }
@@ -53,9 +60,37 @@ internal sealed class AnimGraph
             ?? throw new InvalidOperationException("This class has no AnimNodeData table.");
         if ((nodeData.Value?.Length ?? 0) != nodeNames.Count)
             throw new InvalidOperationException($"AnimNodeData has {nodeData.Value?.Length ?? 0} rows but the class declares {nodeNames.Count} nodes.");
+        var sparseData = SparseClassData.Read(asset, cdo);
+        var handlers = sparseData?.Find<ArrayPropertyData>(HandlersPath);
+        if (handlers != null && (handlers.Value?.Length ?? 0) != nodeNames.Count)
+            throw new InvalidOperationException($"The class has {handlers.Value?.Length ?? 0} exposed-value handlers but declares {nodeNames.Count} nodes.");
 
-        return new AnimGraph(asset, cdoExportIndex, cdo, asset.Exports.IndexOf(classExport), classExport, nodeNames, nodeData);
+        return new AnimGraph(asset, cdoExportIndex, cdo, asset.Exports.IndexOf(classExport), classExport, nodeNames, nodeData, sparseData);
     }
+
+    /// <summary>Gives the newest node an exposed-value handler that does nothing; call <see cref="SaveSparseData"/> once done.</summary>
+    public void AddEmptyHandler()
+    {
+        var handlers = _sparseData?.Find<ArrayPropertyData>(HandlersPath);
+        if (handlers == null) return;
+
+        var existing = handlers.Value ?? [];
+        var template = existing.OfType<StructPropertyData>().FirstOrDefault(IsEmptyHandler);
+        var handler = template != null
+            ? (StructPropertyData)template.Clone()
+            : new StructPropertyData(handlers.Name, ((StructPropertyData)existing[0]).StructType) { Value = [] };
+        handlers.Value = [.. existing, handler];
+    }
+
+    public void SaveSparseData() => _sparseData?.Save();
+
+    private static bool IsEmptyHandler(StructPropertyData handler) => handler.Value.All(p => p switch
+    {
+        ArrayPropertyData a => (a.Value?.Length ?? 0) == 0,
+        ObjectPropertyData o => o.Value == null || o.Value.Index == 0,
+        NamePropertyData n => n.Value == null || n.Value.ToString() == "None",
+        _ => p.IsZero,
+    });
 
     public static List<string> NodeNamesOf(UAsset asset, ClassExport classExport) =>
         classExport.LoadedProperties

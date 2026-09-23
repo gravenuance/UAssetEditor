@@ -32,6 +32,18 @@ public class AnimNodeGrafterTests
     }
 
     [Fact]
+    public void GraftBeforeRoot_GivesEveryCopyAnExposedValueHandlerThatDoesNothing()
+    {
+        var donor = Blueprint.Donor();
+        var target = Blueprint.Target();
+        TestAssets.AddSparseHandlers(target.Asset, target.Cdo, "None", "EvaluateInputPose");
+
+        AnimNodeGrafter.GraftBeforeRoot(target.Asset, target.CdoIndex, donor.Asset, donor.CdoIndex, ["AnimGraphNode_LocalToComponentSpace", Kawaii]);
+
+        Assert.Equal(["None", "EvaluateInputPose", "None", "None"], TestAssets.SparseHandlers(target.Asset, target.Cdo));
+    }
+
+    [Fact]
     public void GraftBeforeRoot_RecreatesNamesAndBringsTheNodeTypeAndImportAlong()
     {
         var donor = Blueprint.Donor();
@@ -100,15 +112,14 @@ public class AnimNodeGrafterTests
         private readonly List<FProperty> _members = [];
         private readonly List<PropertyData> _rows = [];
         private readonly MapPropertyData _types;
-        private readonly NormalExport _cdo;
 
         private static readonly string[] DefaultConstants = ["NameProperty:__NameProperty", "NameProperty:__NameProperty", "StructProperty:__StructProperty"];
 
         private Blueprint(string className, string[] constants)
         {
             Asset = TestAssets.CreateAsset();
-            _cdo = new NormalExport(Asset, []) { ObjectName = new FName(Asset, $"Default__{className}"), Data = [] };
-            Asset.Exports.Add(_cdo);
+            Cdo = new NormalExport(Asset, []) { ObjectName = new FName(Asset, $"Default__{className}"), Data = [] };
+            Asset.Exports.Add(Cdo);
             Asset.Exports.Add(new StructExport
             {
                 Asset = Asset,
@@ -136,6 +147,7 @@ public class AnimNodeGrafterTests
 
         public UAsset Asset { get; }
         public ClassExport Class { get; }
+        public NormalExport Cdo { get; }
         public int CdoIndex { get; }
         public int ClassIndex { get; } = 2;
 
@@ -157,7 +169,7 @@ public class AnimNodeGrafterTests
             return b.Seal();
         }
 
-        public StructPropertyData Node(string name) => (StructPropertyData)_cdo.Data.Single(p => FNameDisplay.ToDisplayString(p.Name) == name);
+        public StructPropertyData Node(string name) => (StructPropertyData)Cdo.Data.Single(p => FNameDisplay.ToDisplayString(p.Name) == name);
 
         public int LinkOf(string node) => ((IntPropertyData)Node(node).Value.OfType<StructPropertyData>().First().Value[0]).Value;
 
@@ -169,7 +181,7 @@ public class AnimNodeGrafterTests
 
         public List<string> NodeTypes() => _types.Value.Keys.Select(k => ImportPathResolver.GetFullPath(((ObjectPropertyData)k).Value.ToImport(Asset), Asset)).ToList();
 
-        public string Snapshot() => string.Join(";", Class.LoadedProperties.Length, _cdo.Data.Count, string.Join(",", RowIndices()), _types.Value.Count, Asset.Imports.Count, LinkOf("AnimGraphNode_Root"));
+        public string Snapshot() => string.Join(";", Class.LoadedProperties.Length, Cdo.Data.Count, string.Join(",", RowIndices()), _types.Value.Count, Asset.Imports.Count, LinkOf("AnimGraphNode_Root"));
 
         private IEnumerable<StructPropertyData> Rows() => Class.Data.OfType<ArrayPropertyData>().Single().Value.Cast<StructPropertyData>();
 
@@ -179,7 +191,7 @@ public class AnimNodeGrafterTests
             _members.Add(new FStructProperty { Name = new FName(Asset, name), SerializedType = new FName(Asset, "StructProperty"), Struct = structImport });
 
             var link = new StructPropertyData(new FName(Asset, linkName)) { StructType = new FName(Asset, linkType), Value = [new IntPropertyData(new FName(Asset, "LinkID")) { Value = linkId }] };
-            _cdo.Data.Add(new StructPropertyData(new FName(Asset, name)) { StructType = new FName(Asset, structType), Value = [link, .. extra] });
+            Cdo.Data.Add(new StructPropertyData(new FName(Asset, name)) { StructType = new FName(Asset, structType), Value = [link, .. extra] });
 
             _rows.Add(new StructPropertyData(new FName(Asset, "AnimNodeData"))
             {

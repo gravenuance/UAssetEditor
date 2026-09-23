@@ -333,4 +333,53 @@ internal static class TestAssets
         asset.Exports.Add(export);
         return export;
     }
+    /// <summary>
+    /// Gives an anim blueprint's CDO sparse class data holding one exposed-value handler per entry
+    /// ("None" = a handler that does nothing), laid out as a cooked CDO carries it.
+    /// </summary>
+    public static void AddSparseHandlers(UAsset asset, NormalExport cdo, params string[] boundFunctions)
+    {
+        var structExport = new StructExport
+        {
+            Asset = asset,
+            ObjectName = new FName(asset, "AnimBlueprintGeneratedConstantData"),
+            LoadedProperties = [],
+            OuterIndex = new FPackageIndex(0),
+            SuperStruct = new FPackageIndex(0),
+        };
+        asset.Exports.Add(structExport);
+
+        var handlers = boundFunctions.Select(f => (PropertyData)new StructPropertyData(new FName(asset, "ExposedValueHandlers"))
+        {
+            StructType = new FName(asset, "ExposedValueHandler"),
+            Value = [new NamePropertyData(new FName(asset, "BoundFunction")) { Value = new FName(asset, f) }],
+        }).ToArray();
+        var sparse = new StructPropertyData(new FName(asset, "SparseClassData"))
+        {
+            StructType = new FName(asset, "AnimBlueprintGeneratedConstantData"),
+            Value =
+            [
+                new StructPropertyData(new FName(asset, "AnimBlueprintExtension_Base"))
+                {
+                    StructType = new FName(asset, "AnimSubsystem_Base"),
+                    Value = [new ArrayPropertyData(new FName(asset, "ExposedValueHandlers")) { ArrayType = new FName(asset, "StructProperty"), Value = handlers }],
+                },
+            ],
+        };
+
+        using var stream = new MemoryStream();
+        using (var writer = new AssetBinaryWriter(stream, asset))
+        {
+            writer.Write(FPackageIndex.FromExport(asset.Exports.Count - 1).Index);
+            sparse.Write(writer, false);
+        }
+        cdo.Extras = stream.ToArray();
+    }
+
+    /// <summary>The BoundFunction of each exposed-value handler in the CDO's sparse class data.</summary>
+    public static string[] SparseHandlers(UAsset asset, NormalExport cdo) =>
+        PropertyAccess.SparseClassData.Read(asset, cdo)!.Find<ArrayPropertyData>("AnimBlueprintExtension_Base.ExposedValueHandlers")!.Value
+            .Cast<StructPropertyData>()
+            .Select(h => h.Value.OfType<NamePropertyData>().Single().Value.ToString())
+            .ToArray();
 }

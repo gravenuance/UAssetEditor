@@ -74,6 +74,29 @@ public class AnimNodeSplicerTests
     }
 
     [Fact]
+    public void SpliceAfter_GivesTheCopyAnExposedValueHandlerThatDoesNothing()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlers(graph.Asset, graph.Cdo, "None", "None", "EvaluateKawaiiAlpha", "None");
+
+        AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii);
+
+        Assert.Equal(["None", "None", "EvaluateKawaiiAlpha", "None", "None"], TestAssets.SparseHandlers(graph.Asset, graph.Cdo));
+    }
+
+    [Fact]
+    public void SpliceAfter_RefusesWhenHandlersDisagreeWithTheNodes_AndChangesNothing()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlers(graph.Asset, graph.Cdo, "None", "None", "None");
+        var before = graph.Snapshot();
+
+        Assert.Throws<InvalidOperationException>(() => AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii));
+
+        Assert.Equal(before, graph.Snapshot());
+    }
+
+    [Fact]
     public void Bypass_LetsTheReaderSkipTheNodeAndShiftsNoIndex()
     {
         var graph = AnimGraph.Create();
