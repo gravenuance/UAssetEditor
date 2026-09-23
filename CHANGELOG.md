@@ -5,6 +5,7 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- `dump` works as a script op, so one `script --plan` run can dump many assets. Dumping 179 physics assets took 10 s this way; separate runs took about 116 s.
 - `script --plan` edits many assets in one run: each plan line pairs an asset with its ops file, assets run in parallel, and the usmap loads once. Opening and saving 138 physics assets took 56 s as separate runs and 9 s this way.
 - An unknown or misspelled option (for example `--aes-key` instead of `--aes`) is now an error with a suggestion. It used to be silently ignored.
 - `set` can set a field that sits at its default, such as a physics node's gravity vector or wind switch. Such fields aren't stored in the file, so `set` used to report them missing; it now adds them first. Misspelled field names are still refused.

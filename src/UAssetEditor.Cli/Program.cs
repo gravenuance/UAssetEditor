@@ -9,6 +9,10 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 
 var verb = args[0];
 
+// Console output flushes per line by default; dumping a large asset spent most of its time there.
+using var stdout = new StreamWriter(Console.OpenStandardOutput(), bufferSize: 1 << 16) { AutoFlush = false };
+Console.SetOut(stdout);
+
 try
 {
     var reader = new ArgReader(args[1..]);
@@ -49,6 +53,7 @@ catch (Exception ex)
 }
 finally
 {
+    stdout.Flush();
     // Every pak-* command above spawns the shared out-of-process pak worker on first use;
     // unlike the app (which disposes it once in App.OnExit), this process exits after one
     // command, so skipping this would leave that worker running as an orphaned process every

@@ -50,7 +50,7 @@ template you clone is not necessarily the last element.
 
 ## Shape of an efficient bulk job
 
-1. **Discover once, cache to disk.** One `search` per file into a cache directory. All
+1. **Discover once, cache to disk.** One `script --plan` run with a `dump` op over every file (179 assets: 10 s). All
    subsequent classification and planning is local `grep` over that cache — zero further CLI
    calls. 233 files cache in ~33 s.
 2. **Plan offline.** Generate one ops file per asset from the cache.

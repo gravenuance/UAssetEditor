@@ -66,23 +66,29 @@ internal static class Commands
 
     public static int Dump(ArgReader args)
     {
-        var path = args.Positional(0, "file");
-        var asset = AssetIo.Open(path, args);
+        var asset = AssetIo.Open(args.Positional(0, "file"), args);
+        Console.Write(ApplyDump(asset, args));
+        return 0;
+    }
+
+    /// <summary>Read-only, so it also runs as a script op: a --plan run can dump many assets in one process.</summary>
+    internal static string ApplyDump(UAsset asset, ArgReader args)
+    {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var scope = args.Option("path");
         var filter = args.Option("filter");
 
         var results = scope != null
-            ? SearchService.PropertiesUnder(asset, path, exportIndex, scope)
-            : SearchService.PropertiesForExport(asset, path, exportIndex);
+            ? SearchService.PropertiesUnder(asset, asset.FilePath, exportIndex, scope)
+            : SearchService.PropertiesForExport(asset, asset.FilePath, exportIndex);
 
+        var output = new StringBuilder();
         foreach (var r in results)
         {
             if (filter != null && r.PropertyPath?.Contains(filter, StringComparison.OrdinalIgnoreCase) != true) continue;
-            Console.WriteLine($"{r.PropertyPath} = {r.MatchedText}");
+            output.Append(r.PropertyPath).Append(" = ").AppendLine(r.MatchedText);
         }
-
-        return 0;
+        return output.ToString();
     }
 
     public static int Search(ArgReader args)

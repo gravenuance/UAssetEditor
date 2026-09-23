@@ -22,6 +22,7 @@ internal static class ScriptRunner
         ["splice-node"] = Commands.ApplySpliceNode,
         ["append-clone"] = Commands.ApplyAppendClone,
         ["duplicate-export"] = Commands.ApplyDuplicateExport,
+        ["dump"] = Commands.ApplyDump,
     };
 
     public static int Run(ArgReader args)
@@ -71,7 +72,9 @@ internal static class ScriptRunner
         {
             try
             {
-                output.AppendLine($"[{op.Line}] {op.Verb}: {Ops[op.Verb](asset, op.Args)}");
+                var result = Ops[op.Verb](asset, op.Args);
+                if (op.Verb == "dump") output.Append(result);
+                else output.AppendLine($"[{op.Line}] {op.Verb}: {result}");
             }
             catch (Exception ex) when (ex is ArgException or InvalidOperationException)
             {
