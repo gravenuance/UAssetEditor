@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using UAssetAPI;
@@ -33,12 +34,15 @@ internal static class AssetIo
             : throw new ArgException($"Unknown --version '{text}' (expects a UAssetAPI.EngineVersion name, e.g. VER_UE4_27).");
     }
 
+    // Loading a usmap is most of a small run's cost, so each is loaded once per process and every asset gets its own scope of it.
+    private static readonly ConcurrentDictionary<string, Lazy<Usmap>> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
+
     public static Usmap? ResolveMappings(ArgReader args)
     {
         var path = args.Option("usmap");
         if (path == null) return null;
         if (!File.Exists(path)) throw new ArgException($"--usmap file not found: {path}");
-        return new Usmap(path);
+        return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value.CreateAssetScope();
     }
 
     public static byte[]? ResolveAesKey(ArgReader args) => PakAesKey.Parse(args.Option("aes") ?? "");

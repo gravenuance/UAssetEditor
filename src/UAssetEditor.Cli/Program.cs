@@ -8,10 +8,10 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 }
 
 var verb = args[0];
-var reader = new ArgReader(args[1..]);
 
 try
 {
+    var reader = new ArgReader(args[1..]);
     return verb switch
     {
         "exports" => Commands.Exports(reader),
@@ -126,6 +126,11 @@ static void PrintUsage()
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5
+              Every ops line is checked before the asset is opened; an unknown op or option stops the run.
+
+          uacli script --plan <planfile> [--jobs <n>] [--save] [--backup] --version <v> --usmap <path>
+              Many assets in one process: each plan line is "<asset><TAB><opsfile>". Assets run in parallel (--jobs, default
+              one per CPU) and share one loaded usmap. Each asset's output prints as a block; exit 1 if any asset failed.
 
           uacli batch <file-or-folder> --ruleset <ruleset.json> [--apply] [--backup]
               Run a full RuleSet (the same JSON the app's batch-edit tab saves/loads: setValue/numericAdjust/replaceText/removeProperty/

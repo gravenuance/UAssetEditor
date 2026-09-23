@@ -188,85 +188,9 @@ internal static class Commands
         return 0;
     }
 
-    /// <summary>
-    /// Runs a whole sequence of set/duplicate/remove/add-node ops against one asset opened
-    /// once - the fix for the biggest cost of driving this CLI one verb at a time: each
-    /// invocation re-opens and re-parses the whole file, and a real character's physics
-    /// asset is big enough that reparsing it per edit dominates wall-clock time once a
-    /// workflow needs more than one or two edits (e.g. splicing in a cloned KawaiiPhysics
-    /// node needs an add-node, an AnimNodeData duplicate, and two LinkID sets - four
-    /// separate opens without this). One op per line in --ops's file; blank lines and lines
-    /// starting with '#' are skipped; a failing op is reported and skipped rather than
-    /// aborting the rest, same tolerance <see cref="Editing.EditExecutor"/> already applies
-    /// per-asset in a batch run.
-    /// </summary>
-    public static int Script(ArgReader args)
-    {
-        var path = args.Positional(0, "file");
-        var opsPath = args.RequireOption("ops");
-        if (!File.Exists(opsPath)) throw new ArgException($"Ops file not found: {opsPath}");
+    public static int Script(ArgReader args) => ScriptRunner.Run(args);
 
-        var asset = AssetIo.Open(path, args);
-
-        var lineNumber = 0;
-        foreach (var rawLine in File.ReadLines(opsPath))
-        {
-            lineNumber++;
-            var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#')) continue;
-
-            var tokens = Tokenize(line);
-            var opVerb = tokens[0];
-            var opArgs = new ArgReader(tokens.Skip(1));
-
-            try
-            {
-                var result = opVerb switch
-                {
-                    "set" => ApplySet(asset, opArgs),
-                    "duplicate" => ApplyDuplicate(asset, opArgs),
-                    "remove" => ApplyRemove(asset, opArgs),
-                    "add-node" => ApplyAddNode(asset, opArgs),
-                    "splice-node" => ApplySpliceNode(asset, opArgs),
-                    "append-clone" => ApplyAppendClone(asset, opArgs),
-                    "duplicate-export" => ApplyDuplicateExport(asset, opArgs),
-                    _ => throw new ArgException($"Unknown op '{opVerb}' (expects set/duplicate/remove/add-node/splice-node/append-clone/duplicate-export)."),
-                };
-                Console.WriteLine($"[{lineNumber}] {opVerb}: {result}");
-            }
-            catch (ArgException ex)
-            {
-                Console.WriteLine($"[{lineNumber}] {opVerb}: SKIPPED - {ex.Message}");
-            }
-        }
-
-        MaybeSave(asset, path, args);
-        return 0;
-    }
-
-    /// <summary>Splits one script line into tokens, honoring "double-quoted segments" so a --value can contain spaces.</summary>
-    private static List<string> Tokenize(string line)
-    {
-        var tokens = new List<string>();
-        var current = new StringBuilder();
-        var inQuotes = false;
-
-        foreach (var c in line)
-        {
-            if (c == '"') { inQuotes = !inQuotes; continue; }
-            if (char.IsWhiteSpace(c) && !inQuotes)
-            {
-                if (current.Length > 0) { tokens.Add(current.ToString()); current.Clear(); }
-                continue;
-            }
-            current.Append(c);
-        }
-        if (current.Length > 0) tokens.Add(current.ToString());
-
-        return tokens;
-    }
-
-    private static string ApplySet(UAsset asset, ArgReader args)
+    internal static string ApplySet(UAsset asset, ArgReader args)
     {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var propertyPath = args.RequireOption("path");
@@ -287,7 +211,7 @@ internal static class Commands
         return $"{propertyPath}: {oldValue} -> {newValue}";
     }
 
-    private static string ApplyDuplicate(UAsset asset, ArgReader args)
+    internal static string ApplyDuplicate(UAsset asset, ArgReader args)
     {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var elementPath = args.RequireOption("path");
@@ -300,7 +224,7 @@ internal static class Commands
         return $"Duplicated {elementPath} -> [{newIndex}]";
     }
 
-    private static string ApplyRemove(UAsset asset, ArgReader args)
+    internal static string ApplyRemove(UAsset asset, ArgReader args)
     {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var elementPath = args.RequireOption("path");
@@ -312,7 +236,7 @@ internal static class Commands
         return $"Removed {elementPath}";
     }
 
-    private static string ApplyAddNode(UAsset asset, ArgReader args)
+    internal static string ApplyAddNode(UAsset asset, ArgReader args)
     {
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var templateName = args.RequireOption("template");
@@ -321,14 +245,14 @@ internal static class Commands
         return $"Declared '{newName}' (cloned from '{templateName}')";
     }
 
-    private static string ApplySpliceNode(UAsset asset, ArgReader args)
+    internal static string ApplySpliceNode(UAsset asset, ArgReader args)
     {
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var node = AnimNodeSplicer.SpliceAfter(asset, cdoExportIndex, args.RequireOption("template"));
         return $"Spliced '{node.Name}' (node {node.NodeIndex}) after '{node.TemplateName}' (node {node.TemplateIndex}); '{node.ConsumerName}' now reads node {node.NodeIndex}";
     }
 
-    private static string ApplyAppendClone(UAsset asset, ArgReader args)
+    internal static string ApplyAppendClone(UAsset asset, ArgReader args)
     {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var sourcePath = args.RequireOption("from");
@@ -373,7 +297,7 @@ internal static class Commands
     /// the array must already hold at least one element of the same reference type to clone from,
     /// matching how <see cref="ApplyAppendClone"/>'s array case works.
     /// </summary>
-    private static string ApplyDuplicateExport(UAsset asset, ArgReader args)
+    internal static string ApplyDuplicateExport(UAsset asset, ArgReader args)
     {
         var sourceExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
         var newIndex = ExportDuplicator.Duplicate(asset, sourceExportIndex);

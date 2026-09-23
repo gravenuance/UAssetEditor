@@ -16,6 +16,14 @@ internal sealed class ArgException : Exception
 /// </summary>
 internal sealed class ArgReader
 {
+    // Every --name any command reads. Checked up front so a typo fails before anything runs, not after.
+    private static readonly HashSet<string> KnownNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "aes", "apply", "backup", "compression", "depth", "export", "export-name", "filter", "from", "from-export",
+        "into", "into-export", "into-path", "jobs", "layer", "mount", "no-paks-resolve", "ops", "pak-version", "path", "plan",
+        "property-name", "reference", "regex", "ruleset", "save", "strict", "template", "usmap", "value", "version",
+    };
+
     private readonly List<string> _positional = [];
     private readonly Dictionary<string, string> _options = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
@@ -33,6 +41,9 @@ internal sealed class ArgReader
             }
 
             var name = arg[2..];
+            if (!KnownNames.Contains(name))
+                throw new ArgException($"Unknown option --{name}.{Suggestion(name)}");
+
             var hasValue = i + 1 < list.Count && !list[i + 1].StartsWith("--", StringComparison.Ordinal);
             if (hasValue)
             {
@@ -55,4 +66,29 @@ internal sealed class ArgReader
     public string RequireOption(string name) => Option(name) ?? throw new ArgException($"Missing --{name}");
 
     public bool Flag(string name) => _flags.Contains(name);
+
+    private static string Suggestion(string name)
+    {
+        var closest = KnownNames.MinBy(known => EditDistance(name, known))!;
+        return EditDistance(name, closest) <= Math.Max(2, name.Length / 3) || name.StartsWith(closest, StringComparison.OrdinalIgnoreCase)
+            ? $" Did you mean --{closest}?"
+            : "";
+    }
+
+    private static int EditDistance(string a, string b)
+    {
+        var previous = Enumerable.Range(0, b.Length + 1).ToArray();
+        for (var i = 1; i <= a.Length; i++)
+        {
+            var current = new int[b.Length + 1];
+            current[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var substitution = previous[j - 1] + (char.ToLowerInvariant(a[i - 1]) == char.ToLowerInvariant(b[j - 1]) ? 0 : 1);
+                current[j] = Math.Min(substitution, Math.Min(previous[j] + 1, current[j - 1] + 1));
+            }
+            previous = current;
+        }
+        return previous[b.Length];
+    }
 }

@@ -5,10 +5,14 @@ All notable changes to this project are documented here.
 ## [Unreleased]
 
 ### Added
+- `script --plan` edits many assets in one run: each plan line pairs an asset with its ops file, assets run in parallel, and the usmap loads once. Opening and saving 138 physics assets took 56 s as separate runs and 9 s this way.
+- An unknown or misspelled option (for example `--aes-key` instead of `--aes`) is now an error with a suggestion. It used to be silently ignored.
 - `set` can set a field that sits at its default, such as a physics node's gravity vector or wind switch. Such fields aren't stored in the file, so `set` used to report them missing; it now adds them first. Misspelled field names are still refused.
 - Vector, rotator and quaternion values show as `x,y,z` (or `pitch,yaw,roll`) and can be set the same way; they used to show blank.
 
 ### Changed
+- Every command starts faster, because loading the usmap got quicker (a small edit run went from about 2.1 s to 1.35 s).
+- A `script` checks every ops line before opening the asset, and a refused `splice-node` is reported as skipped instead of ending the run.
 - Editing is faster: a `set` or other path lookup follows the path instead of scanning the whole asset. 300 edits in one `script` call on a large physics asset went from about 2.8 s to no measurable cost.
 - `splice-node` (command and script op) adds a working copy of an animation node, such as a KawaiiPhysics node, wired into the pose chain right after the original, with its node-table row. It refuses, changing nothing, when the wiring is ambiguous.
 - `dump`, `search` and `set` handle 8/16-bit and unsigned integers, such as an animation node's data entries, which used to show as blank.

@@ -1770,5 +1770,19 @@ namespace UAssetAPI.Unversioned
         {
 
         }
+
+        /// <summary>
+        /// A view of these mappings for reading one asset: it shares everything already loaded, while the
+        /// schemas and enums the asset registers stay private to it. Safe to create and use from many threads.
+        /// </summary>
+        public Usmap CreateAssetScope()
+        {
+            var scope = (Usmap)MemberwiseClone();
+            var comparer = AreFNamesCaseInsensitive ? StringComparer.InvariantCultureIgnoreCase : StringComparer.InvariantCulture;
+            scope.Schemas = new OverlayDictionary<UsmapSchema>(Schemas, comparer);
+            scope.EnumMap = new OverlayDictionary<UsmapEnum>(EnumMap, comparer);
+            scope.PathsAlreadyProcessedForSchemas = new ConcurrentDictionary<string, byte>();
+            return scope;
+        }
     }
 }

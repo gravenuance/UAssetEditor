@@ -5,6 +5,8 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>UAssetEditor.Cli</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Parallel asset parsing is allocation-bound; workstation GC serialized it (138 assets: 24 s vs 9 s). -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

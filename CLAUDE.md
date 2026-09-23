@@ -15,17 +15,32 @@ the same work batched takes seconds. A real measured case in this repo: 233 file
 invocations each → **~2 hours**. Rewritten as one `script` call per file, run 10-way
 parallel → **19 seconds**.
 
+**Better still: one process for the whole job.** `script --plan` runs every asset in one
+process, in parallel, loading the usmap once (loading it is ~1.5 s of every small run).
+Measured on 138 physics assets, open + save: one process per file with `xargs -P 10` 56 s;
+one `--plan` run **9 s**, byte-identical output.
+
 ```bash
 # NO - one process per edit
 for bone in a b c; do uacli set "$f" --path "...$bone..." --value 0.04 --save; done
 
-# YES - one process per file, every op applied to one in-memory asset, saved once
+# OK - one process per file
 uacli script "$f" --version VER_UE5_3 --usmap "$MAP" --ops ops.txt --save
+
+# BEST - one process for every file. plan.tsv lines: <asset><TAB><opsfile>, Windows paths (D:/...)
+uacli script --plan plan.tsv --version VER_UE5_3 --usmap "$MAP" --save
 ```
 
-`script` accepts `set`, `duplicate`, `remove`, `add-node`, `append-clone`,
+`script` accepts `set`, `duplicate`, `remove`, `add-node`, `splice-node`, `append-clone`,
 `duplicate-export`, one per line, each with its own `--export`. So a single call can edit
-several exports of the same asset.
+several exports of the same asset. Every line is validated before anything opens: an unknown
+op or `--option` stops the run.
+
+`set` creates a field that is absent because it sits at its default (unversioned data omits
+those, e.g. a node's `Gravity` vector), using the usmap schema. Vectors are `x,y,z`.
+
+To add a physics node, use `splice-node --export 3 --template <node>`: it clones the node,
+its AnimNodeData row, and rewires the pose chain (template → copy → former reader) in one op.
 
 **`duplicate` appends at a predictable index, and later lines in the same ops file can use
 it.** If the array's highest index is `N`, the clone is `N+1`. That means an
@@ -41,7 +56,7 @@ template you clone is not necessarily the last element.
 2. **Plan offline.** Generate one ops file per asset from the cache.
 3. **Dry-run everything.** `script` without `--save` is a complete preview, printing every
    `old -> new`. It is free and it catches path and index mistakes before they touch disk.
-4. **Apply in parallel.** `xargs -P 10` is fine (see below).
+4. **Apply in one `script --plan` run** (parallel inside the process).
 5. **Verify by re-reading from disk.** Never conclude from the run log alone.
 
 ## Parallelism
@@ -53,8 +68,8 @@ Safe now, but it was not always: `.uasset`, `.uexp` and `.usmap` were being open
 data rather than an error*, suspect file sharing first — that failure mode is silent and
 was mistaken for a data problem once already.
 
-`-P 10` on a 12-core machine is a good default. Writes go to distinct files, so no locking
-is needed between workers.
+`--plan` defaults to one worker per CPU (`--jobs` to change). The CLI runs with server GC:
+with the default workstation GC, parallel parsing barely beat one thread (24 s vs 29 s).
 
 ## Always scope pak operations
 
