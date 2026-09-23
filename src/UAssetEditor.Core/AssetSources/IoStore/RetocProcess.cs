@@ -246,6 +246,8 @@ public static class RetocProcess
         foreach (var arg in args)
             startInfo.ArgumentList.Add(arg);
 
+        // A kill right after Start races a fast conversion, so never start work that's already canceled.
+        cancellationToken.ThrowIfCancellationRequested();
         using var process = new Process { StartInfo = startInfo };
         process.Start();
 
