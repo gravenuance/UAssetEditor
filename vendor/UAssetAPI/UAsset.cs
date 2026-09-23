@@ -1082,21 +1082,7 @@ namespace UAssetAPI
                         }
                     }
 
-                    // add schema if possible (!!!)
-                    if (Mappings?.Schemas != null && fetchedStructExp.ObjectName?.ToString() != null)
-                    {
-                        string outer = null;
-                        if (fetchedStructExp.OuterIndex.IsImport()) outer = fetchedStructExp.OuterIndex.ToImport(this).ObjectName.ToString();
-                        if (fetchedStructExp.OuterIndex.IsExport()) outer = fetchedStructExp.OuterIndex.ToExport(this).ObjectName.ToString();
-
-                        UsmapSchema newSchema = Usmap.GetSchemaFromStructExport(fetchedStructExp, Mappings?.AreFNamesCaseInsensitive ?? true);
-                        if (newSchema != null)
-                        {
-                            newSchema.ModulePath = InternalAssetPath;
-                            Mappings.Schemas[fetchedStructExp.ObjectName.ToString()] = newSchema;
-                            if (!string.IsNullOrEmpty(newSchema.ModulePath)) Mappings.Schemas[newSchema.ModulePath + "." + (string.IsNullOrEmpty(outer) ? string.Empty : (outer + ".")) + fetchedStructExp.ObjectName.ToString()] = newSchema;
-                        }
-                    }
+                    RegisterStructSchema(fetchedStructExp);
                 }
 
                 // if we got an enum, let's add to mappings enum map if we can
@@ -1139,6 +1125,27 @@ namespace UAssetAPI
                 if (read) ((RawExport)Exports[i]).Data = reader.ReadBytes((int)Exports[i].SerialSize);
             }
 #pragma warning restore CS0168 // Variable is declared but never used
+        }
+
+        /// <summary>
+        /// Registers (or refreshes) the unversioned-property schema for a struct or class declared in this package.
+        /// Call again after changing <see cref="StructExport.LoadedProperties"/>, or the writer will not know the new members.
+        /// </summary>
+        public void RegisterStructSchema(StructExport structExport)
+        {
+            ArgumentNullException.ThrowIfNull(structExport);
+            if (Mappings?.Schemas == null || structExport.ObjectName?.ToString() == null) return;
+
+            string outer = null;
+            if (structExport.OuterIndex.IsImport()) outer = structExport.OuterIndex.ToImport(this).ObjectName.ToString();
+            if (structExport.OuterIndex.IsExport()) outer = structExport.OuterIndex.ToExport(this).ObjectName.ToString();
+
+            UsmapSchema newSchema = Usmap.GetSchemaFromStructExport(structExport, Mappings.AreFNamesCaseInsensitive);
+            if (newSchema == null) return;
+
+            newSchema.ModulePath = InternalAssetPath;
+            Mappings.Schemas[structExport.ObjectName.ToString()] = newSchema;
+            if (!string.IsNullOrEmpty(newSchema.ModulePath)) Mappings.Schemas[newSchema.ModulePath + "." + (string.IsNullOrEmpty(outer) ? string.Empty : (outer + ".")) + structExport.ObjectName.ToString()] = newSchema;
         }
 
 

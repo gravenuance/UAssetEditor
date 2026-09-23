@@ -1,6 +1,7 @@
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
+using UAssetAPI.Unversioned;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Core.Tests;
@@ -29,6 +30,23 @@ public class ClassPropertyDeclarerTests
         // for the unversioned property serializer to match the value back to its declaration.
         Assert.Contains(cdo.Data, p => FNameDisplay.ToDisplayString(p.Name) == newName);
         Assert.Same(cdo.Data.Last(), value);
+    }
+
+    [Fact]
+    public void DeclareClonedProperty_StaysUnversionedAndTeachesTheWriterTheNewMember()
+    {
+        var asset = TestAssets.CreateAsset();
+        asset.Mappings = new Usmap { Schemas = new Dictionary<string, UsmapSchema>(StringComparer.OrdinalIgnoreCase) };
+        asset.PackageFlags |= EPackageFlags.PKG_UnversionedProperties;
+        var (classExport, cdo) = TestAssets.CreateClassWithNode(asset, "AnimGraphNode_KawaiiPhysics_1");
+        asset.RegisterStructSchema(classExport);
+
+        var (newName, _) = ClassPropertyDeclarer.DeclareClonedProperty(asset, asset.Exports.IndexOf(cdo), "AnimGraphNode_KawaiiPhysics_1");
+
+        // Shipped mods that add nodes stay unversioned; tagged output needs names the package doesn't have.
+        Assert.True(asset.PackageFlags.HasFlag(EPackageFlags.PKG_UnversionedProperties));
+        var schema = asset.Mappings.GetSchemaFromName(classExport.ObjectName.ToString(), asset);
+        Assert.Contains(schema.Properties.Values, p => p.Name == newName);
     }
 
     [Fact]

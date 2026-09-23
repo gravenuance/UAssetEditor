@@ -238,6 +238,7 @@ internal static class TestAssets
         };
         asset.Exports.Add(cdo);
         var cdoIndex = asset.Exports.Count - 1;
+        asset.Imports.Add(new Import("/Script/CoreUObject", "ScriptStruct", FPackageIndex.FromRawIndex(0), "TestNodeType", false, asset));
 
         var classExport = new ClassExport
         {
@@ -248,11 +249,14 @@ internal static class TestAssets
                 new FStructProperty
                 {
                     Name = new FName(asset, nodePropertyName),
-                    Struct = FPackageIndex.FromImport(0),
+                    SerializedType = new FName(asset, "StructProperty"),
+                    Struct = FPackageIndex.FromImport(asset.Imports.Count - 1),
                     ElementSize = 8,
                 },
             },
             ClassDefaultObject = FPackageIndex.FromExport(cdoIndex),
+            OuterIndex = new FPackageIndex(0),
+            SuperStruct = new FPackageIndex(0),
         };
         asset.Exports.Add(classExport);
 

@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- `add-node` now saves. Adding a physics node used to switch the file to a format it could not write, so every save failed; the file keeps its normal format and the new node is written like any other.
+- A cancelled conversion no longer sometimes produces output anyway.
+
 ## [1.3.0] - 2026-09-19
 
 ### Added

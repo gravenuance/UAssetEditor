@@ -14,13 +14,9 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// <see cref="StructExport.LoadedProperties"/>, not a <see cref="PropertyData"/> array element
 /// of anything that already exists.
 ///
-/// Deliberately narrow: this only declares the property and clones its CDO default value -
-/// both ordinary, low-risk array/list appends. It does NOT touch the class's AnimNodeData
-/// bookkeeping array or any ComponentPose.LinkID pose-chain wiring - those are already
-/// editable through the existing array-duplicate and grid-edit tools, and are left for the
-/// caller to set by hand: getting the compiled node index wrong would silently produce a node
-/// the anim graph never runs, which is safer caught by a person checking real numbers against
-/// a real file than guessed at automatically here.
+/// Deliberately narrow: this only declares the property (appended last, so no existing node
+/// index shifts) and clones its CDO default value. AnimNodeData and ComponentPose.LinkID
+/// wiring are the caller's job.
 /// </summary>
 public static class ClassPropertyDeclarer
 {
@@ -79,14 +75,8 @@ public static class ClassPropertyDeclarer
         clonedValue.Name = new FName(asset, baseName, nextNumber + 1);
         cdo.Data.Add(clonedValue);
 
-        // A genuinely new property can never be unversioned: unversioned serialization resolves
-        // property identity against the .usmap schema, which only ever describes what the real
-        // shipped game actually compiled - it cannot know about a node this mod just invented.
-        // Saving one still flagged PKG_UnversionedProperties throws at write time ("no valid
-        // property in class"). Tagged (versioned) properties are self-describing and need no
-        // schema match, so this is the only serialization mode that can carry a new property -
-        // dropping the flag here is required, not optional, the moment a node is added.
-        asset.PackageFlags &= ~EPackageFlags.PKG_UnversionedProperties;
+        // The writer resolves this class's members from a schema snapshotted at load; the game reads the class itself.
+        asset.RegisterStructSchema(classExport);
 
         return (newName, clonedValue);
     }
