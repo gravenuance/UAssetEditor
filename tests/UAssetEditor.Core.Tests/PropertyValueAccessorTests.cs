@@ -72,6 +72,40 @@ public class PropertyValueAccessorTests
         Assert.Equal(limit, PropertyValueAccessor.AsSearchableString(prop, asset));
     }
 
+    public static TheoryData<string, string, string> VectorKinds => new()
+    {
+        { "Vector", "0,0,-980.5", "1,2" },
+        { "Rotator", "10,90,-45", "1,2,3,4" },
+        { "Quat", "0,0,0.7071,0.7071", "1,2,3" },
+        { "Vector2D", "3.25,-1", "1" },
+        { "Vector4", "1,2,3,4", "1,2,3,x" },
+    };
+
+    [Theory]
+    [MemberData(nameof(VectorKinds))]
+    public void VectorKinds_RoundTripAsCommaSeparatedComponents(string kind, string value, string malformed)
+    {
+        var asset = TestAssets.CreateAsset();
+        var name = new FName(asset, "Value");
+        PropertyData prop = kind switch
+        {
+            "Vector" => new VectorPropertyData(name) { IsZero = true },
+            "Rotator" => new RotatorPropertyData(name) { IsZero = true },
+            "Quat" => new QuatPropertyData(name) { IsZero = true },
+            "Vector2D" => new Vector2DPropertyData(name) { IsZero = true },
+            "Vector4" => new Vector4PropertyData(name) { IsZero = true },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, value, asset));
+        PropertyValueAccessor.UpdateIsZeroFlag(prop);
+
+        Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+        Assert.False(prop.IsZero);
+        Assert.False(PropertyValueAccessor.TrySetStringValue(prop, malformed, asset));
+        Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
     private static PropertyData CreateSizedInteger(UAsset asset, string kind)
     {
         var name = new FName(asset, "Value");

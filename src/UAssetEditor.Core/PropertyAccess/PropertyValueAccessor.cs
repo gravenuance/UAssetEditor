@@ -40,6 +40,11 @@ public static class PropertyValueAccessor
             EnumPropertyData e => e.Value?.Value?.Value,
             BytePropertyData bp => bp.ByteType == BytePropertyType.FName ? bp.EnumValue?.Value?.Value : bp.Value.ToString(CultureInfo.InvariantCulture),
             IntPointPropertyData ip when ip.Value is { Length: 2 } v => $"{v[0]},{v[1]}",
+            VectorPropertyData v => Components(v.Value.X, v.Value.Y, v.Value.Z),
+            RotatorPropertyData r => Components(r.Value.Pitch, r.Value.Yaw, r.Value.Roll),
+            QuatPropertyData q => Components(q.Value.X, q.Value.Y, q.Value.Z, q.Value.W),
+            Vector2DPropertyData v2 => Components(v2.Value.X, v2.Value.Y),
+            Vector4PropertyData v4 => Components(v4.Value.X, v4.Value.Y, v4.Value.Z, v4.Value.W),
             _ => null,
         };
     }
@@ -108,6 +113,21 @@ public static class PropertyValueAccessor
                     return false;
                 ip.Value = [x, y];
                 return true;
+            case VectorPropertyData v when TryParseComponents(newValue, 3, out var c):
+                v.Value = new FVector(c[0], c[1], c[2]);
+                return true;
+            case RotatorPropertyData r when TryParseComponents(newValue, 3, out var c):
+                r.Value = new FRotator(c[0], c[1], c[2]);
+                return true;
+            case QuatPropertyData q when TryParseComponents(newValue, 4, out var c):
+                q.Value = new FQuat(c[0], c[1], c[2], c[3]);
+                return true;
+            case Vector2DPropertyData v2 when TryParseComponents(newValue, 2, out var c):
+                v2.Value = new FVector2D(c[0], c[1]);
+                return true;
+            case Vector4PropertyData v4 when TryParseComponents(newValue, 4, out var c):
+                v4.Value = new FVector4(c[0], c[1], c[2], c[3]);
+                return true;
             case ObjectPropertyData op:
                 var importIndex = ImportPathResolver.FindImportIndex(asset, newValue);
                 if (importIndex is null) return false;
@@ -146,8 +166,28 @@ public static class PropertyValueAccessor
             TextPropertyData t => string.IsNullOrEmpty(t.Value?.Value),
             BytePropertyData { ByteType: BytePropertyType.Byte } bp => bp.Value == 0,
             IntPointPropertyData ip => ip.Value is null or [0, 0],
+            VectorPropertyData v => v.Value.X == 0 && v.Value.Y == 0 && v.Value.Z == 0,
+            RotatorPropertyData r => r.Value.Pitch == 0 && r.Value.Yaw == 0 && r.Value.Roll == 0,
+            QuatPropertyData q => q.Value.X == 0 && q.Value.Y == 0 && q.Value.Z == 0 && q.Value.W == 0,
+            Vector2DPropertyData v2 => v2.Value.X == 0 && v2.Value.Y == 0,
+            Vector4PropertyData v4 => v4.Value.X == 0 && v4.Value.Y == 0 && v4.Value.Z == 0 && v4.Value.W == 0,
             _ => prop.IsZero,
         };
+    }
+
+    private static string Components(params double[] values) =>
+        string.Join(',', values.Select(v => v.ToString(CultureInfo.InvariantCulture)));
+
+    private static bool TryParseComponents(string text, int count, out double[] values)
+    {
+        var parts = text.Split(',', StringSplitOptions.TrimEntries);
+        values = new double[count];
+        if (parts.Length != count) return false;
+        for (var i = 0; i < count; i++)
+        {
+            if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out values[i])) return false;
+        }
+        return true;
     }
 
     private static string DescribeObjectReference(FPackageIndex index, UAsset asset)
