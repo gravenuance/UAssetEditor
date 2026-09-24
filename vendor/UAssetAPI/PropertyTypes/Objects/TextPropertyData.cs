@@ -175,15 +175,32 @@ public class FFormatArgumentData
     public void Read(AssetBinaryReader reader)
     {
         ArgumentName = reader.ReadFString();
-        ArgumentValue = new FFormatArgumentValue(reader, true);
+        if (IsVariant(reader.Asset))
+        {
+            ArgumentValue = new FFormatArgumentValue(reader, true);
+            return;
+        }
+
+        var text = new TextPropertyData(FName.DefineDummy(reader.Asset, "Value"));
+        text.Read(reader, false, 1, 0, PropertySerializationContext.Normal);
+        ArgumentValue = new FFormatArgumentValue(EFormatArgumentType.Text, text);
     }
 
     public int Write(AssetBinaryWriter writer)
     {
         int sz = writer.Write(ArgumentName);
-        sz += ArgumentValue.Write(writer, true);
-        return sz;
+        if (IsVariant(writer.Asset)) return sz + ArgumentValue.Write(writer, true);
+
+        if (ArgumentValue.Value is not TextPropertyData text)
+            throw new InvalidOperationException($"Format argument '{ArgumentName}' must be text before {nameof(FEditorObjectVersion.TextFormatArgumentDataIsVariant)}");
+        long start = writer.BaseStream.Position;
+        text.Write(writer, false);
+        return sz + (int)(writer.BaseStream.Position - start);
     }
+
+    // Before this version an argument carried no type byte and was always an FText; -1 (absent) counts as before.
+    private static bool IsVariant(UAsset asset) =>
+        asset.GetCustomVersion<FEditorObjectVersion>() >= FEditorObjectVersion.TextFormatArgumentDataIsVariant;
 }
 
 /// <summary>

@@ -25,6 +25,7 @@ All notable changes to this project are documented here.
 ### Fixed
 - `duplicate`, `append-clone`, `splice-node` and `duplicate-export` now make fully separate copies. A copied element that held a list, such as a physics chain's excluded bones, shared that list's entries with the original, so editing the copy silently changed the original too.
 - Copying a set now keeps its own list of removed elements. The copy used to take them from the set's values instead, and failed outright when a set had more values than removals.
+- Text with format arguments from older games (Unreal 4.17 and earlier, such as Days Gone) now reads and writes. Those games store each argument as plain text with no type marker, and such assets used to fail to open.
 - `add-node` refuses animation nodes and points to `splice-node`. A node added that way had no node-table row or handler, which crashes the game the same way. The app's "Add node" action now splices instead, so the new node comes fully wired.
 - Nodes added by `splice-node` and `graft-nodes` now get their own entry in the blueprint's exposed-value handler list. The game looks that list up by node index without a range check, so each added node read memory past its end, which crashed the game now and then while characters were loading. Edits to a blueprint whose list already disagrees with its nodes are refused.
 - `to-legacy --layer original` no longer returns the mod's own content when the mod sits directly in the Paks folder rather than in `~mods`.
