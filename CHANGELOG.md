@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-24
+
 ### Added
 - `rename-names` replaces whole name-map entries, and `--out` saves the result as a new file. This clones a cooked asset to a new path, or points its imports at other packages, without re-cooking and without losing fields the engine version doesn't know.
 - `strip-versions` drops a cooked package's engine versions but keeps its properties stored by name, the form IoStore packers accept. Textures and materials cooked in a stock editor load this way in games that changed engine classes, such as Marvel Rivals.
@@ -134,7 +136,8 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.1.2...v1.2.0
