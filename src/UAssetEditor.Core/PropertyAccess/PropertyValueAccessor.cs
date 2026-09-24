@@ -133,9 +133,34 @@ public static class PropertyValueAccessor
                 if (importIndex is null) return false;
                 op.Value = FPackageIndex.FromImport(importIndex.Value);
                 return true;
+            case SoftObjectPropertyData so when TryParseSoftObjectPath(newValue, asset, out var path):
+                so.Value = path;
+                RegisterSoftObjectPath(asset, path);
+                return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>Parses "/Package/Path.AssetName" with an optional ":SubPath", the form <see cref="AsSearchableString"/> prints.</summary>
+    private static bool TryParseSoftObjectPath(string text, UAsset asset, out FSoftObjectPath path)
+    {
+        path = default;
+        var colon = text.IndexOf(':', StringComparison.Ordinal);
+        var assetPart = colon < 0 ? text : text[..colon];
+        var dot = assetPart.LastIndexOf('.');
+        if (!assetPart.StartsWith('/') || dot <= 1 || dot == assetPart.Length - 1) return false;
+
+        var sub = colon < 0 ? null : new FString(text[(colon + 1)..]);
+        path = new FSoftObjectPath(new FName(asset, assetPart[..dot]), new FName(asset, assetPart[(dot + 1)..]), sub);
+        return true;
+    }
+
+    /// <summary>UE 5.1+ packages store soft paths as indices into this list, so a new path must join it to be saved.</summary>
+    private static void RegisterSoftObjectPath(UAsset asset, FSoftObjectPath path)
+    {
+        if (asset.SoftObjectPathList is not { Count: > 0 } list || list.Contains(path)) return;
+        list.Add(path);
     }
 
     /// <summary>

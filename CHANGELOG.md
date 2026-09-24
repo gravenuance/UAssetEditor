@@ -10,6 +10,7 @@ All notable changes to this project are documented here.
 - `rename-names` replaces whole name-map entries, and `--out` saves the result as a new file. This clones a cooked asset to a new path, or points its imports at other packages, without re-cooking and without losing fields the engine version doesn't know.
 - `strip-versions` drops a cooked package's engine versions but keeps its properties stored by name, the form IoStore packers accept. Textures and materials cooked in a stock editor load this way in games that changed engine classes, such as Marvel Rivals.
 - `to-unversioned` rewrites a cooked package's properties in the layout of the game's own usmap, dropping and listing fields the game doesn't have. Meshes cooked in a stock editor load in Marvel Rivals this way.
+- `set` accepts soft object references as `/Package/Path.Asset` (optionally `:SubPath`), adding the path to the package's soft path list when it keeps one. Together with `duplicate` this adds an entry to a blueprint's material override array, such as a skin's override for a new mesh slot.
 
 ### Fixed
 - Saving a UE 5.3+ package whose export changed size kept its inline bulk data offsets, so a texture's small mips pointed at the wrong bytes and the game showed its gray default texture. Inline data resources now move with their export.
