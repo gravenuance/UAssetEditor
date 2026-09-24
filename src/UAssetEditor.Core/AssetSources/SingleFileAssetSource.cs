@@ -34,6 +34,6 @@ public sealed class SingleFileAssetSource : IAssetSource
         if (createBackup)
             File.Copy(_filePath, BackupPathResolver.Resolve(_filePath, backupFolder), overwrite: true);
 
-        asset.Write(_filePath);
+        PackageWriter.Write(asset, _filePath);
     }
 }

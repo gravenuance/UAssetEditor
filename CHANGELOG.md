@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Saving a UE 5.3+ package whose export changed size kept its inline bulk data offsets, so a texture's small mips pointed at the wrong bytes and the game showed its gray default texture. Inline data resources now move with their export.
+
 ## [1.4.0] - 2026-09-24
 
 ### Added

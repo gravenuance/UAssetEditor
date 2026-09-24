@@ -41,7 +41,7 @@ public sealed class LooseFolderAssetSource : IAssetSource
         if (createBackup)
             File.Copy(absolutePath, BackupPathResolver.Resolve(absolutePath, backupFolder), overwrite: true);
 
-        asset.Write(absolutePath);
+        PackageWriter.Write(asset, absolutePath);
     }
 
     private string ToRelativePath(string absolutePath) =>

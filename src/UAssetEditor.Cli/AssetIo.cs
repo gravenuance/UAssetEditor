@@ -99,7 +99,28 @@ internal static class AssetIo
             var uexpPath = Path.ChangeExtension(path, ".uexp");
             if (File.Exists(uexpPath)) File.Copy(uexpPath, uexpPath + ".bak", overwrite: true);
         }
-        asset.Write(path);
+        PackageWriter.Write(asset, path);
+    }
+
+    /// <summary>
+    /// Saves to <paramref name="output"/>, in place when it is <paramref name="source"/> itself. A new path also gets
+    /// the source's bulk-data companions (.ubulk, .uptnl), which Write() never touches but the package still needs.
+    /// </summary>
+    public static void SaveAs(UAsset asset, string source, string output, bool backup)
+    {
+        var sameFile = string.Equals(Path.GetFullPath(output), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase);
+        if (sameFile)
+        {
+            Save(asset, source, backup);
+            return;
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
+        PackageWriter.Write(asset, output);
+        foreach (var extension in (string[])[".ubulk", ".uptnl"])
+        {
+            var companion = Path.ChangeExtension(source, extension);
+            if (File.Exists(companion)) File.Copy(companion, Path.ChangeExtension(output, extension), overwrite: true);
+        }
     }
 
     /// <summary>Resolves an --export value as either a 0-based index or a (sub)string match against export names - whichever the caller finds more convenient to type.</summary>
