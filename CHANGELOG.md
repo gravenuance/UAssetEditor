@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-24
+
 ### Added
 - `graft-nodes` (script op) copies animation nodes from another animation blueprint and chains them in just before the output, bringing their node-table rows, node types and imports and re-creating every name in the target. This puts physics into blueprints that have none, like the lobby ones.
 - `check-graph` (script op) confirms an animation blueprint has a node-table row and an exposed-value handler for every node, the check a build should pass before shipping.
@@ -124,7 +126,9 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.3.0...v1.4.0
+[1.3.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.1.2...v1.2.0
 [1.0.3]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/gravenuance/UAssetEditor/compare/v1.0.1...v1.0.2
