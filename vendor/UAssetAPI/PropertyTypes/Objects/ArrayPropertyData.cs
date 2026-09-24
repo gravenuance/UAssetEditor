@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using System;
 using System.IO;
+using System.Linq;
 using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
@@ -310,5 +311,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
         ArrayPropertyData cloningProperty = (ArrayPropertyData)res;
         cloningProperty.ArrayType = (FName)this.ArrayType?.Clone();
         cloningProperty.DummyStruct = (StructPropertyData)this.DummyStruct?.Clone();
+        // The base clone copies the element array shallowly; without this a clone shares (and edits) the source's elements.
+        cloningProperty.Value = this.Value?.Select(element => (PropertyData)element?.Clone()).ToArray();
     }
 }

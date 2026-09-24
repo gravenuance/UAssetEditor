@@ -1,3 +1,6 @@
+using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.PropertyTypes.Structs;
+using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Core.Tests;
@@ -34,6 +37,34 @@ public class ArrayElementEditorTests
 
         Assert.Equal("10", PropertyValueAccessor.AsSearchableString(
             PropertyLocator.Locate(asset, 0, "Chains[0].Value")!.Property, asset));
+    }
+
+    [Fact]
+    public void Duplicate_DeepClonesArraysNestedInsideTheElement()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        var chains = TestAssets.AddStructArray(asset, export, "Chains", 10);
+        ((StructPropertyData)chains.Value[0]).Value.Add(new ArrayPropertyData(new FName(asset, "ExcludeBones"))
+        {
+            ArrayType = new FName(asset, "StructProperty"),
+            Value =
+            [
+                new StructPropertyData(new FName(asset, "ExcludeBones"))
+                {
+                    StructType = new FName(asset, "BoneReference"),
+                    Value = [new NamePropertyData(new FName(asset, "BoneName")) { Value = new FName(asset, "thigh_l") }],
+                },
+            ],
+        });
+
+        ArrayElementEditor.Duplicate(chains, 0);
+
+        // A kawaii chain's ExcludeBones edited on the copy once rewrote the template chain's too.
+        var copied = PropertyLocator.Locate(asset, 0, "Chains[1].ExcludeBones[0].BoneName")!.Property;
+        Assert.True(PropertyValueAccessor.TrySetStringValue(copied, "pelvis_vol_up_l", asset));
+        Assert.Equal("thigh_l", PropertyValueAccessor.AsSearchableString(
+            PropertyLocator.Locate(asset, 0, "Chains[0].ExcludeBones[0].BoneName")!.Property, asset));
     }
 
     [Fact]
