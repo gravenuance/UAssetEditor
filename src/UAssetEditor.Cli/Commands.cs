@@ -212,6 +212,94 @@ internal static class Commands
         return 0;
     }
 
+    public static int RenameNames(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var output = args.Option("out") ?? path;
+        var renames = ParseRenames(args.RequireOption("rename"));
+        var asset = AssetIo.Open(path, args);
+
+        IReadOnlyList<NameRenameResult> results;
+        try
+        {
+            results = NameMapRenamer.Rename(asset, renames);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+
+        foreach (var result in results)
+            Console.WriteLine(result.Found ? $"{result.Rename.From} -> {result.Rename.To}" : $"{result.Rename.From}: not in the name map");
+        if (results.Any(r => !r.Found)) throw new ArgException("Some names were not found; nothing saved.");
+
+        if (!args.Flag("save")) return 0;
+        AssetIo.SaveAs(asset, path, output, args.Flag("backup"));
+        Console.WriteLine($"Saved {output}");
+        return 0;
+    }
+
+    public static int ToUnversioned(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var output = args.Option("out") ?? path;
+        var schema = AssetIo.ResolveMappings(args) ?? throw new ArgException("--usmap is required: it is the game's schema to write for.");
+        if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
+        // Read without the schema: the package is tagged, and the schema describes the game, not the editor that cooked it.
+        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null);
+
+        IReadOnlyList<string> dropped;
+        try
+        {
+            dropped = UnversionedConverter.Convert(asset, schema);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+
+        foreach (var name in dropped) Console.WriteLine($"dropped {name} (not in the game's schema)");
+        Console.WriteLine($"{path}: unversioned, {dropped.Count} propert{(dropped.Count == 1 ? "y" : "ies")} dropped");
+        if (!args.Flag("save")) return 0;
+        AssetIo.SaveAs(asset, path, output, args.Flag("backup"));
+        Console.WriteLine($"Saved {output}");
+        return 0;
+    }
+
+    public static int StripVersions(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var output = args.Option("out") ?? path;
+        if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
+        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null);
+        try
+        {
+            VersionStripper.Strip(asset);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+
+        Console.WriteLine($"{path}: summary unversioned, properties stay tagged");
+        if (!args.Flag("save")) return 0;
+        AssetIo.SaveAs(asset, path, output, args.Flag("backup"));
+        Console.WriteLine($"Saved {output}");
+        return 0;
+    }
+
+    private static List<NameRename> ParseRenames(string text)
+    {
+        try
+        {
+            return [.. text.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(NameRename.Parse)];
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgException($"--rename: {ex.Message}", ex);
+        }
+    }
+
     public static int Script(ArgReader args) => ScriptRunner.Run(args);
 
     internal static string ApplySet(UAsset asset, ArgReader args)

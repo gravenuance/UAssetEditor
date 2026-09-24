@@ -119,6 +119,21 @@ custom-serialised native binary and invisible to property reflection.
 - **Back up before editing in place.** `--backup` covers both files; for a bulk run copy the
   whole tree first.
 
+## Shipping assets cooked in a stock editor (Marvel Rivals)
+
+NetEase changed engine classes (extra fields on `StreamableRenderAsset` and `SkeletalMesh`), so a stock UE 5.3
+`-unversioned` cook is misread by the game. Cook **versioned**, then:
+
+- **Textures and material instances:** `strip-versions`. Properties stay tagged (loaded by name), only the header
+  loses its versions, which is what retoc-rivals needs. This is how working community mods ship them; our
+  schema-converted textures and renamed MIs rendered gray in game.
+- **Skeletal meshes:** `to-unversioned --usmap <game>`. Proven to load; lists the stock fields the game lacks.
+- **New MIs:** author them in UE as children of a game MI (stub the parent at its game path), not as
+  `rename-names` copies of a game MI. Set textures `never_stream` so every mip ships inline in the package.
+
+If textures render gray, check the header's inline data resources still point at their mip bytes (fixed on save
+since this branch; CUE4Parse/FModel ignore that table, so they decode fine and hide the bug).
+
 ## Legacy UE4 pak compression (< UE 4.22)
 
 `FPakEntry.CompressionMethod` is an `ECompressionFlags` **bitmask**, not an index into a

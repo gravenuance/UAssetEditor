@@ -30,6 +30,9 @@ try
         "splice-node" => Commands.SpliceNode(reader),
         "append-clone" => Commands.AppendClone(reader),
         "duplicate-export" => Commands.DuplicateExport(reader),
+        "rename-names" => Commands.RenameNames(reader),
+        "to-unversioned" => Commands.ToUnversioned(reader),
+        "strip-versions" => Commands.StripVersions(reader),
         "script" => Commands.Script(reader),
         "batch" => Commands.Batch(reader),
         "pak-info" => PakCommands.PakInfo(reader),
@@ -139,6 +142,20 @@ static void PrintUsage()
               the new export into that array property (must already hold at least one same-typed reference to clone from -
               e.g. a PhysicsAsset's own SkeletalBodySetups/ConstraintSetup array), the object-reference counterpart to
               'append-clone'. Follow up with 'set' to point the clone at its own bone/joint before use.
+
+          uacli rename-names <file> --rename "<from>=<to>[;<from>=<to>...]" [--out <file>] [--save] [--backup]
+              Replace whole name-map entries: every reference to them follows. Rename the package path and object name
+              and save with --out to clone a cooked asset to a new path; rename an import's package path and object name
+              to point it at a different asset. Fails, saving nothing, if a source is missing or a target already exists.
+
+          uacli to-unversioned <file> --usmap <game.usmap> [--out <file>] [--save]
+              Rewrite a versioned (tagged) cooked package with unversioned properties laid out by the game's schema.
+              Cook versioned in a stock editor, then convert: a stock unversioned cook uses the stock class layouts,
+              which a game that changed an engine class misreads. Lists every property the game's schema lacks.
+
+          uacli strip-versions <file> [--out <file>] [--save]
+              Mark a versioned (tagged) cooked package's summary unversioned, keeping its tagged properties, so an
+              IoStore packer accepts it. Tagged values load by name even where the game changed engine classes.
 
           uacli script <file> --ops <opsfile> [--save] [--backup]
               Run several set/duplicate/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)

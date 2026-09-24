@@ -20,8 +20,8 @@ internal sealed class ArgReader
     private static readonly HashSet<string> KnownNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "aes", "apply", "backup", "compression", "depth", "export", "export-name", "filter", "from", "from-export", "from-file", "nodes",
-        "into", "into-export", "into-path", "jobs", "layer", "members", "mount", "no-paks-resolve", "ops", "pak-version", "path", "plan",
-        "property-name", "reference", "regex", "ruleset", "save", "strict", "template", "usmap", "value", "version",
+        "into", "into-export", "into-path", "jobs", "layer", "members", "mount", "no-paks-resolve", "ops", "out", "pak-version", "path", "plan",
+        "property-name", "reference", "regex", "rename", "ruleset", "save", "strict", "template", "usmap", "value", "version",
     };
 
     private readonly List<string> _positional = [];
