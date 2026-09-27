@@ -4,10 +4,7 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-### Fixed
-- Adding animation nodes (`splice-node`, `graft-nodes`) left the blueprint's cached-pose and asset-player indices pointing at the wrong nodes, because those two tables count from the end of the node list. The game then ran another node as a cached pose and crashed on loading the character, in the lobby for Marvel Rivals. Both tables now move with every added node, and `check-graph` refuses a cached-pose index that names anything but a cached-pose node.
-
-## [1.5.0] - 2026-09-24
+## [1.5.0] - 2026-09-27
 
 ### Added
 - `rename-names` replaces whole name-map entries, and `--out` saves the result as a new file. This clones a cooked asset to a new path, or points its imports at other packages, without re-cooking and without losing fields the engine version doesn't know.
@@ -16,6 +13,7 @@ All notable changes to this project are documented here.
 - `set` accepts soft object references as `/Package/Path.Asset` (optionally `:SubPath`), adding the path to the package's soft path list when it keeps one. Together with `duplicate` this adds an entry to a blueprint's material override array, such as a skin's override for a new mesh slot.
 
 ### Fixed
+- Adding animation nodes (`splice-node`, `graft-nodes`) left the blueprint's cached-pose and asset-player indices pointing at the wrong nodes, because those two tables count from the end of the node list. The game then ran another node as a cached pose and crashed on loading the character, in the lobby for Marvel Rivals. Both tables now move with every added node, and `check-graph` refuses a cached-pose index that names anything but a cached-pose node, or an asset-player index that the usmap says names no asset player.
 - Saving a UE 5.3+ package whose export changed size kept its inline bulk data offsets, so a texture's small mips pointed at the wrong bytes and the game showed its gray default texture. Inline data resources now move with their export.
 
 ## [1.4.0] - 2026-09-24
