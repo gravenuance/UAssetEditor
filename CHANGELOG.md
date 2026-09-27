@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Adding animation nodes (`splice-node`, `graft-nodes`) left the blueprint's cached-pose and asset-player indices pointing at the wrong nodes, because those two tables count from the end of the node list. The game then ran another node as a cached pose and crashed on loading the character, in the lobby for Marvel Rivals. Both tables now move with every added node, and `check-graph` refuses a cached-pose index that names anything but a cached-pose node.
+
 ## [1.5.0] - 2026-09-24
 
 ### Added

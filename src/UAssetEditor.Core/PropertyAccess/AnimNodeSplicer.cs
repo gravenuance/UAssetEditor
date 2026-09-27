@@ -37,6 +37,7 @@ public static class AnimNodeSplicer
         var row = (StructPropertyData)ArrayElementEditor.Duplicate(graph.NodeData, templateIndex);
         SetNodeIndex(row, newIndex);
         readers[0].Link.Value = newIndex;
+        graph.KeepEndCountedIndicesOnTheirNodes(1);
         graph.AddEmptyHandler();
         graph.SaveSparseData();
 

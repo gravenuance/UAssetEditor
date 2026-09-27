@@ -374,7 +374,7 @@ internal static class Commands
     internal static string ApplyCheckGraph(UAsset asset, ArgReader args)
     {
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        return $"Graph consistent: {AnimGraphValidator.Validate(asset, cdoExportIndex)} nodes, each with a row and a handler";
+        return $"Graph consistent: {AnimGraphValidator.Validate(asset, cdoExportIndex)} nodes, each with a row and a handler, cached poses in place";
     }
 
     internal static string ApplyGraftNodes(UAsset asset, ArgReader args)

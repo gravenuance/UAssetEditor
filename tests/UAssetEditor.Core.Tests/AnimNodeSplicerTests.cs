@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.FieldTypes;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
+using UAssetAPI.Unversioned;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Core.Tests;
@@ -94,6 +96,75 @@ public class AnimNodeSplicerTests
         Assert.Throws<InvalidOperationException>(() => AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii));
 
         Assert.Equal(before, graph.Snapshot());
+    }
+
+    [Fact]
+    public void SpliceAfter_KeepsEndCountedIndicesOnTheNodesTheyNamed()
+    {
+        // Counted from the end of 4 nodes: 1 is the Kawaii node, 2 the input.
+        var graph = AnimGraph.Create();
+        TestAssets.AddEndCountedTables(graph.Asset, graph.Class, savedPoses: [1], players: [2]);
+
+        AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii);
+
+        Assert.Equal([2], TestAssets.EndCountedIndices(graph.Class, "OrderedSavedPoseIndicesMap"));
+        Assert.Equal([3], TestAssets.EndCountedIndices(graph.Class, "GraphAssetPlayerInformation"));
+    }
+
+    [Fact]
+    public void SpliceAfter_RefusesAnEndCountedIndexPastTheNodes_AndChangesNothing()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddEndCountedTables(graph.Asset, graph.Class, savedPoses: [], players: [4]);
+        var before = graph.Snapshot();
+
+        Assert.Throws<InvalidOperationException>(() => AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii));
+
+        Assert.Equal(before, graph.Snapshot());
+        Assert.Equal([4], TestAssets.EndCountedIndices(graph.Class, "GraphAssetPlayerInformation"));
+    }
+
+    [Fact]
+    public void Validate_AcceptsASavedPoseIndexThatNamesASaveCachedPoseNode()
+    {
+        var graph = AnimGraph.Create();
+        graph.RetypeNode("AnimGraphNode_Input", "AnimNode_SaveCachedPose");
+        TestAssets.AddEndCountedTables(graph.Asset, graph.Class, savedPoses: [2], players: []);
+
+        Assert.Equal(4, AnimGraphValidator.Validate(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
+    public void Validate_RefusesASavedPoseIndexThatNamesAnotherNode()
+    {
+        // A stale index, left behind when nodes were added: the engine would run another node as a cached pose.
+        var graph = AnimGraph.Create();
+        graph.RetypeNode("AnimGraphNode_Input", "AnimNode_SaveCachedPose");
+        TestAssets.AddEndCountedTables(graph.Asset, graph.Class, savedPoses: [1], players: []);
+
+        Assert.Throws<InvalidOperationException>(() => AnimGraphValidator.Validate(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
+    public void Validate_AcceptsAnAssetPlayerIndexThatNamesAnAssetPlayer()
+    {
+        var graph = AnimGraph.Create();
+        graph.RetypeNode("AnimGraphNode_Input", "AnimNode_PoseDriver");
+        graph.UseMappings();
+        TestAssets.AddEndCountedTables(graph.Asset, graph.Class, savedPoses: [], players: [2]);
+
+        Assert.Equal(4, AnimGraphValidator.Validate(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
+    public void Validate_RefusesAnAssetPlayerIndexThatNamesAnotherNode()
+    {
+        var graph = AnimGraph.Create();
+        graph.RetypeNode("AnimGraphNode_Input", "AnimNode_PoseDriver");
+        graph.UseMappings();
+        TestAssets.AddEndCountedTables(graph.Asset, graph.Class, savedPoses: [], players: [1]);
+
+        Assert.Throws<InvalidOperationException>(() => AnimGraphValidator.Validate(graph.Asset, graph.CdoIndex));
     }
 
     [Fact]
@@ -197,6 +268,28 @@ public class AnimNodeSplicerTests
         }
 
         public int LinkOf(string node) => ((IntPropertyData)((StructPropertyData)NodeValue(node).Value[0]).Value[0]).Value;
+
+        /// <summary>The struct inheritance a game's usmap gives: PoseDriver is an asset player, KawaiiPhysics is not.</summary>
+        public void UseMappings()
+        {
+            UsmapSchema Schema(string name, string super) => new(name, super, 0, new ConcurrentDictionary<int, UsmapProperty>(), false, null);
+            Asset.Mappings = new Usmap
+            {
+                Schemas = new Dictionary<string, UsmapSchema>
+                {
+                    ["AnimNode_PoseDriver"] = Schema("AnimNode_PoseDriver", "AnimNode_PoseHandler"),
+                    ["AnimNode_PoseHandler"] = Schema("AnimNode_PoseHandler", "AnimNode_AssetPlayerBase"),
+                    ["AnimNode_AssetPlayerBase"] = Schema("AnimNode_AssetPlayerBase", "AnimNode_AssetPlayerRelevancyBase"),
+                    ["AnimNode_KawaiiPhysics"] = Schema("AnimNode_KawaiiPhysics", "AnimNode_SkeletalControlBase"),
+                },
+            };
+        }
+
+        public void RetypeNode(string node, string structType)
+        {
+            var member = Class.LoadedProperties.OfType<FStructProperty>().Single(p => p.Name.ToString() == node);
+            Asset.Imports[member.Struct.Index * -1 - 1].ObjectName = new FName(Asset, structType);
+        }
 
         public int[] NodeDataIndices() => Class.Data.OfType<ArrayPropertyData>().Single().Value
             .Select(r => ((IntPropertyData)((StructPropertyData)r).Value[0]).Value).ToArray();

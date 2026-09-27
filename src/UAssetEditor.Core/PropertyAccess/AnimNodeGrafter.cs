@@ -91,6 +91,7 @@ public static class AnimNodeGrafter
         }
 
         rootInput.Value = previous;
+        to.KeepEndCountedIndicesOnTheirNodes(grafted.Count);
         to.SaveSparseData();
         to.NodeData.ResolveAncestries(target, to.NodeData.Ancestry);
         toTypes.ResolveAncestries(target, toTypes.Ancestry);

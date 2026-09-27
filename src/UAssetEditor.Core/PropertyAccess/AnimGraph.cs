@@ -4,6 +4,7 @@ using UAssetAPI.FieldTypes;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.PropertyTypes.Structs;
 using UAssetAPI.UnrealTypes;
+using UAssetAPI.Unversioned;
 
 namespace UAssetEditor.Core.PropertyAccess;
 
@@ -12,13 +13,19 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// class's AnimNode_* members, every PoseLink.LinkID holds the index of the node feeding it, and the
 /// class's AnimNodeData table has one row per node, as does the exposed-value handler list in its
 /// sparse data. The engine indexes that list by node index unchecked, so a node without a handler
-/// reads past its end.
+/// reads past its end. Two class tables count the other way, from the end of the node list: the
+/// cached-pose update order and the asset players. Adding a node moves every one of those by one,
+/// and the engine trusts them unchecked too, so a stale one runs another node as a cached pose.
 /// </summary>
 internal sealed class AnimGraph
 {
     private const string AnimNodeDataName = "AnimNodeData";
     private const string NodeTypeMapName = "NodeTypeMap";
     private const string HandlersPath = "AnimBlueprintExtension_Base.ExposedValueHandlers";
+    private const string SavedPoseTable = "OrderedSavedPoseIndicesMap";
+    private const string AssetPlayerTable = "GraphAssetPlayerInformation";
+    private const string SaveCachedPoseStruct = "AnimNode_SaveCachedPose";
+    private const string AssetPlayerRelevancyBase = "AnimNode_AssetPlayerRelevancyBase";
 
     private readonly SparseClassData? _sparseData;
 
@@ -65,8 +72,65 @@ internal sealed class AnimGraph
         if (handlers != null && (handlers.Value?.Length ?? 0) != nodeNames.Count)
             throw new InvalidOperationException($"The class has {handlers.Value?.Length ?? 0} exposed-value handlers but declares {nodeNames.Count} nodes.");
 
-        return new AnimGraph(asset, cdoExportIndex, cdo, asset.Exports.IndexOf(classExport), classExport, nodeNames, nodeData, sparseData);
+        var graph = new AnimGraph(asset, cdoExportIndex, cdo, asset.Exports.IndexOf(classExport), classExport, nodeNames, nodeData, sparseData);
+        var outOfRange = graph.EndCountedIndices().FirstOrDefault(i => i.Value < 0 || i.Value >= nodeNames.Count);
+        if (outOfRange != null)
+            throw new InvalidOperationException($"{FNameDisplay.ToDisplayString(outOfRange.Name)} holds {outOfRange.Value}, past the class's {nodeNames.Count} nodes.");
+        return graph;
     }
+
+    /// <summary>Every node index in the tables that count from the end of the node list (cached poses, asset players).</summary>
+    public IEnumerable<IntPropertyData> EndCountedIndices() => EndCountedIndicesIn(SavedPoseTable).Concat(EndCountedIndicesIn(AssetPlayerTable));
+
+    /// <summary>Call after appending <paramref name="added"/> nodes: the same nodes are now that much further from the end.</summary>
+    public void KeepEndCountedIndicesOnTheirNodes(int added)
+    {
+        foreach (var index in EndCountedIndices()) index.Value += added;
+    }
+
+    /// <summary>Refuses a cached-pose index that doesn't name a SaveCachedPose node (the engine would run another node as one).</summary>
+    public void CheckSavedPoseIndices()
+    {
+        foreach (var index in EndCountedIndicesIn(SavedPoseTable))
+        {
+            var node = NodeNames[NodeNames.Count - 1 - index.Value];
+            if (StructNameOf(node) != SaveCachedPoseStruct)
+                throw new InvalidOperationException($"Cached-pose index {index.Value} names '{node}', not a SaveCachedPose node: stale after nodes were added.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses an asset-player index whose node the usmap knows is no asset player. Structs the usmap doesn't
+    /// describe, or an asset without one, pass: inheritance is the only reliable test, and it needs the usmap.
+    /// </summary>
+    public void CheckAssetPlayerIndices()
+    {
+        var schemas = Asset.Mappings?.Schemas;
+        if (schemas == null) return;
+        foreach (var index in EndCountedIndicesIn(AssetPlayerTable))
+        {
+            var node = NodeNames[NodeNames.Count - 1 - index.Value];
+            if (IsAssetPlayer(schemas, StructNameOf(node)) == false)
+                throw new InvalidOperationException($"Asset-player index {index.Value} names '{node}', not an asset player: stale after nodes were added.");
+        }
+    }
+
+    private static bool? IsAssetPlayer(IDictionary<string, UsmapSchema> schemas, string structName)
+    {
+        for (var name = structName; !string.IsNullOrEmpty(name);)
+        {
+            if (name is AssetPlayerRelevancyBase) return true;
+            if (!schemas.TryGetValue(name, out var schema)) return name == structName ? null : false;
+            name = schema.SuperType;
+        }
+        return false;
+    }
+
+    private IEnumerable<IntPropertyData> EndCountedIndicesIn(string table) =>
+        Class.Data?.OfType<MapPropertyData>().Where(m => FNameDisplay.ToDisplayString(m.Name) == table)
+            .SelectMany(m => m.Value.Values.OfType<StructPropertyData>())
+            .SelectMany(s => s.Value.OfType<ArrayPropertyData>())
+            .SelectMany(a => (a.Value ?? []).OfType<IntPropertyData>()) ?? [];
 
     /// <summary>Gives the newest node an exposed-value handler that does nothing; call <see cref="SaveSparseData"/> once done.</summary>
     public void AddEmptyHandler()

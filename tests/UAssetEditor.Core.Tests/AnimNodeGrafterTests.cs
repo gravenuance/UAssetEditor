@@ -44,6 +44,20 @@ public class AnimNodeGrafterTests
     }
 
     [Fact]
+    public void GraftBeforeRoot_KeepsEndCountedIndicesOnTheNodesTheyNamed()
+    {
+        // Counted from the end of the target's 2 nodes: 0 is the input, 1 the root. Two grafted nodes add 2.
+        var donor = Blueprint.Donor();
+        var target = Blueprint.Target();
+        TestAssets.AddEndCountedTables(target.Asset, target.Class, savedPoses: [0], players: [1]);
+
+        AnimNodeGrafter.GraftBeforeRoot(target.Asset, target.CdoIndex, donor.Asset, donor.CdoIndex, ["AnimGraphNode_LocalToComponentSpace", Kawaii]);
+
+        Assert.Equal([2], TestAssets.EndCountedIndices(target.Class, "OrderedSavedPoseIndicesMap"));
+        Assert.Equal([3], TestAssets.EndCountedIndices(target.Class, "GraphAssetPlayerInformation"));
+    }
+
+    [Fact]
     public void GraftBeforeRoot_RecreatesNamesAndBringsTheNodeTypeAndImportAlong()
     {
         var donor = Blueprint.Donor();

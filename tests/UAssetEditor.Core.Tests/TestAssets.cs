@@ -128,6 +128,38 @@ internal static class TestAssets
         return array;
     }
 
+    /// <summary>
+    /// Gives a compiled anim class the two tables that hold node indices counted from the end of the node list:
+    /// its cached-pose update order and its asset players, each keyed by the AnimGraph.
+    /// </summary>
+    public static void AddEndCountedTables(UAsset asset, ClassExport classExport, int[] savedPoses, int[] players)
+    {
+        classExport.Data = [.. classExport.Data ?? [], Table("OrderedSavedPoseIndicesMap", "OrderedSavedPoseNodeIndices", savedPoses), Table("GraphAssetPlayerInformation", "PlayerNodeIndices", players)];
+
+        MapPropertyData Table(string name, string arrayName, int[] indices)
+        {
+            var map = new MapPropertyData(new FName(asset, name))
+            {
+                KeyType = new FName(asset, "NameProperty"),
+                ValueType = new FName(asset, "StructProperty"),
+                Value = new TMap<PropertyData, PropertyData>(),
+            };
+            var array = new ArrayPropertyData(new FName(asset, arrayName))
+            {
+                ArrayType = new FName(asset, "IntProperty"),
+                Value = [.. indices.Select(i => (PropertyData)new IntPropertyData(new FName(asset, arrayName)) { Value = i })],
+            };
+            map.Value.Add(new NamePropertyData(new FName(asset, name)) { Value = new FName(asset, "AnimGraph") },
+                new StructPropertyData(new FName(asset, name)) { Value = [array] });
+            return map;
+        }
+    }
+
+    public static int[] EndCountedIndices(ClassExport classExport, string table) =>
+        classExport.Data.OfType<MapPropertyData>().Single(m => m.Name.ToString() == table).Value.Values
+            .Cast<StructPropertyData>().SelectMany(s => s.Value.OfType<ArrayPropertyData>()).SelectMany(a => a.Value.Cast<IntPropertyData>())
+            .Select(i => i.Value).ToArray();
+
     /// <summary>A small NameProperty-to-IntProperty map, for exercising map-entry traversal.</summary>
     public static MapPropertyData CreateSampleMap(UAsset asset, string propertyName = "Scores")
     {
