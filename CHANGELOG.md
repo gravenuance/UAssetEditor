@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `list-nodes` (script op) prints an animation blueprint's nodes in node-index order, the order every pose link counts. A dump can't give it: some nodes aren't named `AnimGraphNode_*`, and a node left at its defaults isn't dumped at all.
+
 ## [1.5.0] - 2026-09-27
 
 ### Added

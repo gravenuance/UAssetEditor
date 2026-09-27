@@ -121,6 +121,9 @@ static void PrintUsage()
               Copy anim-graph nodes from another compiled AnimBP and chain them just before this one's Root, in order,
               with their node-table rows, node types and imports. Refuses, changing nothing, if the node data can't carry over.
 
+          uacli script ops only: list-nodes --export <cdo>
+              Print the class's anim-graph nodes in node-index order (what every LinkID counts), comma-separated.
+
           uacli script ops only: check-graph --export <cdo>
               Confirm every anim-graph node has its node-table row and exposed-value handler; reported as skipped when not.
 

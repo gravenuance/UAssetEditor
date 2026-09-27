@@ -377,6 +377,10 @@ internal static class Commands
         return $"Graph consistent: {AnimGraphValidator.Validate(asset, cdoExportIndex)} nodes, each with a row and a handler, cached poses in place";
     }
 
+    /// <summary>Read-only: the class's anim-graph nodes in node-index order, comma-separated, whatever they are called.</summary>
+    internal static string ApplyListNodes(UAsset asset, ArgReader args) =>
+        string.Join(",", AnimNodeSplicer.AnimNodeNames(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))));
+
     internal static string ApplyGraftNodes(UAsset asset, ArgReader args)
     {
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));

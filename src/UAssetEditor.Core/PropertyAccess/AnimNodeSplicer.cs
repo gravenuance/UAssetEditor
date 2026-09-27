@@ -71,6 +71,15 @@ public static class AnimNodeSplicer
         return AnimGraph.NodeNamesOf(asset, classExport);
     }
 
+    /// <summary>The anim-graph nodes of the class whose CDO is <paramref name="cdoExportIndex"/>, in node-index order.</summary>
+    public static IReadOnlyList<string> AnimNodeNames(UAsset asset, int cdoExportIndex)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        var classExport = ClassPropertyDeclarer.FindOwningClass(asset, cdoExportIndex)
+            ?? throw new InvalidOperationException("No class in this asset declares this export as its ClassDefaultObject.");
+        return AnimGraph.NodeNamesOf(asset, classExport);
+    }
+
     internal static void SetNodeIndex(StructPropertyData row, int nodeIndex) =>
         row.Value.OfType<IntPropertyData>().Single(p => FNameDisplay.ToDisplayString(p.Name) == "NodeIndex").Value = nodeIndex;
 }

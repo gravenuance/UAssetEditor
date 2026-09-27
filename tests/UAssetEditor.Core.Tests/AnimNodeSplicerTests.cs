@@ -168,6 +168,16 @@ public class AnimNodeSplicerTests
     }
 
     [Fact]
+    public void AnimNodeNames_ListsTheCdosNodesInIndexOrder_WhateverTheyAreCalled()
+    {
+        // Rivals names some nodes "RivetConstraint_N"; only the member's struct marks it as a node.
+        var graph = AnimGraph.Create();
+        graph.Class.LoadedProperties.OfType<FStructProperty>().Single(p => p.Name.ToString() == "AnimGraphNode_Input").Name = new FName(graph.Asset, "RivetConstraint_1");
+
+        Assert.Equal(["AnimGraphNode_Root", "RivetConstraint_1", Kawaii, "AnimGraphNode_ToLocal"], AnimNodeSplicer.AnimNodeNames(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
     public void Validate_CountsTheNodesOfAConsistentGraph()
     {
         var graph = AnimGraph.Create();
