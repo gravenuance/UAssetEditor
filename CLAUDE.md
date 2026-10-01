@@ -134,6 +134,21 @@ NetEase changed engine classes (extra fields on `StreamableRenderAsset` and `Ske
 If textures render gray, check the header's inline data resources still point at their mip bytes (fixed on save
 since this branch; CUE4Parse/FModel ignore that table, so they decode fine and hide the bug).
 
+## Packing Marvel Rivals mods
+
+`pack --game rivals` reproduces retoc-rivals' `pack`: every chunk and the companion `.pak` match (its chunk order varies
+run to run, ours too). A Kawaii-ported Magik mod packed this way worked in game (2026-10-01). Name the output like
+retoc-rivals does, since the file name sets the container ID; `--game` supplies the version and key.
+
+```bash
+uacli pack <modDir> <outDir>/<modName>_9999999_P.utoc --game rivals
+uacli pack <modDir> <outDir>/<modName>_9999999_P.utoc --game rivals --usmap "$MAP" --kawaii-physics --patch-default-hidden-mats
+```
+
+The switches go after the positionals: the argument parser would take the next word as their value. Unpacking still
+goes through retoc-rivals: uacli's `to-legacy` has been compared only on the game's `Patch_-Windows_*` containers
+(which retoc-rivals can't read, so use `to-legacy` there) and on retoc-rivals' own output.
+
 ## Legacy UE4 pak compression (< UE 4.22)
 
 `FPakEntry.CompressionMethod` is an `ECompressionFlags` **bitmask**, not an index into a
