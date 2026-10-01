@@ -5,15 +5,22 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   release:
     runs-on: windows-latest
     permissions:
-      contents: write
+      contents: write # create the release
+      id-token: write # sign the provenance attestation
+      attestations: write # store it
+    env:
+      EXE: src/UAssetEditor.App/bin/Release/net10.0-windows/publish/win-x64/UAssetEditor.App.exe
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
@@ -40,8 +47,10 @@ jobs:
       - name: Extract changelog section
         id: changelog
         shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
+          $version = $env:REF_NAME -replace '^v', ''
           $lines = Get-Content CHANGELOG.md
           $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
           if (-not $start) {
@@ -54,8 +63,24 @@ jobs:
           $section = if ($endOffset) { $rest[0..($endOffset - 1)] } else { $rest }
           $section -join "`n" | Out-File -FilePath release-notes.md -Encoding utf8
 
+      # Published as a file next to the exe (sha256sum format, so `sha256sum -c` checks it) and
+      # in the notes, so a download can be checked without trusting the release page's tooling.
+      - name: Checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash $env:EXE -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  UAssetEditor.App.exe`n" | Out-File -FilePath UAssetEditor.App.exe.sha256 -Encoding ascii -NoNewline
+          "`n`nSHA-256 of ``UAssetEditor.App.exe``: ``$hash``" | Out-File -FilePath release-notes.md -Append -Encoding utf8
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.EXE }}
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           body_path: release-notes.md
-          files: src/UAssetEditor.App/bin/Release/net10.0-windows/publish/win-x64/UAssetEditor.App.exe
+          files: |
+            ${{ env.EXE }}
+            UAssetEditor.App.exe.sha256
