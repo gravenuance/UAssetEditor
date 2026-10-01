@@ -92,10 +92,8 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
 
         var tempPath = ExtractEntry(assetPath);
 
-        if (createBackup)
-            File.Copy(tempPath, BackupPathResolver.Resolve(tempPath, backupFolder), overwrite: true);
-
-        PackageWriter.Write(asset, tempPath);
+        if (createBackup) PackageWriter.WriteWithBackup(asset, tempPath, backupFolder);
+        else PackageWriter.Write(asset, tempPath);
     }
 
     /// <summary>Resolves an already-extracted temp path for <paramref name="internalPath"/>, if any - used by the repacker to tell edited entries apart from untouched ones.</summary>

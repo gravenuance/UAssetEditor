@@ -32,9 +32,7 @@ public sealed class SingleFileAssetSource : IAssetSource
     {
         ArgumentNullException.ThrowIfNull(asset);
 
-        if (createBackup)
-            File.Copy(_filePath, BackupPathResolver.Resolve(_filePath, backupFolder), overwrite: true);
-
-        PackageWriter.Write(asset, _filePath);
+        if (createBackup) PackageWriter.WriteWithBackup(asset, _filePath, backupFolder);
+        else PackageWriter.Write(asset, _filePath);
     }
 }

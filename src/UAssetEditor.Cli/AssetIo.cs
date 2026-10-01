@@ -111,16 +111,9 @@ internal static class AssetIo
 
     public static void Save(UAsset asset, string path, bool backup)
     {
-        if (backup)
-        {
-            File.Copy(path, path + ".bak", overwrite: true);
-            // The actual property data for anything beyond a tiny asset lives in the .uexp
-            // companion, which Write() below also rewrites - back it up too, or a restore from
-            // the .uasset.bak alone would pair stale property bytes with the post-edit .uexp.
-            var uexpPath = Path.ChangeExtension(path, ".uexp");
-            if (File.Exists(uexpPath)) File.Copy(uexpPath, uexpPath + ".bak", overwrite: true);
-        }
-        PackageWriter.Write(asset, path);
+        // Backs up the .uexp too: a restore from the .uasset.bak alone would pair stale property bytes with the edited .uexp.
+        if (backup) PackageWriter.WriteWithBackup(asset, path, backupFolder: null);
+        else PackageWriter.Write(asset, path);
     }
 
     /// <summary>

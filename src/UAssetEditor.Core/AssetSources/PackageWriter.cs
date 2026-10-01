@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Logging;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
+using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.Core.AssetSources;
 
@@ -53,7 +55,7 @@ public static class InlineDataResources
 }
 
 /// <summary>Writes a package to disk, keeping inline data resources pointed at their bytes.</summary>
-public static class PackageWriter
+public static partial class PackageWriter
 {
     public static void Write(UAsset asset, string path)
     {
@@ -65,6 +67,111 @@ public static class PackageWriter
             InlineDataResources.Shift(resources, before, Tails(asset));
         }
         asset.Write(path);
+    }
+
+    /// <summary>
+    /// Backs up the package (its .uasset and, when present, .uexp) before writing it. A write that fails without having
+    /// changed either file leaves no backup behind, and any backup already there stays as it was; one that fails after
+    /// changing a file keeps the backup, since it is then the only good copy.
+    /// </summary>
+    /// <param name="backupFolder">Where backups go; null puts each next to its file with a ".bak" suffix.</param>
+    public static void WriteWithBackup(UAsset asset, string path, string? backupFolder)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(path);
+        WithBackup(path, backupFolder, () => Write(asset, path));
+    }
+
+    /// <summary>The backup handling of <see cref="WriteWithBackup"/> around any <paramref name="write"/> of the package at <paramref name="path"/>.</summary>
+    internal static void WithBackup(string path, string? backupFolder, Action write)
+    {
+        // Staged under a temporary name so an existing backup is only replaced once there is reason to.
+        var staged = new List<(string Original, string Staged, string Backup)>();
+        try
+        {
+            foreach (var file in (string[])[path, Path.ChangeExtension(path, ".uexp")])
+            {
+                if (!File.Exists(file)) continue;
+                var backup = BackupPathResolver.Resolve(file, backupFolder);
+                File.Copy(file, backup + ".tmp", overwrite: true);
+                staged.Add((file, backup + ".tmp", backup));
+            }
+        }
+        catch
+        {
+            foreach (var (_, stagedPath, _) in staged) TryDelete(stagedPath);
+            throw;
+        }
+
+        var written = false;
+        try
+        {
+            write();
+            written = true;
+        }
+        finally
+        {
+            SettleBackups(staged, written);
+        }
+    }
+
+    /// <summary>Never throws, so the write's own outcome is what the caller sees. When in doubt the copy is kept as the backup.</summary>
+    private static void SettleBackups(List<(string Original, string Staged, string Backup)> staged, bool written)
+    {
+        bool untouched;
+        try
+        {
+            untouched = !written && staged.All(s => File.Exists(s.Original) && SameContents(s.Original, s.Staged));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            untouched = false;
+        }
+
+        foreach (var (_, stagedPath, backup) in staged)
+        {
+            try
+            {
+                if (untouched) File.Delete(stagedPath);
+                else File.Move(stagedPath, backup, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogBackupNotPlaced(AppLog.For<UAsset>(), backup, stagedPath, ex);
+            }
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogBackupNotPlaced(AppLog.For<UAsset>(), path, path, ex);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Backup {Backup} could not be put in place; the copy stays at {Staged}")]
+    private static partial void LogBackupNotPlaced(ILogger logger, string backup, string staged, Exception exception);
+
+    private static bool SameContents(string first, string second)
+    {
+        using var a = File.OpenRead(first);
+        using var b = File.OpenRead(second);
+        if (a.Length != b.Length) return false;
+
+        Span<byte> bufferA = stackalloc byte[8192];
+        Span<byte> bufferB = stackalloc byte[8192];
+        int read;
+        while ((read = a.Read(bufferA)) > 0)
+        {
+            b.ReadExactly(bufferB[..read]);
+            if (!bufferA[..read].SequenceEqual(bufferB[..read])) return false;
+        }
+        return true;
     }
 
     private static List<ExportTail> Tails(UAsset asset)

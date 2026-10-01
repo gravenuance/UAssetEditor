@@ -14,6 +14,7 @@ All notable changes to this project are documented here.
 
 ### Fixed
 - A batch edit (app, `batch`, `repack --ruleset`) silently skipped any asset that failed to open, edit or save, so a refused save looked like "no changes". A failed edit or save is now reported: `batch` prints a `FAILED` line and exits 1, `repack` stops before building the pak, and the app names the first failure in the status line and logs the rest. Assets that can't be opened are still skipped, but each is listed as `SKIPPED` (app: counted in the status line and logged).
+- A save refused before anything was written still left `.bak` copies behind, and replaced any earlier backup. Backups now stay only when the save went through or changed a file before failing. The app's own saves now back up the `.uexp` too, as `uacli` already did.
 - Menu items never showed whether they were checked, so "Back Up Before Saving" gave no sign of its state. Checked items now show a check mark.
 
 ## [1.6.0] - 2026-09-27
