@@ -1,6 +1,7 @@
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.AssetSources;
 
@@ -24,8 +25,8 @@ public sealed class SingleFileAssetSource : IAssetSource
 
     public IEnumerable<string> EnumerateAssetPaths() => [_fileName];
 
-    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings) =>
-        ResilientAssetLoader.Open(_filePath, engineVersion, mappings);
+    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings, Game game) =>
+        ResilientAssetLoader.Open(_filePath, engineVersion, mappings, game);
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)
     {

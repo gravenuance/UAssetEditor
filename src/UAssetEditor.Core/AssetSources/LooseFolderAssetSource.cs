@@ -1,6 +1,7 @@
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.AssetSources;
 
@@ -25,10 +26,10 @@ public sealed class LooseFolderAssetSource : IAssetSource
         Directory.EnumerateFiles(_rootPath, "*.uasset", SearchOption.AllDirectories)
             .Select(ToRelativePath);
 
-    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings)
+    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings, Game game)
     {
         ArgumentNullException.ThrowIfNull(assetPath);
-        return ResilientAssetLoader.Open(ToAbsolutePath(assetPath), engineVersion, mappings);
+        return ResilientAssetLoader.Open(ToAbsolutePath(assetPath), engineVersion, mappings, game);
     }
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)

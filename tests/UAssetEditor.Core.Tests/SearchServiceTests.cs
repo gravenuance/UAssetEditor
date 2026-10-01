@@ -223,7 +223,7 @@ public class SearchServiceTests
     {
         public IEnumerable<string> EnumerateAssetPaths() => new[] { badPath, goodPath };
 
-        public UAssetAPI.UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings) =>
+        public UAssetAPI.UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game) =>
             assetPath == badPath ? throw new InvalidOperationException("simulated parse failure") : goodAsset;
 
         public void SaveAsset(UAssetAPI.UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }

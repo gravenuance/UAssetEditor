@@ -128,7 +128,7 @@ public class AssetWorkspaceTests
 
         public IEnumerable<string> EnumerateAssetPaths() => assets.Keys;
 
-        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings)
+        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game)
         {
             OpenCount++;
             return assets[assetPath];
@@ -144,7 +144,7 @@ public class AssetWorkspaceTests
 
         public IEnumerable<string> EnumerateAssetPaths() => assets.Keys;
 
-        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings)
+        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game)
         {
             Interlocked.Increment(ref _openCount);
             Thread.Sleep(20); // widen the race window so concurrent GetOrOpen calls are likely to actually overlap
@@ -158,7 +158,7 @@ public class AssetWorkspaceTests
     {
         public IEnumerable<string> EnumerateAssetPaths() => new[] { "a.uasset" };
 
-        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings) =>
+        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game) =>
             engineVersion == newVersionMarker ? forNewVersion : forOldVersion;
 
         public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }

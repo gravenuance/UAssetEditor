@@ -39,7 +39,7 @@ public sealed class AssetWorkspace
 
     /// <summary>Opens (and caches) an asset the first time it's requested; later calls reuse the same in-memory instance.</summary>
     public UAsset GetOrOpen(string assetPath) =>
-        _openAssets.GetOrAdd(assetPath, path => new Lazy<UAsset>(() => _source.OpenAsset(path, _versions.Resolve(path), _versions.Mappings))).Value;
+        _openAssets.GetOrAdd(assetPath, path => new Lazy<UAsset>(() => _source.OpenAsset(path, _versions.Resolve(path), _versions.Mappings, _versions.Game))).Value;
 
     public void Close(string assetPath) => _openAssets.TryRemove(assetPath, out _);
 

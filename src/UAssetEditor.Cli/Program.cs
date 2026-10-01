@@ -76,7 +76,12 @@ static void PrintUsage()
     Console.WriteLine("""
         uacli - read/edit .uasset files directly through UAssetEditor.Core, no GUI.
 
-        Global options (any command that opens a file): --version <EngineVersion> (default VER_UE4_27), --usmap <path>.
+        Global options (any command that opens a file): --version <EngineVersion> (default VER_UE4_27), --usmap <path>,
+        --game <rivals|ff7r> (fills in that game's engine version and, for the pak commands, its AES key; --version and --aes
+        still win when given. ff7r also decodes the game's DataObject tables into editable properties: rows are top-level
+        structs named by their row tag, so a path reads "M_MAG_001_heal001_01.UniqueID" or "Row.Field_Array[2]". Such a
+        table can only be saved with edits that keep every cell the same size: numbers, booleans, names already in the
+        package, and text of the same length. Anything else is refused with the row and field named, and nothing is written).
         --export accepts either a 0-based index or a (sub)string match against the export's name.
         A property --path uses the same scheme the app's tree/search use: "Foo.Bar" for a struct field, "Tags[2]" for an array element.
 
@@ -167,7 +172,7 @@ static void PrintUsage()
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5
               Every ops line is checked before the asset is opened; an unknown op or option stops the run.
 
-          uacli script --plan <planfile> [--jobs <n>] [--save] [--backup] --version <v> --usmap <path>
+          uacli script --plan <planfile> [--jobs <n>] [--save] [--backup] --version <v> --usmap <path> [--game <g>]
               Many assets in one process: each plan line is "<asset><TAB><opsfile>". Assets run in parallel (--jobs, default
               one per CPU) and share one loaded usmap. Each asset's output prints as a block; exit 1 if any asset failed.
 

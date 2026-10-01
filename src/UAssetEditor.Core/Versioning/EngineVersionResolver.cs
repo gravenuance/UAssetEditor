@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO.Enumeration;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.Versioning;
 
@@ -19,6 +20,9 @@ public sealed record EngineVersionOverride(string PathPattern, EngineVersion Ver
 public sealed class EngineVersionResolver
 {
     public EngineVersion DefaultVersion { get; set; } = EngineVersion.VER_UE4_27;
+
+    /// <summary>The game the assets belong to, handed to every open so its own post-open step runs. The version and AES key it implies are applied by whoever builds this resolver.</summary>
+    public Game Game { get; set; } = Game.None;
 
     /// <summary>Mappings file for games using unversioned properties. Optional.</summary>
     public Usmap? Mappings { get; set; }

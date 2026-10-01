@@ -5,6 +5,7 @@ using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetEditor.Core.AssetSources;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Cli;
 
@@ -26,11 +27,26 @@ internal static class AssetIo
         Converters = { new JsonStringEnumConverter() },
     };
 
+    /// <summary>The game named by --game, or <see cref="Game.None"/> when it isn't given.</summary>
+    public static Game ResolveGame(ArgReader args) => ResolveProfile(args)?.Game ?? Game.None;
+
+    private static GameProfile? ResolveProfile(ArgReader args)
+    {
+        var name = args.Option("game");
+        if (name == null)
+            return args.Flag("game") ? throw new ArgException($"--game needs a value (one of: {GameProfile.ValidNames}).") : null;
+        return GameProfile.FindByCliName(name)
+            ?? throw new ArgException($"Unknown --game '{name}' (expects one of: {GameProfile.ValidNames}).");
+    }
+
+    /// <summary>--version if given, else the --game profile's engine version, else VER_UE4_27.</summary>
     public static EngineVersion ResolveVersion(ArgReader args)
     {
-        var text = args.Option("version") ?? "VER_UE4_27";
+        var profile = ResolveProfile(args);
+        var text = args.Option("version");
+        if (text == null) return GameProfile.ResolveEngineVersion(profile, null);
         return Enum.TryParse<EngineVersion>(text, ignoreCase: true, out var version)
-            ? version
+            ? GameProfile.ResolveEngineVersion(profile, version)
             : throw new ArgException($"Unknown --version '{text}' (expects a UAssetAPI.EngineVersion name, e.g. VER_UE4_27).");
     }
 
@@ -45,7 +61,8 @@ internal static class AssetIo
         return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value.CreateAssetScope();
     }
 
-    public static byte[]? ResolveAesKey(ArgReader args) => PakAesKey.Parse(args.Option("aes") ?? "");
+    /// <summary>--aes if given, else the --game profile's key, else none.</summary>
+    public static byte[]? ResolveAesKey(ArgReader args) => PakAesKey.Parse(GameProfile.ResolveAesKeyHex(ResolveProfile(args), args.Option("aes")));
 
     public static PakVersion ResolvePakVersion(ArgReader args)
     {
@@ -70,9 +87,13 @@ internal static class AssetIo
         var version = ResolveVersion(args);
         var mappings = ResolveMappings(args);
 
-        if (args.Flag("strict")) return ResilientAssetLoader.OpenStrict(path, version, mappings);
+        var game = ResolveGame(args);
 
-        var asset = ResilientAssetLoader.Open(path, version, mappings, out var diagnostics);
+        if (args.Flag("strict")) return ResilientAssetLoader.OpenStrict(path, version, mappings, game);
+
+        var asset = ResilientAssetLoader.Open(path, version, mappings, game, out var diagnostics);
+        foreach (var warning in diagnostics.Warnings)
+            Console.Error.WriteLine($"WARNING: {Path.GetFileName(path)}: {warning}");
         if (diagnostics.ExportsSkipped)
         {
             // Without this the asset looks like it opened fine and simply has no properties,

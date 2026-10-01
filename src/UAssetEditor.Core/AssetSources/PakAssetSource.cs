@@ -1,6 +1,7 @@
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.Core.Games;
 using UAssetEditor.Core.AssetSources.PakWorker;
 
 namespace UAssetEditor.Core.AssetSources;
@@ -78,10 +79,10 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
 
     public IEnumerable<string> EnumerateAssetPaths() => _uassetEntries;
 
-    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings)
+    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings, Game game)
     {
         ArgumentNullException.ThrowIfNull(assetPath);
-        return ResilientAssetLoader.Open(ExtractEntry(assetPath), engineVersion, mappings);
+        return ResilientAssetLoader.Open(ExtractEntry(assetPath), engineVersion, mappings, game);
     }
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder)

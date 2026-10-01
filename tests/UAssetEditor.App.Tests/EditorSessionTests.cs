@@ -1,5 +1,6 @@
 using System.Text.Json;
 using UAssetEditor.App.ViewModels;
+using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Search;
 
 namespace UAssetEditor.App.Tests;
@@ -109,6 +110,41 @@ public class EditorSessionTests
 
         Assert.NotNull(session);
         Assert.Empty(session.TreeSelectNameTerms);
+    }
+
+    [Fact]
+    public void Deserialize_JsonSavedBeforeGamesExisted_DefaultsToNone()
+    {
+        const string legacyJson = """
+            {
+              "SourcePath": "D:\\Old\\Source",
+              "RecentSources": [
+                { "SourcePath": "D:\\Old\\Content.pak", "EngineVersion": 41, "AesKeyHex": "", "UsmapPath": null }
+              ]
+            }
+            """;
+
+        var session = JsonSerializer.Deserialize<EditorSession>(legacyJson, JsonOptions);
+
+        Assert.NotNull(session);
+        Assert.Equal(Game.None, session.Game);
+        Assert.Equal(Game.None, Assert.Single(session.RecentSources).Game);
+    }
+
+    [Fact]
+    public void Serialize_ThenDeserialize_RoundTripsTheGameOnTheSessionAndItsRecentEntries()
+    {
+        var session = new EditorSession
+        {
+            Game = Game.FinalFantasy7Remake,
+            RecentSources = { new RecentSourceEntry(@"D:\Games\Content.pak", UAssetAPI.UnrealTypes.EngineVersion.VER_UE4_18, "", null, Game.MarvelRivals) },
+        };
+
+        var roundTripped = JsonSerializer.Deserialize<EditorSession>(JsonSerializer.Serialize(session, JsonOptions), JsonOptions);
+
+        Assert.NotNull(roundTripped);
+        Assert.Equal(Game.FinalFantasy7Remake, roundTripped.Game);
+        Assert.Equal(Game.MarvelRivals, Assert.Single(roundTripped.RecentSources).Game);
     }
 
     [Fact]

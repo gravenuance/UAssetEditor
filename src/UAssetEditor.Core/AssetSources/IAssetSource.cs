@@ -1,4 +1,5 @@
 using UAssetAPI;
+using UAssetEditor.Core.Games;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 
@@ -15,7 +16,8 @@ public interface IAssetSource
     /// <summary>Enumerates the full paths of every .uasset file this source exposes.</summary>
     IEnumerable<string> EnumerateAssetPaths();
 
-    UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings);
+    /// <param name="game">The game the package belongs to; its own post-open step (if any) runs on the result.</param>
+    UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings, Game game);
 
     void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder);
 }

@@ -15,6 +15,7 @@ using UAssetEditor.App.Views;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Logging;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
@@ -47,6 +48,25 @@ public sealed record RuleListItem(string Description, EditRule Rule);
 public sealed record RuleKindOption(RuleKind Value, string Label, string Description);
 
 public sealed record EngineVersionOption(EngineVersion Value, string Label);
+
+/// <summary>One entry of the Tools → Game menu; exactly one is selected at a time.</summary>
+public sealed partial class GameOption : ObservableObject
+{
+    public GameOption(Game value, string label, Action<Game> select)
+    {
+        Value = value;
+        Label = label;
+        SelectCommand = new RelayCommand(() => select(value));
+    }
+
+    public Game Value { get; }
+
+    public string Label { get; }
+
+    public IRelayCommand SelectCommand { get; }
+
+    [ObservableProperty] private bool _isSelected;
+}
 
 /// <summary>What a tree-driven "open"/"load" populated the results grid with - a whole export (PropertyPath null) or just one table's own subtree, so a later refresh (UE version/usmap/AES change) can replay exactly that, not more.</summary>
 public sealed record OpenedScope(string AssetPath, int ExportIndex, string? PropertyPath);
@@ -125,6 +145,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>A folder, a .pak archive, a single loose .uasset, or a .utoc IoStore container - auto-detected when <see cref="LoadSourceCommand"/> runs.</summary>
     [ObservableProperty] private string _sourcePath = "";
     [ObservableProperty] private EngineVersion _defaultEngineVersion = EngineVersion.VER_UE4_27;
+
+    /// <summary>The game the source belongs to; picking one fills in <see cref="DefaultEngineVersion"/> and <see cref="PakAesKeyHex"/> (both stay editable) and lets the game's own data decode on open.</summary>
+    [ObservableProperty] private Game _game = Game.None;
     [ObservableProperty] private string? _usmapPath;
 
     [ObservableProperty] private string _pakAesKeyHex = "";
@@ -273,6 +296,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public IReadOnlyList<EngineVersionOption> EngineVersionOptions { get; } = BuildEngineVersionOptions();
 
+    public IReadOnlyList<GameOption> GameOptions { get; }
+
     public IReadOnlyList<RuleKindOption> RuleKindOptions { get; } =
     [
         new(RuleKind.SetValue, "Set Value", "Replace the property's value outright with a fixed new value."),
@@ -294,6 +319,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     public MainViewModel()
     {
+        // Built before the config loads, since loading it selects a game.
+        GameOptions = [new GameOption(Game.None, "None", game => Game = game), .. GameProfile.All.Select(p => new GameOption(p.Game, p.DisplayName, game => Game = game))];
+        SyncGameOptions(Game);
+
         _reloadDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
         _reloadDebounceTimer.Tick += ReloadDebounceTimer_Tick;
 
@@ -330,6 +359,38 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnDefaultEngineVersionChanged(EngineVersion value)
     {
         if (!_suppressReloadOnSettingsChange) _ = ReloadContextAsync(aesKeyChanged: false);
+    }
+
+    private void SyncGameOptions(Game selected)
+    {
+        foreach (var option in GameOptions)
+            option.IsSelected = option.Value == selected;
+    }
+
+    partial void OnGameChanged(Game value)
+    {
+        SyncGameOptions(value);
+        if (_suppressReloadOnSettingsChange) return;
+
+        // Choosing a game fills in its engine version and key; the two fields stay editable afterwards. "None" leaves them as they are.
+        var profile = GameProfile.For(value);
+        var keyChanged = false;
+        if (profile != null)
+        {
+            keyChanged = !string.Equals(PakAesKeyHex, profile.AesKeyHex, StringComparison.Ordinal);
+            _suppressReloadOnSettingsChange = true;
+            try
+            {
+                DefaultEngineVersion = profile.EngineVersion;
+                PakAesKeyHex = profile.AesKeyHex;
+            }
+            finally
+            {
+                _suppressReloadOnSettingsChange = false;
+            }
+        }
+
+        ScheduleDebouncedReload(aesKeyChanged: keyChanged);
     }
 
     partial void OnUsmapPathChanged(string? value)
@@ -1571,6 +1632,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             SourcePath = entry.SourcePath;
+            Game = entry.Game;
             DefaultEngineVersion = entry.EngineVersion;
             PakAesKeyHex = entry.AesKeyHex;
             UsmapPath = entry.UsmapPath;
@@ -1590,7 +1652,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         if (existing != null)
             RecentSources.Remove(existing);
 
-        RecentSources.Insert(0, new RecentSourceEntry(path, DefaultEngineVersion, PakAesKeyHex, UsmapPath));
+        RecentSources.Insert(0, new RecentSourceEntry(path, DefaultEngineVersion, PakAesKeyHex, UsmapPath, Game));
         while (RecentSources.Count > 8)
             RecentSources.RemoveAt(RecentSources.Count - 1);
         OnPropertyChanged(nameof(RecentSourceLabel));
@@ -2095,7 +2157,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private EngineVersionResolver BuildVersionResolver()
     {
-        var resolver = new EngineVersionResolver { DefaultVersion = DefaultEngineVersion };
+        var resolver = new EngineVersionResolver { DefaultVersion = DefaultEngineVersion, Game = Game };
         if (!string.IsNullOrWhiteSpace(UsmapPath) && File.Exists(UsmapPath))
             resolver.Mappings = new Usmap(UsmapPath);
         return resolver;
@@ -2125,6 +2187,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         SchemaVersion = EditorSession.CurrentSchemaVersion,
         SourcePath = SourcePath,
         DefaultEngineVersion = DefaultEngineVersion,
+        Game = Game,
         UsmapPath = UsmapPath,
         AesKeyHex = PakAesKeyHex,
         CreateBackup = CreateBackup,
@@ -2135,9 +2198,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         TreeSelectNameTerms = new Collection<ConditionTerm>(TreeSelectNameTerms.Select(t => t.ToCore()).ToList()),
     };
 
+    /// <summary>Restores a saved game without <see cref="OnGameChanged"/> overwriting the version and key saved beside it.</summary>
+    private void SetGameWithoutReload(Game game)
+    {
+        var previous = _suppressReloadOnSettingsChange;
+        _suppressReloadOnSettingsChange = true;
+        try
+        {
+            Game = game;
+        }
+        finally
+        {
+            _suppressReloadOnSettingsChange = previous;
+        }
+    }
+
     private void ApplySession(EditorSession session)
     {
         SourcePath = session.SourcePath;
+        SetGameWithoutReload(session.Game);
         DefaultEngineVersion = session.DefaultEngineVersion;
         UsmapPath = session.UsmapPath;
         PakAesKeyHex = session.AesKeyHex;

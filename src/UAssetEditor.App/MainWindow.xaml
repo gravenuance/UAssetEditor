@@ -110,6 +110,17 @@
                             <MenuItem Header="Repack Loaded .pak..." Command="{Binding RepackCommand}" />
                             <MenuItem Header="Repack to IoStore (.utoc)..." Command="{Binding RepackToIoStoreCommand}" />
                             <MenuItem Header="Convert IoStore to Legacy..." Command="{Binding ConvertIoStoreToLegacyCommand}" />
+                            <Separator />
+                            <MenuItem Header="Game" ItemsSource="{Binding GameOptions}" AutomationProperties.Name="Game"
+                                      ToolTip="Fills in the game's engine version and AES key">
+                                <MenuItem.ItemContainerStyle>
+                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                        <Setter Property="Header" Value="{Binding Label}" />
+                                        <Setter Property="Command" Value="{Binding SelectCommand}" />
+                                        <Setter Property="IsChecked" Value="{Binding IsSelected, Mode=OneWay}" />
+                                    </Style>
+                                </MenuItem.ItemContainerStyle>
+                            </MenuItem>
                         </ContextMenu>
                     </Button.ContextMenu>
                 </Button>

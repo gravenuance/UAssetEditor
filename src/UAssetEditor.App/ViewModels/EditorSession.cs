@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Search;
 
 namespace UAssetEditor.App.ViewModels;
@@ -17,6 +18,9 @@ public sealed class EditorSession
     public string SourcePath { get; init; } = "";
     public EngineVersion DefaultEngineVersion { get; init; } = EngineVersion.VER_UE4_27;
     public string? UsmapPath { get; init; }
+
+    /// <summary>The selected game; absent in a file saved before games existed, which reads back as <see cref="Game.None"/>.</summary>
+    public Game Game { get; init; } = Game.None;
 
     /// <summary>The AES key field's last value, independent of <see cref="RecentSources"/> - restored even when the next source opened isn't one already in Recent (e.g. a brand-new path), not just when reopening one that is.</summary>
     public string AesKeyHex { get; init; } = "";
@@ -38,7 +42,7 @@ public sealed class EditorSession
 /// per-pak settings that would otherwise have to be re-typed by hand every time, defeating
 /// the point of "recent."
 /// </summary>
-public sealed record RecentSourceEntry(string SourcePath, EngineVersion EngineVersion, string AesKeyHex, string? UsmapPath)
+public sealed record RecentSourceEntry(string SourcePath, EngineVersion EngineVersion, string AesKeyHex, string? UsmapPath, Game Game = Game.None)
 {
     public string DisplayName => System.IO.Path.GetFileName(SourcePath);
 }

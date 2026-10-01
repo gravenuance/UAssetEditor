@@ -98,6 +98,7 @@ internal static class ScriptRunner
     private static int RunPlan(ArgReader args, string planPath)
     {
         if (!File.Exists(planPath)) throw new ArgException($"Plan file not found: {planPath}");
+        _ = AssetIo.ResolveVersion(args); // a bad --game or --version should stop the run here, not fail every asset the same way
 
         var parsedOps = new Dictionary<string, IReadOnlyList<ScriptOp>>(StringComparer.OrdinalIgnoreCase);
         var jobs = new List<(string Asset, IReadOnlyList<ScriptOp> Ops)>();

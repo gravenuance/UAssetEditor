@@ -33,7 +33,7 @@ public static class EditExecutor
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(versions);
 
-        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
     }
 
     public static Task<IReadOnlyList<AssetChangeSet>> ApplyAsync(
@@ -49,7 +49,7 @@ public static class EditExecutor
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(versions);
 
-        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
+        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
     }
 
     /// <summary>

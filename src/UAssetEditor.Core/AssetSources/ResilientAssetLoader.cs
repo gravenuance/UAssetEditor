@@ -1,6 +1,7 @@
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.AssetSources;
 
@@ -10,9 +11,10 @@ namespace UAssetEditor.Core.AssetSources;
 /// they just carry no properties, so a caller that doesn't check this reports "no properties"
 /// for what is actually a parse failure.
 /// </summary>
-public sealed record AssetOpenDiagnostics(bool ExportsSkipped, Exception? FullParseFailure)
+/// <param name="Warnings">What the game's post-open step left alone, e.g. a data table that did not decode; empty when nothing needs attention.</param>
+public sealed record AssetOpenDiagnostics(bool ExportsSkipped, Exception? FullParseFailure, IReadOnlyList<string> Warnings)
 {
-    public static readonly AssetOpenDiagnostics Complete = new(false, null);
+    public static readonly AssetOpenDiagnostics Complete = new(false, null, []);
 }
 
 /// <summary>
@@ -27,31 +29,40 @@ public sealed record AssetOpenDiagnostics(bool ExportsSkipped, Exception? FullPa
 /// </summary>
 public static class ResilientAssetLoader
 {
-    public static UAsset Open(string path, EngineVersion engineVersion, Usmap? mappings)
-        => Open(path, engineVersion, mappings, out _);
+    public static UAsset Open(string path, EngineVersion engineVersion, Usmap? mappings, Game game)
+        => Open(path, engineVersion, mappings, game, out _);
 
     /// <param name="diagnostics">
     /// Reports whether the structured parse succeeded. When <see cref="AssetOpenDiagnostics.ExportsSkipped"/>
     /// is true the returned asset has no property data at all, and
     /// <see cref="AssetOpenDiagnostics.FullParseFailure"/> carries the exception that caused it.
     /// </param>
-    public static UAsset Open(string path, EngineVersion engineVersion, Usmap? mappings, out AssetOpenDiagnostics diagnostics)
+    public static UAsset Open(string path, EngineVersion engineVersion, Usmap? mappings, Game game, out AssetOpenDiagnostics diagnostics)
     {
+        UAsset asset;
+        Exception? failure = null;
         try
         {
-            var asset = new UAsset(path, engineVersion, mappings);
-            diagnostics = AssetOpenDiagnostics.Complete;
-            return asset;
+            asset = new UAsset(path, engineVersion, mappings);
         }
         catch (Exception ex)
         {
-            var asset = new UAsset(path, engineVersion, mappings, CustomSerializationFlags.SkipParsingExports);
-            diagnostics = new AssetOpenDiagnostics(true, ex);
-            return asset;
+            asset = new UAsset(path, engineVersion, mappings, CustomSerializationFlags.SkipParsingExports);
+            failure = ex;
         }
+
+        var warnings = PostOpen(asset, game);
+        diagnostics = failure is null ? new AssetOpenDiagnostics(false, null, warnings) : new AssetOpenDiagnostics(true, failure, warnings);
+        return asset;
     }
 
     /// <summary>Opens without the fallback, so a parse failure surfaces as its real exception - the only way to see <em>why</em> an asset degrades.</summary>
-    public static UAsset OpenStrict(string path, EngineVersion engineVersion, Usmap? mappings)
-        => new(path, engineVersion, mappings);
+    public static UAsset OpenStrict(string path, EngineVersion engineVersion, Usmap? mappings, Game game)
+    {
+        var asset = new UAsset(path, engineVersion, mappings);
+        PostOpen(asset, game);
+        return asset;
+    }
+
+    private static IReadOnlyList<string> PostOpen(UAsset asset, Game game) => GameProfile.For(game)?.PostOpen(asset) ?? [];
 }

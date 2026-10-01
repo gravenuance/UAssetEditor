@@ -69,7 +69,7 @@ public class EditExecutorTests
             Rules = { new SetPropertyValueRule { NewValue = "42" } },
         };
 
-        var changeSets = await EditExecutor.StageAsync(source, path => source.OpenAsset(path, EngineVersion.UNKNOWN, null), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+        var changeSets = await EditExecutor.StageAsync(source, path => source.OpenAsset(path, EngineVersion.UNKNOWN, null, UAssetEditor.Core.Games.Game.None), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, source.SaveCount);
         var change = Assert.Single(Assert.Single(changeSets).Changes);

@@ -148,7 +148,7 @@ public static class SearchService
         {
             try
             {
-                var asset = source.OpenAsset(path, versions.Resolve(path), versions.Mappings);
+                var asset = source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game);
                 foreach (var result in SearchAsset(asset, path, query))
                     results.Add(result);
             }

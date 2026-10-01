@@ -16,7 +16,7 @@ internal sealed class InMemoryAssetSource : IAssetSource
 
     public IEnumerable<string> EnumerateAssetPaths() => _assets.Keys;
 
-    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings) => _assets[assetPath];
+    public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings, UAssetEditor.Core.Games.Game game) => _assets[assetPath];
 
     public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder) => SaveCount++;
 }

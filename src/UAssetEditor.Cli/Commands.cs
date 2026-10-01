@@ -5,6 +5,7 @@ using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.Games;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
 using UAssetEditor.Core.Versioning;
@@ -130,7 +131,7 @@ internal static class Commands
         if (Directory.Exists(path))
         {
             var source = new LooseFolderAssetSource(path);
-            var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args) };
+            var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
             results = SearchService.SearchAllAsync(source, versions, query).GetAwaiter().GetResult();
         }
         else
@@ -246,7 +247,7 @@ internal static class Commands
         var schema = AssetIo.ResolveMappings(args) ?? throw new ArgException("--usmap is required: it is the game's schema to write for.");
         if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
         // Read without the schema: the package is tagged, and the schema describes the game, not the editor that cooked it.
-        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null);
+        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null, Game.None);
 
         IReadOnlyList<string> dropped;
         try
@@ -271,7 +272,7 @@ internal static class Commands
         var path = args.Positional(0, "file");
         var output = args.Option("out") ?? path;
         if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
-        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null);
+        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null, Game.None);
         try
         {
             VersionStripper.Strip(asset);
@@ -481,7 +482,7 @@ internal static class Commands
         var ruleSet = JsonSerializer.Deserialize<RuleSet>(File.ReadAllText(rulesetPath), AssetIo.RuleSetJsonOptions)
             ?? throw new ArgException($"'{rulesetPath}' did not contain a valid rule set.");
 
-        var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args) };
+        var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
         IAssetSource source = Directory.Exists(path) ? new LooseFolderAssetSource(path) : new SingleFileAssetSource(path);
 
         var apply = args.Flag("apply");
