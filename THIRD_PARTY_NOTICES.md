@@ -5,8 +5,8 @@ This project embeds prebuilt third-party binaries in its single-file publish out
 ## retoc
 
 - **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc
-- **Vendored version**: built locally from branch `feat/game-variant-marvel-rivals`, based on
-  `8c47bd5`. It adds `--game rivals` (output byte-identical to retoc-rivals' `pack`, ported from
+- **Vendored version**: built from commit `295baed` on branch `feat/game-variant-marvel-rivals`
+  (`cargo build --release`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
   natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
   plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
