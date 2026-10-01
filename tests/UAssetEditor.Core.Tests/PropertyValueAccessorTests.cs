@@ -163,6 +163,48 @@ public class PropertyValueAccessorTests
     }
 
     [Fact]
+    public void TrySetStringValue_KeepsANameThatIsInTheMapVerbatim()
+    {
+        var asset = TestAssets.CreateAsset();
+        asset.AddNameReference(new FString("Socket"));
+        asset.AddNameReference(new FString("Socket_1"));
+        var prop = new NamePropertyData(new FName(asset, "Value")) { Value = new FName(asset, "Socket") };
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, "Socket_1", asset));
+
+        Assert.Equal("Socket_1", prop.Value.Value.Value);
+        Assert.Equal(0, prop.Value.Number);
+    }
+
+    [Theory]
+    [InlineData("Socket_01")] // a leading zero is part of the string in Unreal, not a number
+    [InlineData("Missing_3")] // base not in the map: keep today's behaviour
+    public void TrySetStringValue_DoesNotSplitWhatUnrealWouldNot(string text)
+    {
+        var asset = TestAssets.CreateAsset();
+        asset.AddNameReference(new FString("Socket"));
+        var prop = new NamePropertyData(new FName(asset, "Value")) { Value = new FName(asset, "Socket") };
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, text, asset));
+
+        Assert.Equal(text, prop.Value.Value.Value);
+        Assert.Equal(0, prop.Value.Number);
+    }
+
+    [Fact]
+    public void EnumValue_DisplaysWithItsNumberSuffix()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new EnumPropertyData(new FName(asset, "Mode"))
+        {
+            EnumType = new FName(asset, "EMode"),
+            Value = new FName(asset, "Slot", 3),
+        };
+
+        Assert.Equal("Slot_2", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
     public void TrySetStringValue_SetsObjectPropertyDataToMatchingImport()
     {
         var asset = TestAssets.CreateAsset();

@@ -169,6 +169,28 @@ public class Ff7rDataObjectTests
         Assert.Equal(Convert.ToHexString(Hex(expected)), Convert.ToHexString(Write(asset)));
     }
 
+    // Real tables reference ids such as E_ARM_4001 as base "E_ARM" + number; showing the bare base
+    // made every numbered id look the same (seen on BattleItemPossession drop names).
+    [Fact]
+    public void NumberedNameValue_DisplaysWithItsSuffix()
+    {
+        var (asset, _, _) = Decode();
+
+        Assert.Equal("Extra_2", PropertyValueAccessor.AsSearchableString(Cell(asset, "RowA.F_Name"), asset));
+        Assert.Equal("Extra", PropertyValueAccessor.AsSearchableString(Cell(asset, "RowB_1.F_Name"), asset));
+    }
+
+    [Fact]
+    public void SettingANumberedName_StoresBaseAndNumber()
+    {
+        var (asset, _, _) = Decode();
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(Cell(asset, "RowA.F_Name"), "RowB_4", asset));
+
+        var expected = TableHex.Replace("0C 00 00 00 03 00 00 00 ", "01 00 00 00 05 00 00 00 ", StringComparison.Ordinal);
+        Assert.Equal(Convert.ToHexString(Hex(expected)), Convert.ToHexString(Write(asset)));
+    }
+
     [Fact]
     public void Write_RejectsAStringLengthChange_NamingRowAndField()
     {

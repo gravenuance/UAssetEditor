@@ -32,13 +32,13 @@ public static class PropertyValueAccessor
             FloatPropertyData f => f.Value.ToString(CultureInfo.InvariantCulture),
             DoublePropertyData d => d.Value.ToString(CultureInfo.InvariantCulture),
             StrPropertyData s => s.Value?.Value,
-            NamePropertyData n => n.Value?.Value?.Value,
+            NamePropertyData n => n.Value?.Value is null ? null : FNameDisplay.ToDisplayString(n.Value),
             TextPropertyData t => t.Value?.Value ?? t.CultureInvariantString?.Value,
             ObjectPropertyData o => DescribeObjectReference(o.Value, asset),
             SoftObjectPropertyData so => DescribeSoftObjectPath(so.Value),
             SoftObjectPathPropertyData sop => sop.Path?.Value,
-            EnumPropertyData e => e.Value?.Value?.Value,
-            BytePropertyData bp => bp.ByteType == BytePropertyType.FName ? bp.EnumValue?.Value?.Value : bp.Value.ToString(CultureInfo.InvariantCulture),
+            EnumPropertyData e => e.Value?.Value is null ? null : FNameDisplay.ToDisplayString(e.Value),
+            BytePropertyData bp => bp.ByteType == BytePropertyType.FName ? (bp.EnumValue?.Value is null ? null : FNameDisplay.ToDisplayString(bp.EnumValue)) : bp.Value.ToString(CultureInfo.InvariantCulture),
             IntPointPropertyData ip when ip.Value is { Length: 2 } v => $"{v[0]},{v[1]}",
             VectorPropertyData v => Components(v.Value.X, v.Value.Y, v.Value.Z),
             RotatorPropertyData r => Components(r.Value.Pitch, r.Value.Yaw, r.Value.Roll),
@@ -91,16 +91,16 @@ public static class PropertyValueAccessor
                 s.Value = new FString(newValue);
                 return true;
             case NamePropertyData n:
-                n.Value = new FName(asset, newValue);
+                n.Value = FNameDisplay.Parse(asset, newValue);
                 return true;
             case TextPropertyData t:
                 t.Value = new FString(newValue);
                 return true;
             case EnumPropertyData e:
-                e.Value = new FName(asset, newValue);
+                e.Value = FNameDisplay.Parse(asset, newValue);
                 return true;
             case BytePropertyData bp when bp.ByteType == BytePropertyType.FName:
-                bp.EnumValue = new FName(asset, newValue);
+                bp.EnumValue = FNameDisplay.Parse(asset, newValue);
                 return true;
             case BytePropertyData bp when byte.TryParse(newValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var byv):
                 bp.Value = byv;

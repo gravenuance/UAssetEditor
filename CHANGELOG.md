@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Name, enum and byte-enum values dropped their number: `E_ARM_3003` (stored as `E_ARM` + number) showed as `E_ARM` in `dump`, `search` and the app, so different ids looked identical. They now show with their suffix, and typing `E_ARM_3003` stores `E_ARM` + number when `E_ARM` is in the name table and `E_ARM_3003` itself is not. That also makes such names editable in FF7R tables, which only accept names already in the table.
+
 ## [1.7.0] - 2026-10-01
 
 ### Added
