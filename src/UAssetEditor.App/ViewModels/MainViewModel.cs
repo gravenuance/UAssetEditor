@@ -779,12 +779,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             // Extraction (for a pak entry not yet touched) and parsing both do real disk
             // I/O - off the UI thread so a large/lazy pak entry doesn't freeze the window.
-            var results = await Task.Run(() =>
+            var (results, warnings) = await Task.Run(() =>
             {
                 var asset = workspace.GetOrOpen(fullPath);
-                return propertyPath == null
+                var properties = propertyPath == null
                     ? SearchService.PropertiesForExport(asset, fullPath, exportIndex).ToList()
                     : SearchService.PropertiesUnder(asset, fullPath, exportIndex, propertyPath).ToList();
+                return (properties, ResilientAssetLoader.WarningsFor(asset));
             });
 
             SearchResults.Clear();
@@ -792,7 +793,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
             _lastOpenedExports = [new OpenedScope(fullPath, exportIndex, propertyPath)];
             _lastSearchQuery = null;
-            StatusMessage = $"Opened {fullPath} [{item.Name}] ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")}).";
+            var opened = $"Opened {fullPath} [{item.Name}] ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")}).";
+            StatusMessage = warnings.Count switch
+            {
+                0 => opened,
+                1 => $"{opened} Warning: {warnings[0]}",
+                _ => $"{opened} {warnings.Count} warnings, first: {warnings[0]} (all in the log)",
+            };
         }
         catch (Exception ex)
         {

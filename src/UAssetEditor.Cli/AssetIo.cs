@@ -89,11 +89,15 @@ internal static class AssetIo
 
         var game = ResolveGame(args);
 
-        if (args.Flag("strict")) return ResilientAssetLoader.OpenStrict(path, version, mappings, game);
+        if (args.Flag("strict"))
+        {
+            var strictAsset = ResilientAssetLoader.OpenStrict(path, version, mappings, game);
+            PrintOpenWarnings(path, ResilientAssetLoader.WarningsFor(strictAsset));
+            return strictAsset;
+        }
 
         var asset = ResilientAssetLoader.Open(path, version, mappings, game, out var diagnostics);
-        foreach (var warning in diagnostics.Warnings)
-            Console.Error.WriteLine($"WARNING: {Path.GetFileName(path)}: {warning}");
+        PrintOpenWarnings(path, diagnostics.Warnings);
         if (diagnostics.ExportsSkipped)
         {
             // Without this the asset looks like it opened fine and simply has no properties,
@@ -107,6 +111,13 @@ internal static class AssetIo
                 "wrong --usmap/--version is the usual reason).");
         }
         return asset;
+    }
+
+    // Warnings go to stderr so they never pollute piped output.
+    private static void PrintOpenWarnings(string path, IReadOnlyList<string> warnings)
+    {
+        foreach (var warning in warnings)
+            Console.Error.WriteLine($"WARNING: {Path.GetFileName(path)}: {warning}");
     }
 
     public static void Save(UAsset asset, string path, bool backup)

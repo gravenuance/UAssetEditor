@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
@@ -29,6 +30,16 @@ public sealed record AssetOpenDiagnostics(bool ExportsSkipped, Exception? FullPa
 /// </summary>
 public static class ResilientAssetLoader
 {
+    // Asset sources return only the UAsset, so the open warnings travel with the instance instead.
+    private static readonly ConditionalWeakTable<UAsset, IReadOnlyList<string>> OpenWarnings = new();
+
+    /// <summary>What the game's post-open step left alone when <paramref name="asset"/> was opened here; empty when nothing needs attention.</summary>
+    public static IReadOnlyList<string> WarningsFor(UAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        return OpenWarnings.TryGetValue(asset, out var warnings) ? warnings : [];
+    }
+
     public static UAsset Open(string path, EngineVersion engineVersion, Usmap? mappings, Game game)
         => Open(path, engineVersion, mappings, game, out _);
 
@@ -64,5 +75,10 @@ public static class ResilientAssetLoader
         return asset;
     }
 
-    private static IReadOnlyList<string> PostOpen(UAsset asset, Game game) => GameProfile.For(game)?.PostOpen(asset) ?? [];
+    internal static IReadOnlyList<string> PostOpen(UAsset asset, Game game)
+    {
+        var warnings = GameProfile.For(game)?.PostOpen(asset) ?? [];
+        if (warnings.Count > 0) OpenWarnings.AddOrUpdate(asset, warnings);
+        return warnings;
+    }
 }

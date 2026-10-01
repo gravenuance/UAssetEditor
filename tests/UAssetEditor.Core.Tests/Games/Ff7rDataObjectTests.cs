@@ -1,3 +1,4 @@
+using UAssetEditor.Core.AssetSources;
 using System.Text;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
@@ -252,6 +253,20 @@ public class Ff7rDataObjectTests
         var warning = Assert.Single(GameProfile.For(Game.FinalFantasy7Remake)!.PostOpen(asset));
 
         Assert.Contains("rows of at least", warning, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LoaderWarnings_StayWithTheOpenedAsset()
+    {
+        var (undecodable, _) = CreateTable(TableHex.Replace("01 00 00 00 07 ", "05 00 00 00 07 ", StringComparison.Ordinal));
+        var (clean, _) = CreateTable();
+
+        ResilientAssetLoader.PostOpen(undecodable, Game.FinalFantasy7Remake);
+        ResilientAssetLoader.PostOpen(clean, Game.FinalFantasy7Remake);
+
+        var warning = Assert.Single(ResilientAssetLoader.WarningsFor(undecodable));
+        Assert.Contains("was left undecoded", warning, StringComparison.Ordinal);
+        Assert.Empty(ResilientAssetLoader.WarningsFor(clean));
     }
 
     [Fact]
