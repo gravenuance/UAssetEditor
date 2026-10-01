@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-01
+
 ### Added
 - `--game <rivals|ff7r>` (CLI) and **Tools → Game** (app) fill in a game's engine version and AES key: `--version` and `--aes` still win, and the profile wins over the built-in VER_UE4_27. The choice is saved with the session and with each recent source (files saved before it read back as no game). Marvel Rivals and Final Fantasy VII Remake are known; new games are one more `GameProfile` entry.
 - With `--game ff7r`, FF7R DataObject tables decode into editable properties: one struct per row (named by its row tag), one property per field, `*_Array` fields as arrays, so `dump`, `set`, `script`, `script --plan`, search and the app's property tree work on them. Tables that do not decode cleanly stay untouched with a warning. Saves accept only same-size edits (no string length or array length changes, no added or removed rows, no names missing from the package's name table); anything else fails naming the row and field, before anything is written.
