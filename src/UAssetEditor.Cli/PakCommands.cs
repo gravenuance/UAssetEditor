@@ -366,8 +366,19 @@ internal static class PakCommands
             var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
 
             var changeSets = EditExecutor.ApplyAsync(source, versions, ruleSet, createBackup: false, backupFolder: null).GetAwaiter().GetResult();
+            foreach (var changeSet in changeSets.Where(c => c.Skipped))
+                Console.WriteLine($"SKIPPED {changeSet.AssetPath}: could not open, packed unchanged: {changeSet.Error}");
+            var failed = changeSets.Where(c => c.Failed).ToList();
+            if (failed.Count > 0)
+            {
+                // Repacking anyway would ship those assets unedited without anyone noticing.
+                foreach (var changeSet in failed)
+                    Console.WriteLine($"FAILED {changeSet.AssetPath}: {changeSet.Error}");
+                Console.WriteLine($"-- {failed.Count} asset(s) failed; nothing was repacked");
+                return 1;
+            }
             var totalChanges = changeSets.Sum(c => c.Changes.Count);
-            Console.WriteLine($"-- applied ruleset: {changeSets.Count} asset(s), {totalChanges} change(s)");
+            Console.WriteLine($"-- applied ruleset: {changeSets.Count(c => c.Changed)} asset(s), {totalChanges} change(s)");
         }
 
         var result = PakRepacker.Build(source, output, aesKey: aesKey);

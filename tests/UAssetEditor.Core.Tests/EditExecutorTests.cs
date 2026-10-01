@@ -1,6 +1,7 @@
 using UAssetAPI;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
+using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
@@ -324,7 +325,62 @@ public class EditExecutorTests
         };
 
         var exception = await Record.ExceptionAsync(() => EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken));
-
         Assert.Null(exception);
+
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(["a.uasset", "b.uasset"], changeSets.Select(c => c.AssetPath).Order(StringComparer.Ordinal));
+        Assert.All(changeSets, c => Assert.True(c.Failed));
+    }
+
+    [Fact]
+    public async Task ApplyAsync_ReportsARefusedSaveAndStillSavesTheOtherAssets()
+    {
+        var assetOne = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(assetOne);
+        var assetTwo = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(assetTwo);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["a.uasset"] = assetOne, ["b.uasset"] = assetTwo });
+        source.RefusedSaves.Add("b.uasset");
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
+            Rules = { new SetPropertyValueRule { NewValue = "7" } },
+        };
+
+        var changeSets = await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, source.SaveCount);
+        var saved = Assert.Single(changeSets, c => c.AssetPath == "a.uasset");
+        Assert.False(saved.Failed);
+        var refused = Assert.Single(changeSets, c => c.AssetPath == "b.uasset");
+        Assert.Equal("save refused for b.uasset", refused.Error);
+        Assert.Single(refused.Changes); // applied in memory before the save failed
+    }
+
+    [Fact]
+    public async Task PreviewAsync_ReportsAnAssetThatCannotBeOpenedAsSkipped()
+    {
+        var source = new InMemoryAssetSource([]);
+        var failing = new FailingPathSource(source, "broken.uasset");
+        var ruleSet = new RuleSet { Scope = new SearchQuery { PropertyNameTerms = ["Count"] }, Rules = { new SetPropertyValueRule { NewValue = "7" } } };
+
+        var changeSets = await EditExecutor.PreviewAsync(failing, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+
+        var changeSet = Assert.Single(changeSets);
+        Assert.Equal("cannot parse broken.uasset", changeSet.Error);
+        Assert.True(changeSet.Skipped);
+        Assert.False(changeSet.Failed);
+        Assert.Empty(changeSet.Changes);
+    }
+
+    /// <summary>Lists one extra path that the wrapped source cannot open.</summary>
+    private sealed class FailingPathSource(IAssetSource inner, string extraPath) : IAssetSource
+    {
+        public IEnumerable<string> EnumerateAssetPaths() => inner.EnumerateAssetPaths().Append(extraPath);
+
+        public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game) =>
+            inner.OpenAsset(assetPath, engineVersion, mappings, game);
+
+        public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder) => inner.SaveAsset(asset, assetPath, createBackup, backupFolder);
     }
 }

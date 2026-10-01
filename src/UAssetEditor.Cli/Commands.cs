@@ -491,7 +491,8 @@ internal static class Commands
             : EditExecutor.PreviewAsync(source, versions, ruleSet).GetAwaiter().GetResult();
 
         var totalChanges = 0;
-        foreach (var changeSet in changeSets)
+        var changed = changeSets.Where(c => c.Changed).ToList();
+        foreach (var changeSet in changed)
         {
             Console.WriteLine(changeSet.AssetPath);
             foreach (var change in changeSet.Changes)
@@ -501,8 +502,17 @@ internal static class Commands
             }
         }
 
-        Console.WriteLine($"-- {changeSets.Count} asset(s), {totalChanges} change(s){(apply ? " (applied)" : " (preview only - pass --apply to write)")}");
-        return 0;
+        var skipped = changeSets.Where(c => c.Skipped).ToList();
+        foreach (var changeSet in skipped)
+            Console.WriteLine($"SKIPPED {changeSet.AssetPath}: could not open: {changeSet.Error}");
+        var failed = changeSets.Where(c => c.Failed).ToList();
+        foreach (var changeSet in failed)
+            Console.WriteLine($"FAILED {changeSet.AssetPath}: {changeSet.Error}");
+
+        var skippedNote = skipped.Count > 0 ? $", {skipped.Count} skipped (unreadable)" : "";
+        var failedNote = failed.Count > 0 ? $", {failed.Count} failed (not saved)" : "";
+        Console.WriteLine($"-- {changed.Count} asset(s), {totalChanges} change(s){skippedNote}{failedNote}{(apply ? " (applied)" : " (preview only - pass --apply to write)")}");
+        return failed.Count > 0 ? 1 : 0;
     }
 
     private static void MaybeSave(UAsset asset, string path, ArgReader args)

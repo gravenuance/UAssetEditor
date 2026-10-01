@@ -179,7 +179,8 @@ static void PrintUsage()
           uacli batch <file-or-folder> --ruleset <ruleset.json> [--apply] [--backup]
               Run a full RuleSet (the same JSON the app's batch-edit tab saves/loads: setValue/numericAdjust/replaceText/removeProperty/
               addTag/removeTag/replaceReference/duplicateElement rules over a search Scope) across one asset or every asset under a folder.
-              Defaults to a dry-run preview; --apply actually writes.
+              Defaults to a dry-run preview; --apply actually writes. An asset that can't be opened prints SKIPPED; one whose edit or
+              save fails prints FAILED (nothing of it is saved) and makes the run exit 1.
 
         Pak/IoStore archive commands (mirror the app's Unpack/Pack/Convert dialogs and Repack). All take --aes <hex> for an encrypted pak.
 
@@ -218,7 +219,8 @@ static void PrintUsage()
 
           uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>]
               Rebuild a .pak, optionally applying a RuleSet's edits first (same JSON as 'batch') - the pak counterpart to editing a loose
-              file in place. Always writes a new file; never overwrites the source pak.
+              file in place. Always writes a new file; never overwrites the source pak. If any asset's edit fails, it prints FAILED
+              and nothing is repacked; assets that can't be opened print SKIPPED and are packed unchanged.
 
         Nothing is written to disk unless --save/--apply is passed (or for a pak-* command, unconditionally, since packing/repacking/converting IS the write);
         --backup copies the original file first ("<file>.bak" for single-file commands).

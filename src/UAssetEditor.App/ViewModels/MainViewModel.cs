@@ -1918,9 +1918,9 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var changeSets = await EditExecutor.PreviewAsync(source, versions, ruleSet, progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
-            foreach (var change in changeSets.SelectMany(c => c.Changes))
+            foreach (var change in changeSets.Where(c => c.Changed).SelectMany(c => c.Changes))
                 PreviewChanges.Add(change);
-            StatusMessage = $"Preview: {changeSets.Count} asset(s), {PreviewChanges.Count} change(s).";
+            StatusMessage = $"Preview: {changeSets.Count(c => c.Changed)} asset(s), {PreviewChanges.Count} change(s).{DescribeFailures(changeSets)}";
         }
         catch (OperationCanceledException)
         {
@@ -1975,7 +1975,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var changeSets = await EditExecutor.StageAsync(source, workspace.GetOrOpen, ruleSet, progress: progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
-            var touchedPaths = changeSets.Select(c => c.AssetPath).ToHashSet();
+            // A failed asset can still hold edits applied in memory before the failure, so it counts as touched.
+            var touchedPaths = changeSets.Where(c => c.Changes.Count > 0).Select(c => c.AssetPath).ToHashSet();
 
             foreach (var path in touchedPaths)
                 _dirtyAssetPaths.Add(path);
@@ -1995,9 +1996,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 if (!touchedPaths.Contains(path) && !_dirtyAssetPaths.Contains(path))
                     workspace.Close(path);
 
-            StatusMessage = changeSets.Count == 0
+            var appliedCount = changeSets.Count(c => c.Changed);
+            var applied = appliedCount == 0
                 ? "Applied: no changes matched."
-                : $"Applied changes to {changeSets.Count} asset(s) - not saved yet.";
+                : $"Applied changes to {appliedCount} asset(s) - not saved yet.";
+            StatusMessage = applied + DescribeFailures(changeSets);
             SaveConfig();
         }
         catch (OperationCanceledException)
@@ -2244,6 +2247,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         TreeSelectNameTerms.Clear();
         foreach (var term in session.TreeSelectNameTerms)
             TreeSelectNameTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
+    }
+
+    /// <summary>Logs every failed or unreadable asset and returns a status-line suffix naming the first failure, or "" when there are none.</summary>
+    private static string DescribeFailures(IReadOnlyList<AssetChangeSet> changeSets)
+    {
+        foreach (var changeSet in changeSets.Where(c => c.Skipped))
+            Logger.LogWarning("Batch edit skipped '{AssetPath}', which could not be opened: {Error}", changeSet.AssetPath, changeSet.Error);
+        var failed = changeSets.Where(c => c.Failed).ToList();
+        foreach (var changeSet in failed)
+            Logger.LogWarning("Batch edit failed for '{AssetPath}': {Error}", changeSet.AssetPath, changeSet.Error);
+
+        var skippedCount = changeSets.Count(c => c.Skipped);
+        var skipped = skippedCount == 0 ? "" : $" {skippedCount} unreadable asset(s) skipped.";
+        return failed.Count == 0
+            ? skipped
+            : $" {failed.Count} asset(s) failed, first {Path.GetFileName(failed[0].AssetPath)}: {failed[0].Error}.{skipped}";
     }
 
     private static string Describe(EditRule rule) => rule switch

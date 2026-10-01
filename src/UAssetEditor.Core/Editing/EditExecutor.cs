@@ -116,15 +116,14 @@ public static class EditExecutor
         {
             asset = openAsset(path);
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Skip assets UAssetAPI can't parse with the resolved engine version/mappings.
-            return null;
+            return new AssetChangeSet(path, [], ex.Message, Skipped: true);
         }
 
+        var changes = new List<PropertyChange>();
         try
         {
-            var changes = new List<PropertyChange>();
             var propertyMatches = SearchService.SearchAsset(asset, path, ruleSet.Scope)
                 .Where(r => r.Kind == SearchMatchKind.Property)
                 .ToList();
@@ -168,13 +167,12 @@ public static class EditExecutor
 
             return new AssetChangeSet(path, changes);
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // One asset's rule application shouldn't discard results already computed
-            // for every other asset in the batch - e.g. an invalid regex pattern in a
-            // rule/scope, or a property shape UAssetAPI didn't expect. Skip it and keep
-            // going rather than letting the whole run's results be lost.
-            return null;
+            // One asset's failure (an invalid regex, an unexpected property shape, a save the
+            // format refuses) must not discard every other asset's results, so it is reported
+            // on that asset's change set instead of thrown.
+            return new AssetChangeSet(path, changes, ex.Message);
         }
     }
 

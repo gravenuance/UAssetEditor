@@ -13,6 +13,7 @@ All notable changes to this project are documented here.
 - The bundled retoc is now our fork of v0.1.5 (see THIRD_PARTY_NOTICES.md), so `.utoc` output changes even without a game selected: chunks are Oodle-compressed in 128 KiB blocks with full 32-byte hashes, the container is flagged compressed, export names and self-dependencies are kept exactly, script imports stay in dependency bundles, and the companion `.pak` is V11, encrypted when an AES key is given the same way retoc-rivals encrypts it. It also reads obfuscated containers from retoc-rivals, whose plaintext directory index made v0.1.5 crash.
 
 ### Fixed
+- A batch edit (app, `batch`, `repack --ruleset`) silently skipped any asset that failed to open, edit or save, so a refused save looked like "no changes". A failed edit or save is now reported: `batch` prints a `FAILED` line and exits 1, `repack` stops before building the pak, and the app names the first failure in the status line and logs the rest. Assets that can't be opened are still skipped, but each is listed as `SKIPPED` (app: counted in the status line and logged).
 - Menu items never showed whether they were checked, so "Back Up Before Saving" gave no sign of its state. Checked items now show a check mark.
 
 ## [1.6.0] - 2026-09-27
