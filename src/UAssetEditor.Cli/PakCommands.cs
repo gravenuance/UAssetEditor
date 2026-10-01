@@ -3,6 +3,8 @@ using UAssetAPI;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Editing;
+using UAssetEditor.Core.Games;
+using UAssetEditor.Core.Games.Rivals;
 using UAssetEditor.Core.Versioning;
 
 namespace UAssetEditor.Cli;
@@ -76,6 +78,12 @@ internal static class PakCommands
     /// <summary>Builds a new archive from a loose folder - a legacy .pak via <see cref="PakPacker"/> if --output ends in ".pak", or an IoStore .utoc/.ucas pair via retoc's to-zen if it ends in ".utoc".</summary>
     public static int Pack(ArgReader args)
     {
+        // ArgReader takes the next bare word as a value, so "--kawaii-physics src out.utoc" would swallow the source folder.
+        foreach (var name in RivalsPackSwitches)
+        {
+            if (args.Option(name) != null) throw new ArgException($"--{name} takes no value; put it after the positional arguments.");
+        }
+
         var sourceFolder = args.Positional(0, "source folder");
         var output = args.Positional(1, "output path");
         if (!Directory.Exists(sourceFolder)) throw new ArgException($"Folder not found: {sourceFolder}");
@@ -88,8 +96,16 @@ internal static class PakCommands
         };
     }
 
+    /// <summary>Valueless pack switches that only apply to a Marvel Rivals IoStore pack.</summary>
+    private static readonly string[] RivalsPackSwitches = ["kawaii-physics", "patch-default-hidden-mats", "obfuscate"];
+
     private static int PackToPak(ArgReader args, string sourceFolder, string output)
     {
+        foreach (var name in RivalsPackSwitches.Append("default-hidden-material-bitmaps"))
+        {
+            if (args.Flag(name) || args.Option(name) != null) throw new ArgException($"--{name} only applies to IoStore (.utoc) output.");
+        }
+
         var mountPoint = args.Option("mount") ?? $"../../../{new DirectoryInfo(sourceFolder.TrimEnd('\\', '/')).Name}/";
         var result = PakPacker.Build(sourceFolder, output, mountPoint, AssetIo.ResolvePakVersion(args), AssetIo.ResolveCompression(args), AssetIo.ResolveAesKey(args));
 
@@ -104,16 +120,140 @@ internal static class PakCommands
 
     private static int PackToIoStore(ArgReader args, string sourceFolder, string output)
     {
+        var game = AssetIo.ResolveGame(args);
+        var zenOptions = new RetocZenOptions(game, RequireRivalsSwitch(args, game, "obfuscate"));
+        var patchOptions = ResolveRivalsPatchOptions(args, game);
+        var aesKey = AssetIo.ResolveAesKey(args);
+
         var engineVersion = AssetIo.ResolveVersion(args);
         var retocVersion = EngineVersionMapping.ToRetocVersion(engineVersion)
             ?? throw new ArgException($"'{engineVersion}' has no IoStore equivalent - pass --version with a UE4.25+ engine version.");
 
-        var retocInput = RetocDirectoryInputResolver.Resolve(sourceFolder)
-            ?? throw new ArgException("Source folder is a drive root - pick a folder that isn't.");
+        // Checked before staging too, so a drive root is refused instead of copied.
+        if (RetocDirectoryInputResolver.Resolve(sourceFolder) == null)
+            throw new ArgException("Source folder is a drive root - pick a folder that isn't.");
 
-        RetocProcess.ConvertToZenAsync(retocInput, output, retocVersion, AssetIo.ResolveAesKey(args)).GetAwaiter().GetResult();
+        if (patchOptions == null)
+        {
+            ConvertFolderToZen(sourceFolder, output, retocVersion, aesKey, zenOptions);
+        }
+        else
+        {
+            // The patches rewrite packages in place, so they run on a copy and the source folder is never touched.
+            var stageRoot = Path.Combine(Path.GetTempPath(), "uacli-pack-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var stagedSource = Path.Combine(stageRoot, new DirectoryInfo(sourceFolder.TrimEnd('\\', '/')).Name);
+                CopyDirectory(sourceFolder, stagedSource);
+                PatchRivalsAssets(stagedSource, args.RequireOption("usmap"), patchOptions);
+                ConvertFolderToZen(stagedSource, output, retocVersion, aesKey, zenOptions);
+            }
+            finally
+            {
+                DeleteStage(stageRoot);
+            }
+        }
+
         Console.WriteLine($"-- packed to {output} ({retocVersion})");
         return 0;
+    }
+
+    private static void ConvertFolderToZen(string sourceFolder, string output, string retocVersion, byte[]? aesKey, RetocZenOptions options)
+    {
+        var retocInput = RetocDirectoryInputResolver.Resolve(sourceFolder)
+            ?? throw new ArgException("Source folder is a drive root - pick a folder that isn't.");
+        RetocProcess.ConvertToZenAsync(retocInput, output, retocVersion, aesKey, options).GetAwaiter().GetResult();
+    }
+
+    /// <summary>The Marvel Rivals asset patches the pack flags ask for, or null when none are.</summary>
+    private static KawaiiPhysicsPortOptions? ResolveRivalsPatchOptions(ArgReader args, Game game)
+    {
+        var kawaiiPhysics = RequireRivalsSwitch(args, game, "kawaii-physics");
+        var defaultHiddenMats = RequireRivalsSwitch(args, game, "patch-default-hidden-mats");
+        var bitmapsText = args.Option("default-hidden-material-bitmaps");
+        if (args.Flag("default-hidden-material-bitmaps"))
+            throw new ArgException("--default-hidden-material-bitmaps needs a value: one mask per LOD, e.g. 0x5,0x1.");
+        if (bitmapsText != null && game != Game.MarvelRivals)
+            throw new ArgException("--default-hidden-material-bitmaps is only supported with --game rivals.");
+        if (!kawaiiPhysics && !defaultHiddenMats && bitmapsText == null) return null;
+
+        if (args.Option("usmap") == null)
+            throw new ArgException("The Marvel Rivals asset patches need --usmap <path> for packages that cannot be read without it.");
+
+        IReadOnlyList<ulong>? bitmaps;
+        try
+        {
+            bitmaps = bitmapsText == null ? null : DefaultHiddenMaterialBitmaps.Parse(bitmapsText);
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+
+        return new KawaiiPhysicsPortOptions
+        {
+            PatchKawaiiPhysics = kawaiiPhysics,
+            // As repak-rivals' own commands do, so an already-ported node is rebuilt instead of skipped.
+            ForceRebuildChain0 = true,
+            PatchDefaultHiddenMaterials = defaultHiddenMats,
+            DefaultHiddenMaterialBitmaps = bitmaps,
+        };
+    }
+
+    /// <summary>Reads a valueless switch that only means something for Marvel Rivals.</summary>
+    private static bool RequireRivalsSwitch(ArgReader args, Game game, string name)
+    {
+        if (!args.Flag(name)) return false;
+        if (game != Game.MarvelRivals) throw new ArgException($"--{name} is only supported with --game rivals.");
+        return true;
+    }
+
+    private static void PatchRivalsAssets(string folder, string usmapPath, KawaiiPhysicsPortOptions options)
+    {
+        IReadOnlyList<PatchedAsset> patched;
+        try
+        {
+            patched = RivalsAssetPatcher.PatchDirectory(folder, usmapPath, options, warning => Console.Error.WriteLine($"Warning: {warning}"));
+        }
+        catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException)
+        {
+            throw new ArgException($"Patching failed, nothing was packed: {ex.Message}", ex);
+        }
+
+        foreach (var asset in patched)
+        {
+            var r = asset.Result;
+            Console.WriteLine(
+                $"PATCHED {asset.RelativePath.Replace('\\', '/')}: visited={r.VisitedAnimNodes} ported={r.PortedAnimNodes} skipped={r.SkippedExistingChains} hiddenLods={r.PatchedDefaultHiddenMaterialLods}");
+        }
+        Console.WriteLine($"-- patched {patched.Count} asset(s)");
+    }
+
+    /// <summary>Copies a folder tree; the copies are made writable, since the patches rewrite them and read-only sources are common.</summary>
+    private static void CopyDirectory(string source, string destination)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
+            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        Directory.CreateDirectory(destination);
+        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        {
+            var copy = Path.Combine(destination, Path.GetRelativePath(source, file));
+            File.Copy(file, copy);
+            File.SetAttributes(copy, FileAttributes.Normal);
+        }
+    }
+
+    /// <summary>Removes the staging folder; a failure only warns, so it can't hide the pack's own result.</summary>
+    private static void DeleteStage(string stageRoot)
+    {
+        try
+        {
+            if (Directory.Exists(stageRoot)) Directory.Delete(stageRoot, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Warning: could not delete the staging folder {stageRoot}: {ex.Message}");
+        }
     }
 
     /// <summary>Lists every chunk path in a .utoc container via retoc's own `list` - the IoStore counterpart to <see cref="PakList"/>, and how to find the exact entry path <see cref="ToLegacy"/>'s --filter expects out of a large shared container.</summary>

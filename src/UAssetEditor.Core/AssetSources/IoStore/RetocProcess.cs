@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.AssetSources.IoStore;
 
@@ -202,16 +203,20 @@ public static class RetocProcess
     /// .pak"), so no intermediate re-pack is needed when the source is already a .pak.
     /// <paramref name="retocEngineVersion"/> must be one of the strings
     /// <see cref="EngineVersionMapping.ToRetocVersion"/> returns (e.g. "UE5_3") - required by
-    /// retoc itself for this direction, unlike to-legacy.
+    /// retoc itself for this direction, unlike to-legacy. <paramref name="options"/> picks the game whose own
+    /// packer the output reproduces; null writes retoc's standard output.
     /// </summary>
     public static Task ConvertToZenAsync(
-        string input, string outputUtocPath, string retocEngineVersion, byte[]? aesKey, CancellationToken cancellationToken = default)
+        string input, string outputUtocPath, string retocEngineVersion, byte[]? aesKey, RetocZenOptions? options = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(outputUtocPath);
         ArgumentNullException.ThrowIfNull(retocEngineVersion);
 
         var args = new List<string> { "to-zen", input, outputUtocPath, "--version", retocEngineVersion };
+        if (options?.Obfuscate == true) args.Add("--obfuscate");
+        // --game is global like --aes-key, so it goes before the subcommand too.
+        if (options?.Game == Game.MarvelRivals) args.InsertRange(0, ["--game", "rivals"]);
         AddAesKey(args, aesKey);
 
         return RunAsync(args, static _ => { }, cancellationToken);
@@ -319,4 +324,25 @@ public static class RetocProcess
         var vendored = Path.Combine(srcDir.FullName, "UAssetEditor.App", "vendor", EmbeddedResourceName);
         return File.Exists(vendored) ? vendored : null;
     });
+}
+
+/// <summary>How retoc's to-zen writes a container. Get-only, so a <c>with</c> copy can't skip the constructor's check.</summary>
+public sealed record RetocZenOptions
+{
+    /// <param name="game">
+    /// <see cref="Game.MarvelRivals"/> makes every chunk identical to retoc-rivals' <c>pack</c> output (its compression, hashes,
+    /// MaterialTags patch and companion pak); every other value writes retoc's standard output.
+    /// </param>
+    /// <param name="obfuscate">Encrypt the data blocks with the AES key, as retoc-rivals' <c>--obfuscate</c> does. Marvel Rivals only.</param>
+    public RetocZenOptions(Game game, bool obfuscate = false)
+    {
+        if (obfuscate && game != Game.MarvelRivals)
+            throw new ArgumentException("Obfuscation is only supported for Marvel Rivals.", nameof(obfuscate));
+        Game = game;
+        Obfuscate = obfuscate;
+    }
+
+    public Game Game { get; }
+
+    public bool Obfuscate { get; }
 }

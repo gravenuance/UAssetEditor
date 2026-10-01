@@ -19,9 +19,9 @@ internal sealed class ArgReader
     // Every --name any command reads. Checked up front so a typo fails before anything runs, not after.
     private static readonly HashSet<string> KnownNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "aes", "apply", "backup", "compression", "depth", "export", "export-name", "filter", "from", "from-export", "from-file", "game", "nodes",
-        "into", "into-export", "into-path", "jobs", "layer", "members", "mount", "no-paks-resolve", "ops", "out", "pak-version", "path", "plan",
-        "property-name", "reference", "regex", "rename", "ruleset", "save", "strict", "template", "usmap", "value", "version",
+        "aes", "apply", "backup", "compression", "default-hidden-material-bitmaps", "depth", "export", "export-name", "filter", "from", "from-export",
+        "from-file", "game", "nodes", "into", "into-export", "into-path", "jobs", "kawaii-physics", "layer", "members", "mount", "no-paks-resolve", "obfuscate", "ops",
+        "out", "pak-version", "patch-default-hidden-mats", "path", "plan", "property-name", "reference", "regex", "rename", "ruleset", "save", "strict", "template", "usmap", "value", "version",
     };
 
     private readonly List<string> _positional = [];

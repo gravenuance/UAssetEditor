@@ -2,6 +2,7 @@ using System.Linq;
 using System.Text;
 using UAssetAPI;
 using UAssetEditor.Core.AssetSources.IoStore;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.Tests;
 
@@ -230,4 +231,67 @@ public class RetocProcessTests
         Assert.Equal(1, exception.ExitCode);
         Assert.Contains(missingPath, exception.Message, StringComparison.Ordinal);
     }
+
+    // SHA-256 of the companion pak retoc-rivals' own pack writes for every mod (mount point "../../../").
+    private const string RivalsCompanionPakSha256 = "5AE1ED86DEB66C2D7FEAA38219554977F7FB554F639DC43C80BBC3672443F9E9";
+
+    [Fact]
+    public async Task ConvertToZenAsync_ForMarvelRivals_WritesRetocRivalsCompanionPak()
+    {
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var pakPath = BuildLegacyTestPak(workDir);
+            var rivalsUtoc = Path.Combine(workDir, "rivals_P.utoc");
+            var standardUtoc = Path.Combine(workDir, "standard_P.utoc");
+
+            await RetocProcess.ConvertToZenAsync(pakPath, rivalsUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals), TestContext.Current.CancellationToken);
+            await RetocProcess.ConvertToZenAsync(pakPath, standardUtoc, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(RivalsCompanionPakSha256, Sha256Hex(Path.ChangeExtension(rivalsUtoc, ".pak")));
+            Assert.NotEqual(RivalsCompanionPakSha256, Sha256Hex(Path.ChangeExtension(standardUtoc, ".pak")));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertToZenAsync_WithObfuscate_MarksTheContainerEncrypted()
+    {
+        const int ContainerFlagsOffset = 80;
+        const byte EncryptedFlag = 0x02;
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var pakPath = BuildLegacyTestPak(workDir);
+            var plainUtoc = Path.Combine(workDir, "plain_P.utoc");
+            var obfuscatedUtoc = Path.Combine(workDir, "obfuscated_P.utoc");
+
+            await RetocProcess.ConvertToZenAsync(pakPath, plainUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals), TestContext.Current.CancellationToken);
+            await RetocProcess.ConvertToZenAsync(pakPath, obfuscatedUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals, obfuscate: true), TestContext.Current.CancellationToken);
+
+            var plain = await File.ReadAllBytesAsync(plainUtoc, TestContext.Current.CancellationToken);
+            var obfuscated = await File.ReadAllBytesAsync(obfuscatedUtoc, TestContext.Current.CancellationToken);
+            Assert.Equal(0, plain[ContainerFlagsOffset] & EncryptedFlag);
+            Assert.Equal(EncryptedFlag, obfuscated[ContainerFlagsOffset] & EncryptedFlag);
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(Game.None)]
+    [InlineData(Game.FinalFantasy7Remake)]
+    public void ZenOptions_RefuseObfuscationOutsideMarvelRivals(Game game)
+    {
+        Assert.Throws<ArgumentException>(() => new RetocZenOptions(game, obfuscate: true));
+    }
+
+    private static string Sha256Hex(string path) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(path)));
 }

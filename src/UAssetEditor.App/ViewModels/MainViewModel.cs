@@ -1558,7 +1558,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
 
             StatusMessage = "Repacking to IoStore...";
-            await RetocProcess.ConvertToZenAsync(input, outputPath, retocVersion, aesKey);
+            await RetocProcess.ConvertToZenAsync(input, outputPath, retocVersion, aesKey, new RetocZenOptions(Game));
             StatusMessage = $"Repacked to {outputPath}.";
         }
         catch (Exception ex)
@@ -1606,7 +1606,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void PackFolder()
     {
         using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex, DefaultEngineVersion,
-            mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version);
+            mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version, game: Game);
         new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 

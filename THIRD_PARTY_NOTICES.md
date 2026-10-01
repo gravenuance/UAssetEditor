@@ -4,16 +4,18 @@ This project embeds prebuilt third-party binaries in its single-file publish out
 
 ## retoc
 
-- **Source**: https://github.com/trumank/retoc
-- **Vendored version**: v0.1.5 (`retoc_cli-x86_64-pc-windows-msvc.zip`)
+- **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc
+- **Vendored version**: built locally from branch `feat/game-variant-marvel-rivals`, based on
+  `8c47bd5`. It adds `--game rivals` (output byte-identical to retoc-rivals' `pack`, ported from
+  natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
+  plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
+  (SHA-256 `22612284ef508266093f6d0357d1bdffc4aa5bbbd4e2d965325e5d736e8c5b58`)
 - **License**: MIT (`src/UAssetEditor.App/vendor/retoc-LICENSE.txt`)
 - **Purpose**: Converts between Unreal Engine's IoStore/Zen container format (`.utoc`/`.ucas`)
   and legacy `.pak` format. UAssetEditor shells out to it (see
   `UAssetEditor.Core.AssetSources.IoStore.RetocProcess`) so IoStore content can be browsed,
   converted, edited through the normal pak/loose-folder pipeline, and converted back.
-- **Checked via**: SHA-256 of the downloaded release archive matched the checksum published
-  alongside it on the GitHub release page before vendoring.
 
 ```
 MIT License
@@ -38,6 +40,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## repak-rivals
+
+- **Source**: https://github.com/natimerry/repak-rivals @ `18605be`
+- **Used for**: two ports, no binaries.
+  - `src/UAssetEditor.Core/Games/Rivals/` is a C# port of its UAssetAPI fork's KawaiiPhysics and
+    hidden-materials patches (`UAssetAPI/KawaiiPhysicsLegacyPorter.cs`, `UAssetAPI/HiddenMaterialsReader.cs`
+    and the material count of `UAssetAPI/ExportTypes/SkeletalMeshExport.cs`). Licensed MIT, copyright (c) 2020 - 2026 atenfyr
+    (`UAssetAPI/LICENSE` in that repository), the same text as `vendor/UAssetAPI-LICENSE.txt`.
+  - The vendored retoc's Marvel Rivals mode is a Rust port of `retoc-rivals/`, licensed MIT, copyright
+    (c) 2025 Truman Kilen and Archengius (`retoc-rivals/LICENSE`), the same text as
+    `src/UAssetEditor.App/vendor/retoc-LICENSE.txt`.
+- The repository's workspace declares `MIT OR Apache-2.0`.
 
 ## UAssetAPI
 

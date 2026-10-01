@@ -6,6 +6,7 @@ using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
+using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.App.ViewModels;
@@ -34,6 +35,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     private static readonly ILogger Logger = AppLog.For<PackFolderViewModel>();
 
     private readonly EngineVersion _defaultEngineVersion;
+    private readonly Game _game;
 
     [ObservableProperty] private string _sourceFolder;
     [ObservableProperty] private string _outputPath = "";
@@ -76,8 +78,9 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     public bool IsIndeterminateProgress => IsRunning && IsIoStoreFormat;
 
     public PackFolderViewModel(string? initialSourceFolder, string initialMountPoint, string initialAesKeyHex, EngineVersion defaultEngineVersion,
-        bool mountPointIsAuthoritative = false, PakVersion? initialVersion = null)
+        bool mountPointIsAuthoritative = false, PakVersion? initialVersion = null, Game game = Game.None)
     {
+        _game = game;
         _sourceFolder = initialSourceFolder ?? "";
         _mountPoint = initialMountPoint;
         _aesKeyHex = initialAesKeyHex;
@@ -203,7 +206,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         ProgressTotal = 1;
 
         var aesKey = PakAesKey.Parse(AesKeyHex);
-        await RetocProcess.ConvertToZenAsync(retocInput, OutputPath, retocVersion, aesKey, cancellationToken);
+        await RetocProcess.ConvertToZenAsync(retocInput, OutputPath, retocVersion, aesKey, new RetocZenOptions(_game), cancellationToken);
 
         ProgressDone = 1;
         Status = $"Packed to {OutputPath}.";

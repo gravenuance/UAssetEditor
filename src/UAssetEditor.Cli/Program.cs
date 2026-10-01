@@ -197,6 +197,13 @@ static void PrintUsage()
           uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>]
               Build a new archive from a loose folder: a legacy .pak if <output> ends in ".pak" (--mount defaults to "../../../<folderName>/",
               --pak-version defaults to V11), or an IoStore .utoc/.ucas pair via retoc if it ends in ".utoc" (needs --version, a UE4.25+ engine version).
+              With --game rivals the .utoc output matches retoc-rivals' pack chunk for chunk, and these switches apply (after the positionals):
+                --obfuscate                               encrypt the container's data blocks, as retoc-rivals --obfuscate does
+                --kawaii-physics                          port legacy KawaiiPhysics anim nodes to the game's Chains layout (needs --usmap)
+                --patch-default-hidden-mats               fill LODInfo.DefaultHiddenMaterials from the mesh's carrier data (needs --usmap)
+                --default-hidden-material-bitmaps <list>  instead set them from masks, one per LOD (e.g. 0x5,0x1); with fewer masks
+                                                          than LODs the last one repeats, and more masks than LODs is refused
+              The patches run on a temporary copy; the source folder is never modified. Each patched asset prints one PATCHED line.
 
           uacli iostore-list <utoc> [--aes <hex>] [--filter <substring>]
               List every chunk path in a .utoc container via retoc. Use this to find the exact entry path 'to-legacy''s --filter expects.
