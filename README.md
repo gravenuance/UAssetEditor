@@ -50,3 +50,7 @@ UAssetGUI opens one .uasset at a time and you edit it by hand in a property tree
 - **A crash in the pak reader doesn't take the app down with it.** Pak reading and writing runs in its own worker process, so a bad entry can fail without losing your session.
 - **Never touches your original file.** Edits are written out to a new pak, so there's nothing to undo if a batch edit goes wrong.
 - **Pack and unpack pak files from the same window**, no separate command-line tool needed.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Bundled and ported third-party code keeps its own licences, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
