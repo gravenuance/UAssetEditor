@@ -162,7 +162,7 @@ internal static class PakCommands
     {
         var retocInput = RetocDirectoryInputResolver.Resolve(sourceFolder)
             ?? throw new ArgException("Source folder is a drive root - pick a folder that isn't.");
-        RetocProcess.ConvertToZenAsync(retocInput, output, retocVersion, aesKey, options).GetAwaiter().GetResult();
+        RetocProcess.ConvertToZenAsync(retocInput, output, retocVersion, aesKey, options, onOutputLine: Console.WriteLine).GetAwaiter().GetResult();
     }
 
     /// <summary>The Marvel Rivals asset patches the pack flags ask for, or null when none are.</summary>

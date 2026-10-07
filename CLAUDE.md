@@ -145,16 +145,10 @@ uacli pack <modDir> <outDir>/<modName>_9999999_P.utoc --game rivals
 uacli pack <modDir> <outDir>/<modName>_9999999_P.utoc --game rivals --usmap "$MAP" --kawaii-physics --patch-default-hidden-mats
 ```
 
-**TODO: the bundled `retoc.exe` (built from 295baed) has the MaterialTags bug fixed in retoc d7fd264.** It searches
-for an already-padded `FSkeletalMaterial` array anywhere in the export before the stock one, so a large mesh whose
-vertex data holds a one-entry lookalike ships with stock 40-byte materials, which the game misreads (the 2026-10-07
-Psylocke lobby mesh: `Found prepatched ... at 0x5B4915: 1 material(s)` instead of 14 at `0x17D`). Until it is
-rebuilt, pack Rivals mods with `D:/Projects/repak-rivals/target/release/retoc-rivals-cli.exe` (fixed), and after any
-pack check each skeletal mesh's `[MaterialTags] ... Found legacy ... N material(s)` line shows its real slot count.
-To close it: `cargo build --release` in `D:/Projects/retoc` on `feat/game-variant-marvel-rivals` (d7fd264 or later),
-copy `target/release/retoc.exe` over `src/UAssetEditor.App/vendor/retoc.exe`, update the commit in
-`THIRD_PARTY_NOTICES.md`, add a CHANGELOG entry, repack the Psylocke mod with `uacli pack --game rivals` and confirm
-the lobby mesh line reads 14 materials, then delete this paragraph.
+`pack` prints retoc's `[MaterialTags]` lines. Check that each skeletal mesh's `Found legacy ... N material(s)` shows its
+real slot count: retoc before 40fb664 could patch a one-entry lookalike in a large mesh's vertex data instead
+(`Found prepatched ... at 0x5B4915: 1 material(s)` on the 2026-10-07 Psylocke lobby mesh, whose real array is 14 at
+`0x17D`), shipping stock 40-byte materials the game misreads.
 
 The switches go after the positionals: the argument parser would take the next word as their value. Unpacking still
 goes through retoc-rivals: uacli's `to-legacy` has been compared only on the game's `Patch_-Windows_*` containers
