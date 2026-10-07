@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-10-07
+
 ### Fixed
 - `pack --game rivals` could ship a skeletal mesh with stock 40-byte material slots, which the game misreads: the bundled retoc took the first already-padded `FSkeletalMaterial` array it found anywhere in the export, so a large mesh whose vertex data held a one-entry lookalike was "found prepatched" and left alone. It now patches the earliest array, the real one (retoc `d7fd264`).
 - `uacli pack` printed none of retoc's output, so the `[MaterialTags]` lines that show where each mesh was patched could not be checked. It now prints retoc's lines as they come. retoc itself dropped its log lines whenever its output was not a terminal, which is how uacli and the app run it (retoc `40fb664`).
