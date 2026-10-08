@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-10-08
+
 ### Fixed
 - `pack --game rivals --kawaii-physics` could throw away a node's tuned physics: when a KawaiiPhysics node had both a `Chains` array and leftover deprecated node-level settings, the first chain was rebuilt from the stale node fields (wrong root bone, default damping). An existing `Chains` array now wins. The same fix landed in retoc-rivals' UAssetAPI (`05c608d`).
 
