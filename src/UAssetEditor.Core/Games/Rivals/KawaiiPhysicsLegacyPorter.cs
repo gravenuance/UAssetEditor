@@ -132,9 +132,11 @@ public static class KawaiiPhysicsLegacyPorter
         var hasLegacy = HasLegacyKawaiiSettings(node);
         if (!hasLegacy && !hasChains) return false;
 
-        var chain = hasLegacy
-            ? BuildChainFromLegacyNode(asset, node)
-            : RebuildExistingChain(asset, chains!.Value[0]);
+        // Current assets can keep deprecated node-level fields next to a tuned Chains array;
+        // once Chains exists, its bones and settings are authoritative.
+        var chain = hasChains
+            ? RebuildExistingChain(asset, chains!.Value[0])
+            : BuildChainFromLegacyNode(asset, node);
         if (chain == null) return false;
 
         if (chains == null)
