@@ -31,6 +31,7 @@ try
         "append-clone" => Commands.AppendClone(reader),
         "duplicate-export" => Commands.DuplicateExport(reader),
         "duplicate-row" => Commands.DuplicateRow(reader),
+        "set-string" => Commands.SetString(reader),
         "rename-names" => Commands.RenameNames(reader),
         "to-unversioned" => Commands.ToUnversioned(reader),
         "strip-versions" => Commands.StripVersions(reader),
@@ -111,6 +112,10 @@ static void PrintUsage()
           uacli duplicate-row <file> --export <e> --row <name> --as <newName> [--save] [--backup]
               Add a DataTable row as a deep copy of row --row, named --as (appended last). Refuses a name already in the table.
 
+          uacli set-string <file> --export <e> --key <k> --value <v> [--save] [--backup]
+              Set a StringTable key's source text, appending the key if absent. Text naming a key the table lacks shows as
+              missing in game even when a .locres translates it, so new item names go here.
+
           uacli remove <file> --export <e> --path <p> [--save] [--backup]
               Remove the array element at --path.
 
@@ -170,7 +175,7 @@ static void PrintUsage()
               IoStore packer accepts it. Tagged values load by name even where the game changed engine classes.
 
           uacli script <file> --ops <opsfile> [--save] [--backup]
-              Run several set/duplicate/duplicate-row/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
+              Run several set/duplicate/duplicate-row/set-string/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
               Double quotes group a value with spaces; write \" for a literal quote (e.g. a JSON string value).

@@ -177,6 +177,15 @@ internal static class Commands
         return 0;
     }
 
+    public static int SetString(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var asset = AssetIo.Open(path, args);
+        Console.WriteLine(ApplySetString(asset, args));
+        MaybeSave(asset, path, args);
+        return 0;
+    }
+
     public static int Remove(ArgReader args)
     {
         var path = args.Positional(0, "file");
@@ -360,6 +369,23 @@ internal static class Commands
             throw new ArgException(ex.Message, ex);
         }
         return $"Duplicated row {sourceRow} -> {newRow}";
+    }
+
+    internal static string ApplySetString(UAsset asset, ArgReader args)
+    {
+        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var key = args.RequireOption("key");
+        var value = args.RequireOption("value");
+        string? previous;
+        try
+        {
+            previous = StringTableEditor.Set(asset, exportIndex, key, value);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+        return previous is null ? $"{key}: added = {value}" : $"{key}: {previous} -> {value}";
     }
 
     internal static string ApplyRemove(UAsset asset, ArgReader args)

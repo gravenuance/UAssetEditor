@@ -23,6 +23,7 @@ internal static class ScriptRunner
         ["append-clone"] = Commands.ApplyAppendClone,
         ["duplicate-export"] = Commands.ApplyDuplicateExport,
         ["duplicate-row"] = Commands.ApplyDuplicateRow,
+        ["set-string"] = Commands.ApplySetString,
         ["dump"] = Commands.ApplyDump,
         ["bypass-node"] = Commands.ApplyBypassNode,
         ["check-graph"] = Commands.ApplyCheckGraph,
