@@ -146,15 +146,20 @@ internal static class ScriptRunner
         return int.TryParse(text, out var jobs) && jobs > 0 ? jobs : throw new ArgException($"--jobs must be a positive number, not '{text}'.");
     }
 
-    /// <summary>Splits one script line into tokens, honoring "double-quoted segments" so a --value can contain spaces.</summary>
-    private static List<string> Tokenize(string line)
+    /// <summary>
+    /// Splits an ops line on whitespace; double quotes group spaces and are dropped. <c>\"</c> is a literal quote
+    /// (e.g. JSON values); any other backslash is kept, so Windows paths need no escaping.
+    /// </summary>
+    internal static List<string> Tokenize(string line)
     {
         var tokens = new List<string>();
         var current = new StringBuilder();
         var inQuotes = false;
 
-        foreach (var c in line)
+        for (var i = 0; i < line.Length; i++)
         {
+            var c = line[i];
+            if (c == '\\' && i + 1 < line.Length && line[i + 1] == '"') { current.Append('"'); i++; continue; }
             if (c == '"') { inQuotes = !inQuotes; continue; }
             if (char.IsWhiteSpace(c) && !inQuotes)
             {

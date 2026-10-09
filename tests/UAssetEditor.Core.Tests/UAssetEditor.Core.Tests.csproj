@@ -32,6 +32,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+    <ProjectReference Include="..\..\src\UAssetEditor.Cli\UAssetEditor.Cli.csproj" />
     <!-- Not used directly by test code - referenced only so `dotnet test` always builds the
          worker executable PakWorkerProcess's dev fallback path discovery expects to find
          alongside this project's own output. See PakWorkerProcess.TryFindDevBuildOutput. -->
