@@ -4,13 +4,11 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
-### Added
-- `uacli set-string` (also a `script` op) sets a StringTable key's source text, adding the key if absent: `--key <k> --value <v>`. New items need their name keys in the table; a .locres alone doesn't make a missing key resolve.
-- `script` ops files accept `\"` for a literal double quote, so a string value can hold JSON such as `[{\"Alias\":\"X\"}]`. Quotes were always stripped, so such values couldn't be set from a script.
-
 ## [1.8.0] - 2026-10-09
 
 ### Added
+- `uacli set-string` (also a `script` op) sets a StringTable key's source text, adding the key if absent: `--key <k> --value <v>`. New items need their name keys in the table; a .locres alone doesn't make a missing key resolve.
+- `script` ops files accept `\"` for a literal double quote, so a string value can hold JSON such as `[{\"Alias\":\"X\"}]`. Quotes were always stripped, so such values couldn't be set from a script.
 - `uacli duplicate-row` (also a `script` op) adds a DataTable row as a copy of another under a new name: `--row <name> --as <newName>`. Rows aren't array elements, so `duplicate` couldn't reach them.
 
 ### Fixed
