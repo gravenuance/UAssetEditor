@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-09
+
 ### Added
 - `uacli duplicate-row` (also a `script` op) adds a DataTable row as a copy of another under a new name: `--row <name> --as <newName>`. Rows aren't array elements, so `duplicate` couldn't reach them.
 
