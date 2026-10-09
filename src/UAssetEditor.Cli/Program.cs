@@ -30,6 +30,7 @@ try
         "splice-node" => Commands.SpliceNode(reader),
         "append-clone" => Commands.AppendClone(reader),
         "duplicate-export" => Commands.DuplicateExport(reader),
+        "duplicate-row" => Commands.DuplicateRow(reader),
         "rename-names" => Commands.RenameNames(reader),
         "to-unversioned" => Commands.ToUnversioned(reader),
         "strip-versions" => Commands.StripVersions(reader),
@@ -107,6 +108,9 @@ static void PrintUsage()
           uacli duplicate <file> --export <e> --path <p> [--save] [--backup]
               Deep-clone the array element at --path, appended as the array's new last element.
 
+          uacli duplicate-row <file> --export <e> --row <name> --as <newName> [--save] [--backup]
+              Add a DataTable row as a deep copy of row --row, named --as (appended last). Refuses a name already in the table.
+
           uacli remove <file> --export <e> --path <p> [--save] [--backup]
               Remove the array element at --path.
 
@@ -166,7 +170,7 @@ static void PrintUsage()
               IoStore packer accepts it. Tagged values load by name even where the game changed engine classes.
 
           uacli script <file> --ops <opsfile> [--save] [--backup]
-              Run several set/duplicate/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
+              Run several set/duplicate/duplicate-row/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5

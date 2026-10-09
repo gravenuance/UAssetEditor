@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `uacli duplicate-row` (also a `script` op) adds a DataTable row as a copy of another under a new name: `--row <name> --as <newName>`. Rows aren't array elements, so `duplicate` couldn't reach them.
+
 ### Fixed
 - Export names now show their number suffix everywhere they are displayed or matched: object references, the `exports` listing, `--export <name>`, search results and `--export-name`, and the app's export list. Sibling objects that differ only by number (behaviour-tree nodes such as `SBBTTask_SbUseSkill_19`) all showed the same bare name, so a tree's wiring couldn't be followed.
 

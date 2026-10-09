@@ -31,7 +31,7 @@ uacli script "$f" --version VER_UE5_3 --usmap "$MAP" --ops ops.txt --save
 uacli script --plan plan.tsv --version VER_UE5_3 --usmap "$MAP" --save
 ```
 
-`script` accepts `set`, `duplicate`, `remove`, `add-node`, `splice-node`, `append-clone`,
+`script` accepts `set`, `duplicate`, `duplicate-row` (DataTable rows), `remove`, `add-node`, `splice-node`, `append-clone`,
 `duplicate-export`, one per line, each with its own `--export`. So a single call can edit
 several exports of the same asset. Every line is validated before anything opens: an unknown
 op or `--option` stops the run.

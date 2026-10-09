@@ -22,6 +22,7 @@ internal static class ScriptRunner
         ["splice-node"] = Commands.ApplySpliceNode,
         ["append-clone"] = Commands.ApplyAppendClone,
         ["duplicate-export"] = Commands.ApplyDuplicateExport,
+        ["duplicate-row"] = Commands.ApplyDuplicateRow,
         ["dump"] = Commands.ApplyDump,
         ["bypass-node"] = Commands.ApplyBypassNode,
         ["check-graph"] = Commands.ApplyCheckGraph,

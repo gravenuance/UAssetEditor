@@ -168,6 +168,15 @@ internal static class Commands
         return 0;
     }
 
+    public static int DuplicateRow(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var asset = AssetIo.Open(path, args);
+        Console.WriteLine(ApplyDuplicateRow(asset, args));
+        MaybeSave(asset, path, args);
+        return 0;
+    }
+
     public static int Remove(ArgReader args)
     {
         var path = args.Positional(0, "file");
@@ -335,6 +344,22 @@ internal static class Commands
         ArrayElementEditor.Duplicate(array, index);
         var newIndex = array.Value!.Length - 1;
         return $"Duplicated {elementPath} -> [{newIndex}]";
+    }
+
+    internal static string ApplyDuplicateRow(UAsset asset, ArgReader args)
+    {
+        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var sourceRow = args.RequireOption("row");
+        var newRow = args.RequireOption("as");
+        try
+        {
+            DataTableRowDuplicator.Duplicate(asset, exportIndex, sourceRow, newRow);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+        return $"Duplicated row {sourceRow} -> {newRow}";
     }
 
     internal static string ApplyRemove(UAsset asset, ArgReader args)
