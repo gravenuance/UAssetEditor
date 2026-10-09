@@ -220,7 +220,7 @@ public static class PropertyValueAccessor
         if (index.IsNull()) return "";
         if (index.IsImport()) return ImportPathResolver.GetFullPath(index.ToImport(asset), asset);
         if (index.IsExport() && index.Index - 1 < asset.Exports.Count)
-            return asset.Exports[index.Index - 1].ObjectName.Value?.Value ?? "";
+            return FNameDisplay.ToDisplayString(asset.Exports[index.Index - 1].ObjectName);
         return "";
     }
 

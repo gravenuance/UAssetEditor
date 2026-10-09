@@ -832,7 +832,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var exportNames = await Task.Run(() =>
             {
                 var asset = workspace.GetOrOpen(assetPath);
-                return asset.Exports.Select(e => e.ObjectName.Value?.Value ?? "").ToList();
+                return asset.Exports.Select(e => FNameDisplay.ToDisplayString(e.ObjectName)).ToList();
             });
             exportsGroup.MarkExportsLoaded(exportNames);
         }

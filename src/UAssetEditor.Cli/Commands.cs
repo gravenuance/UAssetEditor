@@ -42,7 +42,7 @@ internal static class Commands
         for (var i = 0; i < asset.Exports.Count; i++)
         {
             var export = asset.Exports[i];
-            var name = export.ObjectName.Value?.Value ?? "";
+            var name = FNameDisplay.ToDisplayString(export.ObjectName);
             Console.WriteLine($"[{i}] {name} ({export.GetType().Name})");
             if (!members || export is not UAssetAPI.ExportTypes.StructExport structExport || structExport.LoadedProperties == null) continue;
             for (var m = 0; m < structExport.LoadedProperties.Length; m++)

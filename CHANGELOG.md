@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Export names now show their number suffix everywhere they are displayed or matched: object references, the `exports` listing, `--export <name>`, search results and `--export-name`, and the app's export list. Sibling objects that differ only by number (behaviour-tree nodes such as `SBBTTask_SbUseSkill_19`) all showed the same bare name, so a tree's wiring couldn't be followed.
+
 ## [1.7.3] - 2026-10-08
 
 ### Fixed

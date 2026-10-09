@@ -205,6 +205,18 @@ public class PropertyValueAccessorTests
     }
 
     [Fact]
+    public void AsSearchableString_NamesAnExportReferenceWithItsNumberSuffix()
+    {
+        // Behaviour-tree siblings share one base name and differ only by FName number.
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, "SBBTTask_SbUseSkill");
+        TestAssets.CreateSampleExport(asset, "SBBTTask_SbUseSkill").ObjectName = new FName(asset, "SBBTTask_SbUseSkill", 143);
+        var prop = new ObjectPropertyData(new FName(asset, "ChildTask")) { Value = FPackageIndex.FromExport(1) };
+
+        Assert.Equal("SBBTTask_SbUseSkill_142", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
     public void TrySetStringValue_SetsObjectPropertyDataToMatchingImport()
     {
         var asset = TestAssets.CreateAsset();
