@@ -20,9 +20,11 @@ public static class StringTableEditor
             throw new ArgumentException($"Export {exportIndex} isn't a StringTable.", nameof(exportIndex));
 
         // FString equality also compares encodings, so a key read from disk never equals a freshly built one.
-        for (var i = 0; i < table.Count; i++)
+        // TMap.Keys builds a new list on every read, so take it once.
+        var keys = table.Keys.ToList();
+        for (var i = 0; i < keys.Count; i++)
         {
-            if (table.Keys.ElementAt(i).Value != key) continue;
+            if (keys[i].Value != key) continue;
             var previous = table[i].Value;
             table[i] = new FString(value);
             return previous;

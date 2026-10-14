@@ -57,6 +57,23 @@ public class StringTableEditorTests
     }
 
     [Fact]
+    public void Set_OnALargeTable_DoesNotCopyTheKeysPerEntry()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = AddTable(asset);
+        for (var i = 0; i < 5000; i++)
+            export.Table.Add(new FString($"Key_{i}", Encoding.ASCII), new FString("v", Encoding.ASCII));
+
+        // A per-entry key copy allocates ~200 MB for 5000 keys; one copy is ~40 KB.
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        StringTableEditor.Set(asset, 0, "Key_4999", "last");
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal("last", export.Table[5000].Value);
+        Assert.True(allocated < 5_000_000, $"Set allocated {allocated:N0} bytes.");
+    }
+
+    [Fact]
     public void Set_RefusesAnExportThatIsNotAStringTable()
     {
         var asset = TestAssets.CreateAsset();
