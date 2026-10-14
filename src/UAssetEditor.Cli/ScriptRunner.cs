@@ -149,7 +149,8 @@ internal static class ScriptRunner
 
     /// <summary>
     /// Splits an ops line on whitespace; double quotes group spaces and are dropped. <c>\"</c> is a literal quote
-    /// (e.g. JSON values); any other backslash is kept, so Windows paths need no escaping.
+    /// (e.g. JSON values), except inside quotes right before whitespace or the line end, where it keeps the backslash and
+    /// closes the quote, so <c>"D:\dir\"</c> works. Any other backslash is kept, so Windows paths need no escaping.
     /// </summary>
     internal static List<string> Tokenize(string line)
     {
@@ -160,7 +161,12 @@ internal static class ScriptRunner
         for (var i = 0; i < line.Length; i++)
         {
             var c = line[i];
-            if (c == '\\' && i + 1 < line.Length && line[i + 1] == '"') { current.Append('"'); i++; continue; }
+            if (c == '\\' && i + 1 < line.Length && line[i + 1] == '"' && !(inQuotes && EndsToken(line, i + 2)))
+            {
+                current.Append('"');
+                i++;
+                continue;
+            }
             if (c == '"') { inQuotes = !inQuotes; continue; }
             if (char.IsWhiteSpace(c) && !inQuotes)
             {
@@ -173,4 +179,6 @@ internal static class ScriptRunner
 
         return tokens;
     }
+
+    private static bool EndsToken(string line, int index) => index >= line.Length || char.IsWhiteSpace(line[index]);
 }

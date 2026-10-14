@@ -29,6 +29,22 @@ public class ScriptTokenizerTests
     }
 
     [Fact]
+    public void Tokenize_QuotedPathEndingInBackslash_AtLineEnd_KeepsTheBackslash()
+    {
+        var tokens = ScriptRunner.Tokenize("dump --out \"D:\\my mods\\\"");
+
+        Assert.Equal(["dump", "--out", "D:\\my mods\\"], tokens);
+    }
+
+    [Fact]
+    public void Tokenize_QuotedPathEndingInBackslash_BeforeMoreOptions_ClosesTheQuote()
+    {
+        var tokens = ScriptRunner.Tokenize("dump --out \"D:\\my mods\\\" --export 3");
+
+        Assert.Equal(["dump", "--out", "D:\\my mods\\", "--export", "3"], tokens);
+    }
+
+    [Fact]
     public void Tokenize_BackslashNotBeforeAQuote_StaysAsIs()
     {
         var tokens = ScriptRunner.Tokenize("dump --out D:\\mods\\x.txt");
