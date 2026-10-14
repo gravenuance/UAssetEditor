@@ -10,7 +10,7 @@ This project embeds prebuilt third-party binaries in its single-file publish out
   natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
   plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
-  (SHA-256 `22612284ef508266093f6d0357d1bdffc4aa5bbbd4e2d965325e5d736e8c5b58`)
+  (SHA-256 `48062dc17fa9e60315fb6fed38c266173ddf3af6c09024794f4513e3ed75a93d`)
 - **License**: MIT (`src/UAssetEditor.App/vendor/retoc-LICENSE.txt`)
 - **Purpose**: Converts between Unreal Engine's IoStore/Zen container format (`.utoc`/`.ucas`)
   and legacy `.pak` format. UAssetEditor shells out to it (see
