@@ -82,7 +82,7 @@
   <Choose>
     <When Condition="$(DefineConstants.Contains('ADDTRACING'))">
       <ItemGroup>
-        <PackageReference Include="PostSharp.Patterns.Diagnostics" Version="2026.0.7" />
+        <PackageReference Include="PostSharp.Patterns.Diagnostics" />
       </ItemGroup>
     </When>
   </Choose>
@@ -107,8 +107,8 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="ZstdSharp.Port" />
+    <PackageReference Include="Newtonsoft.Json" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="git_commit.txt">

@@ -9,14 +9,18 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.13" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
   </ItemGroup>
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- Published single-file for win-x64 (SingleFileRelease). The lock file needs that runtime, and the
+         single-file analyzer on in every build so restore always sees the ILLink pack it pulls in. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>UAssetEditor.ico</ApplicationIcon>
     <Version>1.8.0</Version>

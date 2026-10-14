@@ -20,7 +20,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore UAssetEditor.slnx
+        run: dotnet restore UAssetEditor.slnx --locked-mode
 
       # Release turns on TreatWarningsAsErrors (Directory.Build.props) and matches what
       # SingleFileRelease publishes - the same config CI and a release build both use.

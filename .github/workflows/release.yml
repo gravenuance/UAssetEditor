@@ -25,7 +25,7 @@ jobs:
           global-json-file: global.json
 
       - name: Restore
-        run: dotnet restore UAssetEditor.slnx
+        run: dotnet restore UAssetEditor.slnx --locked-mode
 
       - name: Build (Release)
         run: dotnet build UAssetEditor.slnx -c Release --no-restore
