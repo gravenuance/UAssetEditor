@@ -185,3 +185,6 @@ Release build (warnings are errors) and the real test invocation:
 dotnet build -c Release
 dotnet run --project tests/UAssetEditor.Core.Tests -c Release
 ```
+
+After adding or bumping a package, run `dotnet restore` and commit the changed `packages.lock.json` files: CI
+restores in locked mode and fails otherwise.
