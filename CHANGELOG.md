@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-15
+
 ### Added
 - Assets using UE5 optional properties (`OptionalProperty`) open and save, through upstream UAssetAPI's `OptionalPropertyData`. Before, such an asset (a UE 5.7 Grounded 2 DataTable in upstream's tests) failed to open.
 
@@ -192,7 +194,8 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.9.0...HEAD
+[1.9.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.8.0...v1.9.0
 [1.5.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.2.0...v1.3.0

@@ -23,7 +23,7 @@
     <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>UAssetEditor.ico</ApplicationIcon>
-    <Version>1.8.0</Version>
+    <Version>1.9.0</Version>
     <Product>UAssetEditor</Product>
     <Description>A focused editor for Unreal Engine .uasset data - browse, search, batch-edit, and repack, without opening the engine.</Description>
 
