@@ -4,6 +4,13 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- Assets using UE5 optional properties (`OptionalProperty`) open and save, through upstream UAssetAPI's `OptionalPropertyData`. Before, such an asset (a UE 5.7 Grounded 2 DataTable in upstream's tests) failed to open.
+
+### Fixed
+- `set-string` slowed with the square of the table's size: each lookup copied every key. One edit on a 5000-key table allocated 200 MB; it now reads the keys once.
+- In `script` ops files, a quoted path ending in a backslash (`--out "D:\my mods\"`) took the closing quote as a literal one and swallowed the rest of the line. Inside quotes, `\"` before a space or the line end now closes the quote and keeps the backslash.
+
 ## [1.8.0] - 2026-10-09
 
 ### Added
