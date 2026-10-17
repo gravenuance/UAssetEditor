@@ -6,3 +6,6 @@ TestResults
 
 # Scratch pak produced by manual pack/repack testing
 custom.pak
+
+# Agent instructions: local to this machine, not published
+CLAUDE.md
