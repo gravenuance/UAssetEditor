@@ -4,18 +4,14 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-24
+
 ### Added
 - `to-unversioned --from-usmap <old.usmap>` re-lays out a package that is already unversioned for an older schema, such as a mesh built before a game patch inserted a field: every later field index shifts, so the game misreads the old data. Values are matched by name; a property the new schema dropped is listed, and one whose type changed stops the run.
-
-### Fixed
-- A UE5 pak whose index holds non-encoded entries, or marks deleted ones, could not be opened: the bundled repak asserted that the index had none, and a failed assert in the native library ends the pak worker. It now reads them and skips deleted entries (upstream repak `1ef2c6f`, `355b5f6`).
-
-## [1.9.0] - 2026-10-15
-
-### Added
 - Assets using UE5 optional properties (`OptionalProperty`) open and save, through upstream UAssetAPI's `OptionalPropertyData`. Before, such an asset (a UE 5.7 Grounded 2 DataTable in upstream's tests) failed to open.
 
 ### Fixed
+- A UE5 pak whose index holds non-encoded entries, or marks deleted ones, could not be opened: the bundled repak asserted that the index had none, and a failed assert in the native library ends the pak worker. It now reads them and skips deleted entries (upstream repak `1ef2c6f`, `355b5f6`).
 - `set-string` slowed with the square of the table's size: each lookup copied every key. One edit on a 5000-key table allocated 200 MB; it now reads the keys once.
 - In `script` ops files, a quoted path ending in a backslash (`--out "D:\my mods\"`) took the closing quote as a literal one and swallowed the rest of the line. Inside quotes, `\"` before a space or the line end now closes the quote and keeps the backslash.
 
