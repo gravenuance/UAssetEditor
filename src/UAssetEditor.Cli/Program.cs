@@ -165,10 +165,12 @@ static void PrintUsage()
               and save with --out to clone a cooked asset to a new path; rename an import's package path and object name
               to point it at a different asset. Fails, saving nothing, if a source is missing or a target already exists.
 
-          uacli to-unversioned <file> --usmap <game.usmap> [--out <file>] [--save]
+          uacli to-unversioned <file> --usmap <game.usmap> [--from-usmap <old.usmap>] [--out <file>] [--save]
               Rewrite a versioned (tagged) cooked package with unversioned properties laid out by the game's schema.
               Cook versioned in a stock editor, then convert: a stock unversioned cook uses the stock class layouts,
               which a game that changed an engine class misreads. Lists every property the game's schema lacks.
+              With --from-usmap the package is already unversioned for that older schema (e.g. built before a game
+              patch inserted a field): it is read with it and re-laid out for --usmap. Refuses a property whose type changed.
 
           uacli strip-versions <file> [--out <file>] [--save]
               Mark a versioned (tagged) cooked package's summary unversioned, keeping its tagged properties, so an

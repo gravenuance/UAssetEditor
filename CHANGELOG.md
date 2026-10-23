@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `to-unversioned --from-usmap <old.usmap>` re-lays out a package that is already unversioned for an older schema, such as a mesh built before a game patch inserted a field: every later field index shifts, so the game misreads the old data. Values are matched by name; a property the new schema dropped is listed, and one whose type changed stops the run.
+
 ## [1.9.0] - 2026-10-15
 
 ### Added

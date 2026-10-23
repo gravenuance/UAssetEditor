@@ -54,11 +54,11 @@ internal static class AssetIo
     // Loading a usmap is most of a small run's cost, so each is loaded once per process and every asset gets its own scope of it.
     private static readonly ConcurrentDictionary<string, Lazy<Usmap>> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
 
-    public static Usmap? ResolveMappings(ArgReader args)
+    public static Usmap? ResolveMappings(ArgReader args, string option = "usmap")
     {
-        var path = args.Option("usmap");
+        var path = args.Option(option);
         if (path == null) return null;
-        if (!File.Exists(path)) throw new ArgException($"--usmap file not found: {path}");
+        if (!File.Exists(path)) throw new ArgException($"--{option} file not found: {path}");
         return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value.CreateAssetScope();
     }
 

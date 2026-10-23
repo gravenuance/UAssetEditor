@@ -264,13 +264,15 @@ internal static class Commands
         var output = args.Option("out") ?? path;
         var schema = AssetIo.ResolveMappings(args) ?? throw new ArgException("--usmap is required: it is the game's schema to write for.");
         if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
-        // Read without the schema: the package is tagged, and the schema describes the game, not the editor that cooked it.
-        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null, Game.None);
+        // A tagged package is read without a schema: the schema describes the game, not the editor that cooked it.
+        // An unversioned one can only be read with the schema it was written for.
+        var source = AssetIo.ResolveMappings(args, "from-usmap");
+        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), source, Game.None);
 
         IReadOnlyList<string> dropped;
         try
         {
-            dropped = UnversionedConverter.Convert(asset, schema);
+            dropped = source == null ? UnversionedConverter.Convert(asset, schema) : UnversionedConverter.Reschema(asset, schema);
         }
         catch (ArgumentException ex)
         {
