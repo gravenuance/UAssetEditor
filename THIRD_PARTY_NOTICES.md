@@ -70,3 +70,8 @@ SOFTWARE.
   e.g. cue4parse, per upstream's own NOTICE)
 - Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
   by trumank). See https://github.com/trumank/repak for that project's own license/attribution.
+  The Windows `repak_bind.dll.gz` is built from https://github.com/gravenuance/repak branch
+  `feat/upstream-read-fixes` @ `3d3fce0` (`cargo build --release -p repak_bind`, SHA-256
+  `791a01824f39a352ac91874fed8943d77435aebc73116e4c1711fceb5d550acf`): upstream's `cs-bindings` line with our
+  legacy-compression fix and upstream master's `1ef2c6f` and `355b5f6` cherry-picked. `repak_bind.so.gz` is
+  upstream's older build.

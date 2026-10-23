@@ -7,6 +7,9 @@ All notable changes to this project are documented here.
 ### Added
 - `to-unversioned --from-usmap <old.usmap>` re-lays out a package that is already unversioned for an older schema, such as a mesh built before a game patch inserted a field: every later field index shifts, so the game misreads the old data. Values are matched by name; a property the new schema dropped is listed, and one whose type changed stops the run.
 
+### Fixed
+- A UE5 pak whose index holds non-encoded entries, or marks deleted ones, could not be opened: the bundled repak asserted that the index had none, and a failed assert in the native library ends the pak worker. It now reads them and skips deleted entries (upstream repak `1ef2c6f`, `355b5f6`).
+
 ## [1.9.0] - 2026-10-15
 
 ### Added
