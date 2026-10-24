@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `dump` and search print GUID properties (`{XXXXXXXX-...}`); they printed empty. A cooked LayeredBoneBlend's `SkeletonGuid` / `VirtualBoneGuid` is how a game patch's re-cook against a changed skeleton shows.
+
 ## [1.9.0] - 2026-10-24
 
 ### Added

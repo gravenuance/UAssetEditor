@@ -22,6 +22,17 @@ public class PropertyValueAccessorTests
     }
 
     [Fact]
+    public void AsSearchableString_ReadsGuid()
+    {
+        // A cooked LayeredBoneBlend's SkeletonGuid is how a game update's re-cook against a changed skeleton shows.
+        var asset = TestAssets.CreateAsset();
+        var guid = "{01234567-89AB-CDEF-0123-456789ABCDEF}".ConvertToGUID();
+        var prop = new GuidPropertyData(new FName(asset, "SkeletonGuid")) { Value = guid };
+
+        Assert.Equal("{01234567-89AB-CDEF-0123-456789ABCDEF}", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
     public void TrySetStringValue_RoundTripsThroughAsSearchableString()
     {
         var asset = TestAssets.CreateAsset();

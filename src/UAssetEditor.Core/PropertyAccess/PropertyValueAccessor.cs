@@ -45,6 +45,7 @@ public static class PropertyValueAccessor
             QuatPropertyData q => Components(q.Value.X, q.Value.Y, q.Value.Z, q.Value.W),
             Vector2DPropertyData v2 => Components(v2.Value.X, v2.Value.Y),
             Vector4PropertyData v4 => Components(v4.Value.X, v4.Value.Y, v4.Value.Z, v4.Value.W),
+            GuidPropertyData g => g.Value.ConvertToString(),
             _ => null,
         };
     }
