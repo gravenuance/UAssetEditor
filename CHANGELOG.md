@@ -4,8 +4,17 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-28
+
 ### Added
 - `dump` and search print GUID properties (`{XXXXXXXX-...}`); they printed empty. A cooked LayeredBoneBlend's `SkeletonGuid` / `VirtualBoneGuid` is how a game patch's re-cook against a changed skeleton shows.
+- `set` takes GUID values in the form `dump` prints, so a blueprint's skeleton GUIDs can be brought up to a game patch's re-cook.
+
+### Fixed
+- `set` couldn't fill a GUID or vector that unversioned data stored as an empty struct because it sat at its default (a LayeredBoneBlend's `VirtualBoneGuid`): it reported no property at that path.
+
+### Changed
+- Microsoft.Extensions packages 10.0.13 -> 10.0.14, and the .NET SDK 10.0.402 -> 10.0.403.
 
 ## [1.9.0] - 2026-10-24
 
@@ -199,7 +208,8 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.10.0...HEAD
+[1.10.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.8.0...v1.9.0
 [1.5.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.3.0...v1.4.0
