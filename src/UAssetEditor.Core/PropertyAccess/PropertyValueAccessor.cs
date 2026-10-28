@@ -138,6 +138,9 @@ public static class PropertyValueAccessor
                 so.Value = path;
                 RegisterSoftObjectPath(asset, path);
                 return true;
+            case GuidPropertyData g when TryParseGuid(newValue, out var gv):
+                g.Value = gv;
+                return true;
             default:
                 return false;
         }
@@ -197,6 +200,7 @@ public static class PropertyValueAccessor
             QuatPropertyData q => q.Value.X == 0 && q.Value.Y == 0 && q.Value.Z == 0 && q.Value.W == 0,
             Vector2DPropertyData v2 => v2.Value.X == 0 && v2.Value.Y == 0,
             Vector4PropertyData v4 => v4.Value.X == 0 && v4.Value.Y == 0 && v4.Value.Z == 0 && v4.Value.W == 0,
+            GuidPropertyData g => g.Value == Guid.Empty,
             _ => prop.IsZero,
         };
     }
@@ -213,6 +217,15 @@ public static class PropertyValueAccessor
         {
             if (!double.TryParse(parts[i], NumberStyles.Float, CultureInfo.InvariantCulture, out values[i])) return false;
         }
+        return true;
+    }
+
+    /// <summary>Parses the braced form <see cref="AsSearchableString"/> prints, which orders bytes as Unreal's FGuid does, not as <see cref="Guid.Parse(string)"/> would.</summary>
+    private static bool TryParseGuid(string text, out Guid value)
+    {
+        value = Guid.Empty;
+        if (!Guid.TryParseExact(text, "B", out _)) return false;
+        value = text.ConvertToGUID();
         return true;
     }
 

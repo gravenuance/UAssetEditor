@@ -117,6 +117,27 @@ public class PropertyValueAccessorTests
         Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
     }
 
+    [Fact]
+    public void Guid_RoundTripsInTheFormDumpPrints()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new GuidPropertyData(new FName(asset, "SkeletonGuid")) { IsZero = true };
+        const string value = "{C34B2A45-498A-6B7F-A4CD-D79DF3D94FAC}";
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, value, asset));
+        PropertyValueAccessor.UpdateIsZeroFlag(prop);
+
+        Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+        Assert.False(prop.IsZero);
+        Assert.False(PropertyValueAccessor.TrySetStringValue(prop, "{C34B2A45-498A-6B7F}", asset));
+        Assert.False(PropertyValueAccessor.TrySetStringValue(prop, "not a guid", asset));
+        Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, "{00000000-0000-0000-0000-000000000000}", asset));
+        PropertyValueAccessor.UpdateIsZeroFlag(prop);
+        Assert.True(prop.IsZero);
+    }
+
     private static PropertyData CreateSizedInteger(UAsset asset, string kind)
     {
         var name = new FName(asset, "Value");

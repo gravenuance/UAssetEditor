@@ -21,15 +21,22 @@ internal static class SchemaFieldFactory
         if (ancestry == null) return null;
 
         var fieldName = new FName(asset, name);
-        if (TryFindField(asset, fieldName, ancestry) is not { } schemaField) return null;
-
-        var created = Build(asset, fieldName, schemaField.PropertyData);
+        var created = IsEmptyNativeWrapper(owner, siblings, name)
+            ? TryBuildNative(asset, owner!.StructType, fieldName)
+            : TryFindField(asset, fieldName, ancestry) is { } schemaField ? Build(asset, fieldName, schemaField.PropertyData) : null;
         if (created == null) return null;
 
         created.ResolveAncestries(asset, (AncestryInfo)ancestry.Clone());
         created.IsZero = true;
         return created;
     }
+
+    /// <summary>
+    /// A native struct (Guid, Vector) at its default can be read as its wrapper alone; its one value carries the
+    /// wrapper's own name, as <see cref="Build"/> creates it, and has no schema to look it up by.
+    /// </summary>
+    private static bool IsEmptyNativeWrapper(StructPropertyData? owner, IList<PropertyData> siblings, string name) =>
+        owner?.StructType != null && siblings.Count == 0 && FNameDisplay.ToDisplayString(owner.Name) == name;
 
     private static UsmapProperty? TryFindField(UAsset asset, FName name, AncestryInfo ancestry)
     {
