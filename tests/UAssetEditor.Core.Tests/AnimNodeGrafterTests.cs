@@ -58,6 +58,19 @@ public class AnimNodeGrafterTests
     }
 
     [Fact]
+    public void GraftBeforeRoot_KeepsNodeTagsOnTheNodesTheyNamed()
+    {
+        // A lobby ShowAnimBP finds its LinkedAnimGraph by tag; a stale tag T-posed every wrapper we grafted into.
+        var donor = Blueprint.Donor();
+        var target = Blueprint.Target();
+        TestAssets.AddSparseHandlersAndTags(target.Asset, target.Cdo, ["None", "None"], ("Link_ShowAnim", 0), ("Root", 1));
+
+        AnimNodeGrafter.GraftBeforeRoot(target.Asset, target.CdoIndex, donor.Asset, donor.CdoIndex, ["AnimGraphNode_LocalToComponentSpace", Kawaii]);
+
+        Assert.Equal(new Dictionary<string, int> { ["Link_ShowAnim"] = 2, ["Root"] = 3 }, TestAssets.SparseTags(target.Asset, target.Cdo));
+    }
+
+    [Fact]
     public void GraftBeforeRoot_RecreatesNamesAndBringsTheNodeTypeAndImportAlong()
     {
         var donor = Blueprint.Donor();

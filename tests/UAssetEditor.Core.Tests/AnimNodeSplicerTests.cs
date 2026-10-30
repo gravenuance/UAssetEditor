@@ -112,6 +112,54 @@ public class AnimNodeSplicerTests
     }
 
     [Fact]
+    public void SpliceAfter_KeepsNodeTagsOnTheNodesTheyNamed()
+    {
+        // Counted from the end of 4 nodes: 1 is the Kawaii node, 3 the root.
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlersAndTags(graph.Asset, graph.Cdo, ["None", "None", "None", "None"], ("Physics", 1), ("Root", 3));
+
+        AnimNodeSplicer.SpliceAfter(graph.Asset, graph.CdoIndex, Kawaii);
+
+        Assert.Equal(new Dictionary<string, int> { ["Physics"] = 2, ["Root"] = 4 }, TestAssets.SparseTags(graph.Asset, graph.Cdo));
+    }
+
+    [Fact]
+    public void Tags_ListEachTagWithTheNodeItsEndCountedIndexNames()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlersAndTags(graph.Asset, graph.Cdo, ["None", "None", "None", "None"], ("Physics", 1), ("Root", 3));
+
+        Assert.Equal([new AnimNodeTag("Physics", 1, Kawaii), new AnimNodeTag("Root", 3, "AnimGraphNode_Root")],
+            AnimNodeTags.List(graph.Asset, graph.CdoIndex));
+    }
+
+    [Fact]
+    public void Tags_SetRepointsATagAndSavesIt()
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlersAndTags(graph.Asset, graph.Cdo, ["None", "None", "None", "None"], ("Physics", 0), ("Root", 3));
+
+        var set = AnimNodeTags.Set(graph.Asset, graph.CdoIndex, "Physics", 1);
+
+        Assert.Equal(new AnimNodeTag("Physics", 1, Kawaii), set);
+        Assert.Equal(new Dictionary<string, int> { ["Physics"] = 1, ["Root"] = 3 }, TestAssets.SparseTags(graph.Asset, graph.Cdo));
+    }
+
+    [Theory]
+    [InlineData("Missing", 1)]
+    [InlineData("Physics", 4)]
+    [InlineData("Physics", -1)]
+    public void Tags_SetRefusesAnUnknownTagOrAnIndexPastTheNodes_AndChangesNothing(string tag, int index)
+    {
+        var graph = AnimGraph.Create();
+        TestAssets.AddSparseHandlersAndTags(graph.Asset, graph.Cdo, ["None", "None", "None", "None"], ("Physics", 0));
+
+        Assert.Throws<InvalidOperationException>(() => AnimNodeTags.Set(graph.Asset, graph.CdoIndex, tag, index));
+
+        Assert.Equal(new Dictionary<string, int> { ["Physics"] = 0 }, TestAssets.SparseTags(graph.Asset, graph.Cdo));
+    }
+
+    [Fact]
     public void SpliceAfter_RefusesAnEndCountedIndexPastTheNodes_AndChangesNothing()
     {
         var graph = AnimGraph.Create();

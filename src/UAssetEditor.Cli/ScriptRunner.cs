@@ -28,6 +28,8 @@ internal static class ScriptRunner
         ["bypass-node"] = Commands.ApplyBypassNode,
         ["check-graph"] = Commands.ApplyCheckGraph,
         ["list-nodes"] = Commands.ApplyListNodes,
+        ["list-tags"] = Commands.ApplyListTags,
+        ["set-tag"] = Commands.ApplySetTag,
         ["graft-nodes"] = Commands.ApplyGraftNodes,
     };
 

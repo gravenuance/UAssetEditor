@@ -138,6 +138,14 @@ static void PrintUsage()
           uacli script ops only: list-nodes --export <cdo>
               Print the class's anim-graph nodes in node-index order (what every LinkID counts), comma-separated.
 
+          uacli script ops only: list-tags --export <cdo>
+              Print the node tags (AnimBlueprintExtension_Tag) as Tag=Index(Node), comma-separated. Their indices count from
+              the END of the node list; a stale one hands the game's lookup by tag the wrong node (a lobby ShowAnimBP T-poses).
+
+          uacli script ops only: set-tag --export <cdo> --tag <Tag> --value <index>
+              Point an existing node tag at an end-counted node index. graft-nodes and splice-node keep tags on their nodes;
+              this repairs ones older edits left behind, from the game's own copy.
+
           uacli script ops only: check-graph --export <cdo>
               Confirm every anim-graph node has its node-table row and exposed-value handler; reported as skipped when not.
 

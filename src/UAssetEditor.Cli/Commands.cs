@@ -435,6 +435,20 @@ internal static class Commands
     internal static string ApplyListNodes(UAsset asset, ArgReader args) =>
         string.Join(",", AnimNodeSplicer.AnimNodeNames(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))));
 
+    /// <summary>Read-only: each node tag as Tag=Index(Node), comma-separated; the index counts from the end of the node list.</summary>
+    internal static string ApplyListTags(UAsset asset, ArgReader args) =>
+        string.Join(",", AnimNodeTags.List(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))).Select(t => $"{t.Tag}={t.Index}({t.Node})"));
+
+    internal static string ApplySetTag(UAsset asset, ArgReader args)
+    {
+        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var tag = args.RequireOption("tag");
+        var value = args.RequireOption("value");
+        if (!int.TryParse(value, out var index)) throw new ArgException($"--value must be a node index, not '{value}'.");
+        var set = AnimNodeTags.Set(asset, cdoExportIndex, tag, index);
+        return $"{set.Tag} -> {set.Index} ({set.Node})";
+    }
+
     internal static string ApplyGraftNodes(UAsset asset, ArgReader args)
     {
         var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));

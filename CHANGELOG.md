@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `list-tags` and `set-tag` (script ops) read and re-point an animation blueprint's node tags, so tags an older edit
+  left on the wrong node can be repaired from the game's copy.
+
+### Fixed
+- `graft-nodes` and `splice-node` left node tags (`AnimBlueprintExtension_Tag`) on the wrong node. Tags count from the
+  end of the node list, like the cached-pose and asset-player tables these commands already moved. In Marvel Rivals a
+  lobby ShowAnimBP finds its linked animation graph by tag, so every one edited this way T-posed.
+
 ## [1.10.0] - 2026-10-28
 
 ### Added
