@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-30
+
 ### Added
 - `list-tags` and `set-tag` (script ops) read and re-point an animation blueprint's node tags, so tags an older edit
   left on the wrong node can be repaired from the game's copy.
@@ -217,7 +219,8 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.10.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.10.0...v1.11.0
 [1.10.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.8.0...v1.9.0
 [1.5.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...v1.5.0
