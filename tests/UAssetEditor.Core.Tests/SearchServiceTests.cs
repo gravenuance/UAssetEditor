@@ -124,6 +124,32 @@ public class SearchServiceTests
     }
 
     [Fact]
+    public void SearchAsset_ShowsAndMatchesNumberedExportNames()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, exportName: "Task");
+        TestAssets.CreateSampleExport(asset, exportName: "Task").ObjectName = new FName(asset, "Task", 4);
+
+        var results = SearchService.SearchAsset(asset, "p", new SearchQuery
+        {
+            ExportNameTerms = ["Task_3"],
+            PropertyNameTerms = ["Count"],
+        }).ToList();
+
+        Assert.Single(results);
+        Assert.Equal("Task_3", results[0].ExportName);
+    }
+
+    [Fact]
+    public void PropertiesForExport_ShowsTheNumberedExportName()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, exportName: "Task").ObjectName = new FName(asset, "Task", 2);
+
+        Assert.All(SearchService.PropertiesForExport(asset, "p", 0), r => Assert.Equal("Task_1", r.ExportName));
+    }
+
+    [Fact]
     public void SearchAsset_ExportNameTerms_RestrictsWhichExportsAreConsidered()
     {
         var asset = TestAssets.CreateAsset();

@@ -45,6 +45,7 @@ public static class PropertyValueAccessor
             QuatPropertyData q => Components(q.Value.X, q.Value.Y, q.Value.Z, q.Value.W),
             Vector2DPropertyData v2 => Components(v2.Value.X, v2.Value.Y),
             Vector4PropertyData v4 => Components(v4.Value.X, v4.Value.Y, v4.Value.Z, v4.Value.W),
+            GuidPropertyData g => g.Value.ConvertToString(),
             _ => null,
         };
     }
@@ -137,6 +138,9 @@ public static class PropertyValueAccessor
                 so.Value = path;
                 RegisterSoftObjectPath(asset, path);
                 return true;
+            case GuidPropertyData g when TryParseGuid(newValue, out var gv):
+                g.Value = gv;
+                return true;
             default:
                 return false;
         }
@@ -196,6 +200,7 @@ public static class PropertyValueAccessor
             QuatPropertyData q => q.Value.X == 0 && q.Value.Y == 0 && q.Value.Z == 0 && q.Value.W == 0,
             Vector2DPropertyData v2 => v2.Value.X == 0 && v2.Value.Y == 0,
             Vector4PropertyData v4 => v4.Value.X == 0 && v4.Value.Y == 0 && v4.Value.Z == 0 && v4.Value.W == 0,
+            GuidPropertyData g => g.Value == Guid.Empty,
             _ => prop.IsZero,
         };
     }
@@ -215,12 +220,21 @@ public static class PropertyValueAccessor
         return true;
     }
 
+    /// <summary>Parses the braced form <see cref="AsSearchableString"/> prints, which orders bytes as Unreal's FGuid does, not as <see cref="Guid.Parse(string)"/> would.</summary>
+    private static bool TryParseGuid(string text, out Guid value)
+    {
+        value = Guid.Empty;
+        if (!Guid.TryParseExact(text, "B", out _)) return false;
+        value = text.ConvertToGUID();
+        return true;
+    }
+
     private static string DescribeObjectReference(FPackageIndex index, UAsset asset)
     {
         if (index.IsNull()) return "";
         if (index.IsImport()) return ImportPathResolver.GetFullPath(index.ToImport(asset), asset);
         if (index.IsExport() && index.Index - 1 < asset.Exports.Count)
-            return asset.Exports[index.Index - 1].ObjectName.Value?.Value ?? "";
+            return FNameDisplay.ToDisplayString(asset.Exports[index.Index - 1].ObjectName);
         return "";
     }
 

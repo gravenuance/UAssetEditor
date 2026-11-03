@@ -159,6 +159,24 @@ public class PropertyLocatorTests
     }
 
     [Fact]
+    public void LocateOrCreate_FillsANativeStructReadWithoutItsValue()
+    {
+        // Unversioned data can hold a native struct at its default as an empty wrapper (a LayeredBoneBlend's VirtualBoneGuid).
+        var (asset, node) = CreateNodeWithSchema();
+        var wrapper = new StructPropertyData(new FName(asset, "BoneGuid"), new FName(asset, "Guid")) { Value = [] };
+        node.Value.Add(wrapper);
+        node.ResolveAncestries(asset, new AncestryInfo());
+
+        var created = PropertyLocator.LocateOrCreate(asset, 0, "Node.BoneGuid.BoneGuid");
+
+        Assert.IsType<GuidPropertyData>(created?.Property);
+        Assert.Same(wrapper, Assert.Single(node.Value, p => p.Name.ToString() == "BoneGuid"));
+        Assert.True(PropertyValueAccessor.TrySetStringValue(created!.Property, "{0832FCC0-4A4A-6FF9-915D-7E9E04540CD2}", asset));
+        Assert.Equal("{0832FCC0-4A4A-6FF9-915D-7E9E04540CD2}",
+            PropertyValueAccessor.AsSearchableString(PropertyLocator.Locate(asset, 0, "Node.BoneGuid.BoneGuid")!.Property, asset));
+    }
+
+    [Fact]
     public void LocateOrCreate_LeavesTheAssetAloneForANameTheSchemaDoesNotKnow()
     {
         var (asset, node) = CreateNodeWithSchema();
@@ -195,6 +213,7 @@ public class PropertyLocatorTests
             [0] = new("Value", 0, 0, 1, new UsmapPropertyData(UsmapPropertyType.IntProperty)),
             [1] = new("Scale", 1, 0, 1, new UsmapPropertyData(UsmapPropertyType.FloatProperty)),
             [2] = new("Gravity", 2, 0, 1, new UsmapStructData("Vector")),
+            [3] = new("BoneGuid", 3, 0, 1, new UsmapStructData("Guid")),
         };
         asset.Mappings = new Usmap
         {

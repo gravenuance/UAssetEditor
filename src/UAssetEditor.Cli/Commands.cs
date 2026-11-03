@@ -42,7 +42,7 @@ internal static class Commands
         for (var i = 0; i < asset.Exports.Count; i++)
         {
             var export = asset.Exports[i];
-            var name = export.ObjectName.Value?.Value ?? "";
+            var name = FNameDisplay.ToDisplayString(export.ObjectName);
             Console.WriteLine($"[{i}] {name} ({export.GetType().Name})");
             if (!members || export is not UAssetAPI.ExportTypes.StructExport structExport || structExport.LoadedProperties == null) continue;
             for (var m = 0; m < structExport.LoadedProperties.Length; m++)
@@ -168,6 +168,24 @@ internal static class Commands
         return 0;
     }
 
+    public static int DuplicateRow(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var asset = AssetIo.Open(path, args);
+        Console.WriteLine(ApplyDuplicateRow(asset, args));
+        MaybeSave(asset, path, args);
+        return 0;
+    }
+
+    public static int SetString(ArgReader args)
+    {
+        var path = args.Positional(0, "file");
+        var asset = AssetIo.Open(path, args);
+        Console.WriteLine(ApplySetString(asset, args));
+        MaybeSave(asset, path, args);
+        return 0;
+    }
+
     public static int Remove(ArgReader args)
     {
         var path = args.Positional(0, "file");
@@ -246,13 +264,15 @@ internal static class Commands
         var output = args.Option("out") ?? path;
         var schema = AssetIo.ResolveMappings(args) ?? throw new ArgException("--usmap is required: it is the game's schema to write for.");
         if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
-        // Read without the schema: the package is tagged, and the schema describes the game, not the editor that cooked it.
-        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), mappings: null, Game.None);
+        // A tagged package is read without a schema: the schema describes the game, not the editor that cooked it.
+        // An unversioned one can only be read with the schema it was written for.
+        var source = AssetIo.ResolveMappings(args, "from-usmap");
+        var asset = ResilientAssetLoader.OpenStrict(path, AssetIo.ResolveVersion(args), source, Game.None);
 
         IReadOnlyList<string> dropped;
         try
         {
-            dropped = UnversionedConverter.Convert(asset, schema);
+            dropped = source == null ? UnversionedConverter.Convert(asset, schema) : UnversionedConverter.Reschema(asset, schema);
         }
         catch (ArgumentException ex)
         {
@@ -337,6 +357,39 @@ internal static class Commands
         return $"Duplicated {elementPath} -> [{newIndex}]";
     }
 
+    internal static string ApplyDuplicateRow(UAsset asset, ArgReader args)
+    {
+        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var sourceRow = args.RequireOption("row");
+        var newRow = args.RequireOption("as");
+        try
+        {
+            DataTableRowDuplicator.Duplicate(asset, exportIndex, sourceRow, newRow);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+        return $"Duplicated row {sourceRow} -> {newRow}";
+    }
+
+    internal static string ApplySetString(UAsset asset, ArgReader args)
+    {
+        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var key = args.RequireOption("key");
+        var value = args.RequireOption("value");
+        string? previous;
+        try
+        {
+            previous = StringTableEditor.Set(asset, exportIndex, key, value);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
+        return previous is null ? $"{key}: added = {value}" : $"{key}: {previous} -> {value}";
+    }
+
     internal static string ApplyRemove(UAsset asset, ArgReader args)
     {
         var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
@@ -381,6 +434,20 @@ internal static class Commands
     /// <summary>Read-only: the class's anim-graph nodes in node-index order, comma-separated, whatever they are called.</summary>
     internal static string ApplyListNodes(UAsset asset, ArgReader args) =>
         string.Join(",", AnimNodeSplicer.AnimNodeNames(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))));
+
+    /// <summary>Read-only: each node tag as Tag=Index(Node), comma-separated; the index counts from the end of the node list.</summary>
+    internal static string ApplyListTags(UAsset asset, ArgReader args) =>
+        string.Join(",", AnimNodeTags.List(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))).Select(t => $"{t.Tag}={t.Index}({t.Node})"));
+
+    internal static string ApplySetTag(UAsset asset, ArgReader args)
+    {
+        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
+        var tag = args.RequireOption("tag");
+        var value = args.RequireOption("value");
+        if (!int.TryParse(value, out var index)) throw new ArgException($"--value must be a node index, not '{value}'.");
+        var set = AnimNodeTags.Set(asset, cdoExportIndex, tag, index);
+        return $"{set.Tag} -> {set.Index} ({set.Node})";
+    }
 
     internal static string ApplyGraftNodes(UAsset asset, ArgReader args)
     {

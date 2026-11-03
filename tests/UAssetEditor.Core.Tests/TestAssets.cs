@@ -369,7 +369,14 @@ internal static class TestAssets
     /// Gives an anim blueprint's CDO sparse class data holding one exposed-value handler per entry
     /// ("None" = a handler that does nothing), laid out as a cooked CDO carries it.
     /// </summary>
-    public static void AddSparseHandlers(UAsset asset, NormalExport cdo, params string[] boundFunctions)
+    public static void AddSparseHandlers(UAsset asset, NormalExport cdo, params string[] boundFunctions) =>
+        AddSparseHandlersAndTags(asset, cdo, boundFunctions);
+
+    /// <summary>
+    /// As <see cref="AddSparseHandlers"/>, plus the node tag table (AnimBlueprintExtension_Tag.NodeIndices), whose
+    /// indices count from the end of the node list.
+    /// </summary>
+    public static void AddSparseHandlersAndTags(UAsset asset, NormalExport cdo, string[] boundFunctions, params (string Tag, int Node)[] tags)
     {
         var structExport = new StructExport
         {
@@ -398,6 +405,23 @@ internal static class TestAssets
                 },
             ],
         };
+        if (tags.Length > 0)
+        {
+            var map = new MapPropertyData(new FName(asset, "NodeIndices"))
+            {
+                KeyType = new FName(asset, "NameProperty"),
+                ValueType = new FName(asset, "IntProperty"),
+                Value = new TMap<PropertyData, PropertyData>(),
+            };
+            foreach (var (tag, node) in tags)
+                map.Value.Add(new NamePropertyData(new FName(asset, "NodeIndices")) { Value = new FName(asset, tag) },
+                    new IntPropertyData(new FName(asset, "NodeIndices")) { Value = node });
+            sparse.Value.Insert(0, new StructPropertyData(new FName(asset, "AnimBlueprintExtension_Tag"))
+            {
+                StructType = new FName(asset, "AnimSubsystem_Tag"),
+                Value = [map],
+            });
+        }
 
         using var stream = new MemoryStream();
         using (var writer = new AssetBinaryWriter(stream, asset))
@@ -414,4 +438,9 @@ internal static class TestAssets
             .Cast<StructPropertyData>()
             .Select(h => h.Value.OfType<NamePropertyData>().Single().Value.ToString())
             .ToArray();
+
+    /// <summary>Each node tag in the CDO's sparse class data, with the end-counted node index it names.</summary>
+    public static Dictionary<string, int> SparseTags(UAsset asset, NormalExport cdo) =>
+        PropertyAccess.SparseClassData.Read(asset, cdo)!.Find<MapPropertyData>("AnimBlueprintExtension_Tag.NodeIndices")!.Value
+            .ToDictionary(e => ((NamePropertyData)e.Key).Value.ToString(), e => ((IntPropertyData)e.Value).Value);
 }

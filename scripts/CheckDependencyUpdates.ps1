@@ -1,117 +1,74 @@
 <#
 .SYNOPSIS
-    Checks whether any NuGet dependency has a newer version available, whether the vendored
-    retoc.exe is behind its latest GitHub release, and specifically whether UAssetAPI's
-    upstream repo has unreleased commits since the exact commit our pinned version was built
-    from.
+    Checks NuGet packages for newer versions and both vendored dependencies (UAssetAPI source,
+    retoc.exe) for upstream commits newer than the ones they were built from.
 
 .DESCRIPTION
-    `dotnet list package --outdated` only catches an update once the maintainer has cut a
-    new NuGet release. UAssetAPI is the one dependency here that's version-coupled to
-    Unreal Engine itself (new UE releases need new UAssetAPI support), and its releases
-    lag its GitHub commits by weeks to months - so this also compares our pinned version's
-    exact commit (recorded in the NuGet package's own .nuspec) against the tip of its
-    default branch, so a meaningful unreleased feature (e.g. a new UE version, a new
-    property type) doesn't go unnoticed just because it hasn't been packaged yet.
-
-    retoc.exe (src/UAssetEditor.App/vendor/) isn't a NuGet package at all - it's a vendored
-    prebuilt binary (see THIRD_PARTY_NOTICES.md) - so `dotnet list package` can't see it
-    either; this checks its own --version output against retoc's latest GitHub release tag.
+    `dotnet list package --outdated` and Dependabot see only NuGet packages. UAssetAPI is vendored
+    as source and retoc as a binary built from a fork, so this reads each one's pinned commit from
+    THIRD_PARTY_NOTICES.md and compares it against upstream on GitHub. UAssetAPI is version-coupled
+    to Unreal Engine itself, so an upstream commit can be new engine or property-type support.
 
 .NOTES
-    Run this whenever cutting a release (e.g. before `dotnet publish -p:PublishProfile=
-    SingleFileRelease`) - see the "Dependency currency" project memory for why.
+    Windows PowerShell 5.1. Run before cutting a release.
 #>
+[CmdletBinding()]
+param()
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$notices = Get-Content -LiteralPath (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.md') -Raw
+$ghHeaders = @{ 'User-Agent' = 'UAssetEditor-dependency-check' }
 
-Write-Host "== NuGet package versions (dotnet list package --outdated) ==" -ForegroundColor Cyan
-Push-Location $repoRoot
-try {
-    dotnet list package --outdated
-} finally {
-    Pop-Location
+function Get-PinnedCommit([string]$section, [string]$pattern) {
+    $body = [regex]::Match($notices, "(?ms)^## $section\r?\n(.*?)(?=^## |\z)").Groups[1].Value
+    $match = [regex]::Match($body, $pattern)
+    if (-not $match.Success) { throw "THIRD_PARTY_NOTICES.md: no pinned commit found under '## $section'." }
+    return $match.Groups[1].Value
 }
 
-Write-Host ""
-Write-Host "== retoc.exe: vendored version vs. latest GitHub release ==" -ForegroundColor Cyan
-
-$retocExe = Join-Path $repoRoot "src\UAssetEditor.App\vendor\retoc.exe"
-if (-not (Test-Path $retocExe)) {
-    Write-Warning "No vendored retoc.exe found at $retocExe"
-}
-else {
-    $versionOutput = & $retocExe --version
-    $pinnedRetocVersion = ($versionOutput -split ' ')[-1].Trim().TrimStart('v')
-    Write-Host "Vendored version: $pinnedRetocVersion"
-
+function Write-Comparison([string]$repo, [string]$base, [string]$head, [string]$label) {
     try {
-        $ghHeaders = @{ "User-Agent" = "UAssetEditor-dependency-check" }
-        $latestRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/trumank/retoc/releases/latest" -Headers $ghHeaders
-        $latestRetocVersion = $latestRelease.tag_name.TrimStart('v')
-
-        if ($latestRetocVersion -eq $pinnedRetocVersion) {
-            Write-Host "Up to date - $pinnedRetocVersion is the latest release." -ForegroundColor Green
-        }
-        else {
-            Write-Host "Newer release available: $latestRetocVersion (vendored: $pinnedRetocVersion) - see https://github.com/trumank/retoc/releases" -ForegroundColor Yellow
-        }
+        $compare = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/compare/$base...$head" -Headers $ghHeaders
     }
     catch {
-        Write-Warning "Couldn't reach GitHub to check the latest retoc release: $($_.Exception.Message)"
+        Write-Warning "Couldn't compare $repo ${base}...${head}: $($_.Exception.Message)"
+        return
     }
-}
-
-Write-Host ""
-Write-Host "== UAssetAPI: unreleased commits since our pinned version ==" -ForegroundColor Cyan
-
-$coreCsproj = Join-Path $repoRoot "src\UAssetEditor.Core\UAssetEditor.Core.csproj"
-$csprojContent = Get-Content $coreCsproj -Raw
-$versionMatch = [regex]::Match($csprojContent, '<PackageReference\s+Include="UAssetAPI"\s+Version="([^"]+)"')
-if (-not $versionMatch.Success) {
-    Write-Warning "Could not find a UAssetAPI PackageReference in $coreCsproj"
-    return
-}
-$pinnedVersion = $versionMatch.Groups[1].Value
-Write-Host "Pinned version: $pinnedVersion"
-
-$nuspecPath = Join-Path $env:USERPROFILE ".nuget\packages\uassetapi\$pinnedVersion\uassetapi.nuspec"
-if (-not (Test-Path $nuspecPath)) {
-    Write-Warning "No local NuGet cache found at $nuspecPath - run 'dotnet restore' first, or check https://github.com/atenfyr/UAssetAPI/commits/main manually."
-    return
-}
-
-[xml]$nuspec = Get-Content $nuspecPath
-$pinnedCommit = $nuspec.package.metadata.repository.commit
-if ([string]::IsNullOrWhiteSpace($pinnedCommit)) {
-    Write-Warning "The .nuspec for $pinnedVersion doesn't record a commit hash - can't diff against upstream."
-    return
-}
-Write-Host "Built from commit: $pinnedCommit"
-
-$ghHeaders = @{ "User-Agent" = "UAssetEditor-dependency-check" }
-try {
-    $repoInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/atenfyr/UAssetAPI" -Headers $ghHeaders
-    $defaultBranch = $repoInfo.default_branch
-    $compare = Invoke-RestMethod -Uri "https://api.github.com/repos/atenfyr/UAssetAPI/compare/$pinnedCommit...$defaultBranch" -Headers $ghHeaders
-}
-catch {
-    Write-Warning "Couldn't reach GitHub to compare commits: $($_.Exception.Message)"
-    return
-}
-
-if ($compare.ahead_by -eq 0) {
-    Write-Host "Up to date - no commits on $defaultBranch since our pinned version." -ForegroundColor Green
-}
-else {
-    Write-Host "$defaultBranch is $($compare.ahead_by) commit(s) ahead of our pinned version:" -ForegroundColor Yellow
+    if ($compare.ahead_by -eq 0) {
+        Write-Host "Up to date - $label has no commits since $base." -ForegroundColor Green
+        return
+    }
+    Write-Host "$label is $($compare.ahead_by) commit(s) ahead of $base`:" -ForegroundColor Yellow
     foreach ($commit in $compare.commits) {
-        $sha = $commit.sha.Substring(0, 7)
-        $firstLine = ($commit.commit.message -split "`n")[0]
-        $date = ([DateTime]$commit.commit.author.date).ToString("yyyy-MM-dd")
-        Write-Host "  $sha  $date  $firstLine"
+        $date = ([DateTime]$commit.commit.author.date).ToString('yyyy-MM-dd')
+        Write-Host "  $($commit.sha.Substring(0, 7))  $date  $(($commit.commit.message -split "`n")[0])"
     }
-    Write-Host ""
-    Write-Host "None of this is in a NuGet release yet - see https://github.com/atenfyr/UAssetAPI/releases" -ForegroundColor Yellow
 }
+
+Write-Host '== NuGet package versions (dotnet list package --outdated) ==' -ForegroundColor Cyan
+& dotnet list (Join-Path $repoRoot 'UAssetEditor.slnx') package --outdated
+if ($LASTEXITCODE -ne 0) { throw "dotnet list package failed with exit code $LASTEXITCODE." }
+
+Write-Host ''
+Write-Host '== UAssetAPI (vendored source) vs. atenfyr/UAssetAPI ==' -ForegroundColor Cyan
+$uassetApiCommit = Get-PinnedCommit 'UAssetAPI' '`master` @ `([0-9a-f]{7,40})`'
+Write-Host "Vendored from commit: $uassetApiCommit"
+Write-Comparison 'atenfyr/UAssetAPI' $uassetApiCommit 'master' 'upstream master'
+
+Write-Host ''
+Write-Host '== retoc.exe (vendored binary) vs. its fork and trumank/retoc ==' -ForegroundColor Cyan
+$retocCommit = Get-PinnedCommit 'retoc' 'built from commit `([0-9a-f]{7,40})` on branch'
+$retocBranch = Get-PinnedCommit 'retoc' 'on branch `([^`]+)`'
+Write-Host "Built from commit: $retocCommit ($retocBranch)"
+
+$retocExe = Join-Path $repoRoot 'src\UAssetEditor.App\vendor\retoc.exe'
+$pinnedHash = Get-PinnedCommit 'retoc' 'SHA-256 `([0-9a-f]{64})`'
+$actualHash = (Get-FileHash -LiteralPath $retocExe -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualHash -ne $pinnedHash) {
+    Write-Warning "retoc.exe SHA-256 is $actualHash, but THIRD_PARTY_NOTICES.md records $pinnedHash."
+}
+
+Write-Comparison 'gravenuance/retoc' $retocCommit $retocBranch "fork branch $retocBranch"
+Write-Comparison 'trumank/retoc' $retocCommit 'master' 'upstream master'

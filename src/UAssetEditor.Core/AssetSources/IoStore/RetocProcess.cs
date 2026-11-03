@@ -204,10 +204,13 @@ public static class RetocProcess
     /// <paramref name="retocEngineVersion"/> must be one of the strings
     /// <see cref="EngineVersionMapping.ToRetocVersion"/> returns (e.g. "UE5_3") - required by
     /// retoc itself for this direction, unlike to-legacy. <paramref name="options"/> picks the game whose own
-    /// packer the output reproduces; null writes retoc's standard output.
+    /// packer the output reproduces; null writes retoc's standard output. <paramref name="onOutputLine"/> receives each
+    /// line retoc prints, such as the Marvel Rivals <c>[MaterialTags]</c> line showing which material array a mesh was
+    /// patched at.
     /// </summary>
     public static Task ConvertToZenAsync(
-        string input, string outputUtocPath, string retocEngineVersion, byte[]? aesKey, RetocZenOptions? options = null, CancellationToken cancellationToken = default)
+        string input, string outputUtocPath, string retocEngineVersion, byte[]? aesKey, RetocZenOptions? options = null,
+        Action<string>? onOutputLine = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(outputUtocPath);
@@ -219,7 +222,7 @@ public static class RetocProcess
         if (options?.Game == Game.MarvelRivals) args.InsertRange(0, ["--game", "rivals"]);
         AddAesKey(args, aesKey);
 
-        return RunAsync(args, static _ => { }, cancellationToken);
+        return RunAsync(args, onOutputLine ?? (static _ => { }), cancellationToken);
     }
 
     // --aes-key is a *global* retoc option, recognized only before the subcommand

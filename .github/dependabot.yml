@@ -1,9 +1,8 @@
 version: 2
 updates:
-  # Covers all four .csproj files under the solution (App, Core, PakWorker, Core.Tests).
-  # This only reaches NuGet-published dependencies - it can't see UAssetAPI's unreleased
-  # upstream commits or the vendored retoc.exe binary; scripts/CheckDependencyUpdates.ps1
-  # still covers those two and should keep being run before a release.
+  # Versions live in Directory.Packages.props; bumps also update each project's packages.lock.json.
+  # Vendored UAssetAPI source and retoc.exe are invisible to it: run scripts/CheckDependencyUpdates.ps1
+  # before a release for those.
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:

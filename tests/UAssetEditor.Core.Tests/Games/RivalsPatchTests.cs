@@ -109,8 +109,44 @@ public class RivalsPatchTests
         var rebuilt = KawaiiPhysicsLegacyPorter.PortLegacyAnimNodes(asset, KawaiiOnly with { ForceRebuildChain0 = true });
         Assert.Equal((1, 1, 0), (rebuilt.VisitedAnimNodes, rebuilt.PortedAnimNodes, rebuilt.SkippedExistingChains));
         Assert.Equal(2, Chains(node).Length);
-        Assert.Equal("Hair_01", ((NamePropertyData)Child(Child(Chains(node)[0], "BoneSettings"), "RootBone")).Value.Value.Value);
+        Assert.NotSame(existing0, Chains(node)[0]);
         Assert.Same(existing1, Chains(node)[1]);
+    }
+
+    [Fact]
+    public void ForceRebuiltChainZero_KeepsItsOwnSettingsOverTheNodesLegacyDefaults()
+    {
+        // Current assets can keep deprecated node-level fields next to a tuned Chains array; the chain is authoritative.
+        var asset = TestAssets.CreateAsset();
+        var node = LegacyNode(asset, rootBone: "Hair_01");
+        var tuned = new StructPropertyData(new FName(asset, "Chains"), new FName(asset, "KawaiiPhysicsChain"))
+        {
+            Value =
+            [
+                new StructPropertyData(new FName(asset, "BoneSettings"), new FName(asset, "KawaiiPhysicsBoneSettings"))
+                {
+                    Value = [new NamePropertyData(new FName(asset, "RootBone")) { Value = new FName(asset, "Breast_L") }],
+                },
+                new StructPropertyData(new FName(asset, "PhysicsSettings"), new FName(asset, "BoneChainPhysicsSettings"))
+                {
+                    Value =
+                    [
+                        new StructPropertyData(new FName(asset, "PhysicsSettings"), new FName(asset, "KawaiiPhysicsSettings"))
+                        {
+                            Value = [new FloatPropertyData(new FName(asset, "Damping")) { Value = 0.7f }],
+                        },
+                    ],
+                },
+            ],
+        };
+        node.Value.Add(new ArrayPropertyData(new FName(asset, "Chains")) { ArrayType = new FName(asset, "StructProperty"), Value = [tuned] });
+        ExportWith(asset, node);
+
+        KawaiiPhysicsLegacyPorter.PortLegacyAnimNodes(asset, KawaiiOnly with { ForceRebuildChain0 = true });
+
+        var chain = Assert.Single(Chains(node));
+        Assert.Equal("Breast_L", ((NamePropertyData)Child(Child(chain, "BoneSettings"), "RootBone")).Value.Value.Value);
+        Assert.Equal(0.7f, ((FloatPropertyData)Child(Child(Child(chain, "PhysicsSettings"), "PhysicsSettings"), "Damping")).Value);
     }
 
     [Fact]

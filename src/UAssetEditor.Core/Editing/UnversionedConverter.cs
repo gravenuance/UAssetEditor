@@ -38,7 +38,30 @@ public static class UnversionedConverter
         return dropped;
     }
 
-    private static void Prune(UAsset asset, List<PropertyData> properties, string path, FName? container, List<string> dropped)
+    /// <summary>
+    /// Re-lays out an unversioned package, read with the schema it was written for, by <paramref name="schema"/>: a game
+    /// patch that inserts a field shifts every later index, so old data is misread under the new schema. Values stay
+    /// matched by name and native data is untouched. Returns the properties the new schema dropped.
+    /// </summary>
+    /// <exception cref="ArgumentException">The package is tagged, or a kept property changed type.</exception>
+    public static IReadOnlyList<string> Reschema(UAsset asset, Usmap schema)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(schema);
+        if (!asset.HasUnversionedProperties) throw new ArgumentException("The package uses tagged properties; convert it instead.", nameof(asset));
+
+        asset.Mappings = schema;
+        var dropped = new List<string>();
+        foreach (var export in asset.Exports.OfType<NormalExport>().Where(e => e.Data != null))
+        {
+            export.ResolveAncestries(asset, new AncestryInfo());
+            Prune(asset, export.Data, export.ObjectName.ToString(), container: null, dropped, requireSameType: true);
+        }
+
+        return dropped;
+    }
+
+    private static void Prune(UAsset asset, List<PropertyData> properties, string path, FName? container, List<string> dropped, bool requireSameType = false)
     {
         for (var i = properties.Count - 1; i >= 0; i--)
         {
@@ -47,16 +70,19 @@ public static class UnversionedConverter
             // UAssetAPI holds a natively serialized struct's value (PerPlatformFloat, sampling data) as one child
             // named after its container; that is the payload, not a field the schema would list.
             if (container != null && property.Name == container) continue;
-            if (!asset.Mappings.TryGetProperty<UsmapProperty>(property.Name, property.Ancestry, property.ArrayIndex, asset, out _, out _))
+            if (!asset.Mappings.TryGetProperty<UsmapProperty>(property.Name, property.Ancestry, property.ArrayIndex, asset, out var field, out _))
             {
                 dropped.Add(here);
                 properties.RemoveAt(i);
                 continue;
             }
+            // Writing a value under a field of another type corrupts the stream, so a retyped field needs a human.
+            if (requireSameType && field.PropertyData.Type.ToString() != property.PropertyType.Value)
+                throw new ArgumentException($"{here} is {property.PropertyType.Value} but the new schema declares {field.PropertyData.Type}.");
             property = RetypeByteEnum(asset, property);
             properties[i] = property;
             MatchEnumSpelling(asset, property, here);
-            PruneChildren(asset, property, here, dropped);
+            PruneChildren(asset, property, here, dropped, requireSameType);
         }
     }
 
@@ -93,18 +119,18 @@ public static class UnversionedConverter
         if (match != cooked) enumProperty.Value = new FName(asset, match);
     }
 
-    private static void PruneChildren(UAsset asset, PropertyData property, string path, List<string> dropped)
+    private static void PruneChildren(UAsset asset, PropertyData property, string path, List<string> dropped, bool requireSameType)
     {
         switch (property)
         {
             case StructPropertyData { Value: { } fields }:
-                Prune(asset, fields, path, property.Name, dropped);
+                Prune(asset, fields, path, property.Name, dropped, requireSameType);
                 break;
             case ArrayPropertyData { Value: { } elements }:
                 // Elements carry the array's own name, so only their struct fields are checked, not the elements.
                 for (var i = 0; i < elements.Length; i++)
                     if (elements[i] is StructPropertyData { Value: { } elementFields })
-                        Prune(asset, elementFields, $"{path}[{i}]", elements[i].Name, dropped);
+                        Prune(asset, elementFields, $"{path}[{i}]", elements[i].Name, dropped, requireSameType);
                 break;
         }
     }

@@ -206,7 +206,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         ProgressTotal = 1;
 
         var aesKey = PakAesKey.Parse(AesKeyHex);
-        await RetocProcess.ConvertToZenAsync(retocInput, OutputPath, retocVersion, aesKey, new RetocZenOptions(_game), cancellationToken);
+        await RetocProcess.ConvertToZenAsync(retocInput, OutputPath, retocVersion, aesKey, new RetocZenOptions(_game), cancellationToken: cancellationToken);
 
         ProgressDone = 1;
         Status = $"Packed to {OutputPath}.";

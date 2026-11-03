@@ -30,6 +30,8 @@ try
         "splice-node" => Commands.SpliceNode(reader),
         "append-clone" => Commands.AppendClone(reader),
         "duplicate-export" => Commands.DuplicateExport(reader),
+        "duplicate-row" => Commands.DuplicateRow(reader),
+        "set-string" => Commands.SetString(reader),
         "rename-names" => Commands.RenameNames(reader),
         "to-unversioned" => Commands.ToUnversioned(reader),
         "strip-versions" => Commands.StripVersions(reader),
@@ -107,6 +109,13 @@ static void PrintUsage()
           uacli duplicate <file> --export <e> --path <p> [--save] [--backup]
               Deep-clone the array element at --path, appended as the array's new last element.
 
+          uacli duplicate-row <file> --export <e> --row <name> --as <newName> [--save] [--backup]
+              Add a DataTable row as a deep copy of row --row, named --as (appended last). Refuses a name already in the table.
+
+          uacli set-string <file> --export <e> --key <k> --value <v> [--save] [--backup]
+              Set a StringTable key's source text, appending the key if absent. Text naming a key the table lacks shows as
+              missing in game even when a .locres translates it, so new item names go here.
+
           uacli remove <file> --export <e> --path <p> [--save] [--backup]
               Remove the array element at --path.
 
@@ -128,6 +137,14 @@ static void PrintUsage()
 
           uacli script ops only: list-nodes --export <cdo>
               Print the class's anim-graph nodes in node-index order (what every LinkID counts), comma-separated.
+
+          uacli script ops only: list-tags --export <cdo>
+              Print the node tags (AnimBlueprintExtension_Tag) as Tag=Index(Node), comma-separated. Their indices count from
+              the END of the node list; a stale one hands the game's lookup by tag the wrong node (a lobby ShowAnimBP T-poses).
+
+          uacli script ops only: set-tag --export <cdo> --tag <Tag> --value <index>
+              Point an existing node tag at an end-counted node index. graft-nodes and splice-node keep tags on their nodes;
+              this repairs ones older edits left behind, from the game's own copy.
 
           uacli script ops only: check-graph --export <cdo>
               Confirm every anim-graph node has its node-table row and exposed-value handler; reported as skipped when not.
@@ -156,19 +173,23 @@ static void PrintUsage()
               and save with --out to clone a cooked asset to a new path; rename an import's package path and object name
               to point it at a different asset. Fails, saving nothing, if a source is missing or a target already exists.
 
-          uacli to-unversioned <file> --usmap <game.usmap> [--out <file>] [--save]
+          uacli to-unversioned <file> --usmap <game.usmap> [--from-usmap <old.usmap>] [--out <file>] [--save]
               Rewrite a versioned (tagged) cooked package with unversioned properties laid out by the game's schema.
               Cook versioned in a stock editor, then convert: a stock unversioned cook uses the stock class layouts,
               which a game that changed an engine class misreads. Lists every property the game's schema lacks.
+              With --from-usmap the package is already unversioned for that older schema (e.g. built before a game
+              patch inserted a field): it is read with it and re-laid out for --usmap. Refuses a property whose type changed.
 
           uacli strip-versions <file> [--out <file>] [--save]
               Mark a versioned (tagged) cooked package's summary unversioned, keeping its tagged properties, so an
               IoStore packer accepts it. Tagged values load by name even where the game changed engine classes.
 
           uacli script <file> --ops <opsfile> [--save] [--backup]
-              Run several set/duplicate/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
+              Run several set/duplicate/duplicate-row/set-string/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
+              Double quotes group a value with spaces; write \" for a literal quote (e.g. a JSON string value).
+              Inside quotes, \" before a space or the line end closes the quote, so a quoted path can end in \.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5
               Every ops line is checked before the asset is opened; an unknown op or option stops the run.
 

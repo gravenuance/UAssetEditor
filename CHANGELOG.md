@@ -4,6 +4,61 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-30
+
+### Added
+- `list-tags` and `set-tag` (script ops) read and re-point an animation blueprint's node tags, so tags an older edit
+  left on the wrong node can be repaired from the game's copy.
+
+### Fixed
+- `graft-nodes` and `splice-node` left node tags (`AnimBlueprintExtension_Tag`) on the wrong node. Tags count from the
+  end of the node list, like the cached-pose and asset-player tables these commands already moved. In Marvel Rivals a
+  lobby ShowAnimBP finds its linked animation graph by tag, so every one edited this way T-posed.
+
+## [1.10.0] - 2026-10-28
+
+### Added
+- `dump` and search print GUID properties (`{XXXXXXXX-...}`); they printed empty. A cooked LayeredBoneBlend's `SkeletonGuid` / `VirtualBoneGuid` is how a game patch's re-cook against a changed skeleton shows.
+- `set` takes GUID values in the form `dump` prints, so a blueprint's skeleton GUIDs can be brought up to a game patch's re-cook.
+
+### Fixed
+- `set` couldn't fill a GUID or vector that unversioned data stored as an empty struct because it sat at its default (a LayeredBoneBlend's `VirtualBoneGuid`): it reported no property at that path.
+
+### Changed
+- Microsoft.Extensions packages 10.0.13 -> 10.0.14, and the .NET SDK 10.0.402 -> 10.0.403.
+
+## [1.9.0] - 2026-10-24
+
+### Added
+- `to-unversioned --from-usmap <old.usmap>` re-lays out a package that is already unversioned for an older schema, such as a mesh built before a game patch inserted a field: every later field index shifts, so the game misreads the old data. Values are matched by name; a property the new schema dropped is listed, and one whose type changed stops the run.
+- Assets using UE5 optional properties (`OptionalProperty`) open and save, through upstream UAssetAPI's `OptionalPropertyData`. Before, such an asset (a UE 5.7 Grounded 2 DataTable in upstream's tests) failed to open.
+
+### Fixed
+- A UE5 pak whose index holds non-encoded entries, or marks deleted ones, could not be opened: the bundled repak asserted that the index had none, and a failed assert in the native library ends the pak worker. It now reads them and skips deleted entries (upstream repak `1ef2c6f`, `355b5f6`).
+- `set-string` slowed with the square of the table's size: each lookup copied every key. One edit on a 5000-key table allocated 200 MB; it now reads the keys once.
+- In `script` ops files, a quoted path ending in a backslash (`--out "D:\my mods\"`) took the closing quote as a literal one and swallowed the rest of the line. Inside quotes, `\"` before a space or the line end now closes the quote and keeps the backslash.
+
+## [1.8.0] - 2026-10-09
+
+### Added
+- `uacli set-string` (also a `script` op) sets a StringTable key's source text, adding the key if absent: `--key <k> --value <v>`. New items need their name keys in the table; a .locres alone doesn't make a missing key resolve.
+- `script` ops files accept `\"` for a literal double quote, so a string value can hold JSON such as `[{\"Alias\":\"X\"}]`. Quotes were always stripped, so such values couldn't be set from a script.
+- `uacli duplicate-row` (also a `script` op) adds a DataTable row as a copy of another under a new name: `--row <name> --as <newName>`. Rows aren't array elements, so `duplicate` couldn't reach them.
+
+### Fixed
+- Export names now show their number suffix everywhere they are displayed or matched: object references, the `exports` listing, `--export <name>`, search results and `--export-name`, and the app's export list. Sibling objects that differ only by number (behaviour-tree nodes such as `SBBTTask_SbUseSkill_19`) all showed the same bare name, so a tree's wiring couldn't be followed.
+
+## [1.7.3] - 2026-10-08
+
+### Fixed
+- `pack --game rivals --kawaii-physics` could throw away a node's tuned physics: when a KawaiiPhysics node had both a `Chains` array and leftover deprecated node-level settings, the first chain was rebuilt from the stale node fields (wrong root bone, default damping). An existing `Chains` array now wins. The same fix landed in retoc-rivals' UAssetAPI (`05c608d`).
+
+## [1.7.2] - 2026-10-07
+
+### Fixed
+- `pack --game rivals` could ship a skeletal mesh with stock 40-byte material slots, which the game misreads: the bundled retoc took the first already-padded `FSkeletalMaterial` array it found anywhere in the export, so a large mesh whose vertex data held a one-entry lookalike was "found prepatched" and left alone. It now patches the earliest array, the real one (retoc `d7fd264`).
+- `uacli pack` printed none of retoc's output, so the `[MaterialTags]` lines that show where each mesh was patched could not be checked. It now prints retoc's lines as they come. retoc itself dropped its log lines whenever its output was not a terminal, which is how uacli and the app run it (retoc `40fb664`).
+
 ## [1.7.1] - 2026-10-01
 
 ### Fixed
@@ -164,7 +219,10 @@ All notable changes to this project are documented here.
 - Test suite migrated from xUnit v2 + VSTest to xUnit v3 on Microsoft.Testing.Platform.
 - Release builds now treat warnings as errors.
 
-[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/gravenuance/UAssetEditor/compare/v1.11.0...HEAD
+[1.11.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.10.0...v1.11.0
+[1.10.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.9.0...v1.10.0
+[1.9.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.8.0...v1.9.0
 [1.5.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/gravenuance/UAssetEditor/compare/v1.2.0...v1.3.0

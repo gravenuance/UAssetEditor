@@ -232,6 +232,30 @@ public class RetocProcessTests
         Assert.Contains(missingPath, exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ConvertToZenAsync_PassesRetocsOutputLinesToTheCaller()
+    {
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            // A .uasset without its .uexp is skipped with an info line naming it.
+            var inputDir = Path.Combine(workDir, "in", "Game", "Content");
+            Directory.CreateDirectory(inputDir);
+            await File.WriteAllBytesAsync(Path.Combine(inputDir, "Lonely.uasset"), new byte[16], TestContext.Current.CancellationToken);
+            var lines = new List<string>();
+
+            await RetocProcess.ConvertToZenAsync(Path.Combine(workDir, "in"), Path.Combine(workDir, "lonely.utoc"), "UE5_3", aesKey: null,
+                onOutputLine: lines.Add, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Contains(lines, line => line.Contains("Lonely", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
     // SHA-256 of the companion pak retoc-rivals' own pack writes for every mod (mount point "../../../").
     private const string RivalsCompanionPakSha256 = "5AE1ED86DEB66C2D7FEAA38219554977F7FB554F639DC43C80BBC3672443F9E9";
 
@@ -246,7 +270,7 @@ public class RetocProcessTests
             var rivalsUtoc = Path.Combine(workDir, "rivals_P.utoc");
             var standardUtoc = Path.Combine(workDir, "standard_P.utoc");
 
-            await RetocProcess.ConvertToZenAsync(pakPath, rivalsUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals), TestContext.Current.CancellationToken);
+            await RetocProcess.ConvertToZenAsync(pakPath, rivalsUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals), cancellationToken: TestContext.Current.CancellationToken);
             await RetocProcess.ConvertToZenAsync(pakPath, standardUtoc, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(RivalsCompanionPakSha256, Sha256Hex(Path.ChangeExtension(rivalsUtoc, ".pak")));
@@ -271,8 +295,8 @@ public class RetocProcessTests
             var plainUtoc = Path.Combine(workDir, "plain_P.utoc");
             var obfuscatedUtoc = Path.Combine(workDir, "obfuscated_P.utoc");
 
-            await RetocProcess.ConvertToZenAsync(pakPath, plainUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals), TestContext.Current.CancellationToken);
-            await RetocProcess.ConvertToZenAsync(pakPath, obfuscatedUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals, obfuscate: true), TestContext.Current.CancellationToken);
+            await RetocProcess.ConvertToZenAsync(pakPath, plainUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals), cancellationToken: TestContext.Current.CancellationToken);
+            await RetocProcess.ConvertToZenAsync(pakPath, obfuscatedUtoc, "UE5_3", aesKey: null, new RetocZenOptions(Game.MarvelRivals, obfuscate: true), cancellationToken: TestContext.Current.CancellationToken);
 
             var plain = await File.ReadAllBytesAsync(plainUtoc, TestContext.Current.CancellationToken);
             var obfuscated = await File.ReadAllBytesAsync(obfuscatedUtoc, TestContext.Current.CancellationToken);

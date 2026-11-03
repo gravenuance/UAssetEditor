@@ -38,7 +38,7 @@ public static class SearchService
         ArgumentNullException.ThrowIfNull(asset);
 
         var export = asset.Exports[exportIndex];
-        var exportName = export.ObjectName.Value?.Value ?? "";
+        var exportName = FNameDisplay.ToDisplayString(export.ObjectName);
 
         if (export is RawExport rawExport)
         {
@@ -69,7 +69,7 @@ public static class SearchService
         ArgumentNullException.ThrowIfNull(asset);
 
         if (asset.Exports[exportIndex] is not NormalExport normalExport) yield break;
-        var exportName = normalExport.ObjectName.Value?.Value ?? "";
+        var exportName = FNameDisplay.ToDisplayString(normalExport.ObjectName);
 
         foreach (var node in PropertyWalker.Walk(normalExport))
         {
@@ -94,7 +94,7 @@ public static class SearchService
             for (var e = 0; e < asset.Exports.Count; e++)
             {
                 if (asset.Exports[e] is not NormalExport export) continue;
-                var exportName = export.ObjectName.Value?.Value ?? "";
+                var exportName = FNameDisplay.ToDisplayString(export.ObjectName);
 
                 if (!ConditionMatcher.Matches(exportName, query.ExportNameTerms, query.ExportNameCompare))
                     continue;

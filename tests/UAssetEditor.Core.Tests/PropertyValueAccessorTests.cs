@@ -22,6 +22,17 @@ public class PropertyValueAccessorTests
     }
 
     [Fact]
+    public void AsSearchableString_ReadsGuid()
+    {
+        // A cooked LayeredBoneBlend's SkeletonGuid is how a game update's re-cook against a changed skeleton shows.
+        var asset = TestAssets.CreateAsset();
+        var guid = "{01234567-89AB-CDEF-0123-456789ABCDEF}".ConvertToGUID();
+        var prop = new GuidPropertyData(new FName(asset, "SkeletonGuid")) { Value = guid };
+
+        Assert.Equal("{01234567-89AB-CDEF-0123-456789ABCDEF}", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
     public void TrySetStringValue_RoundTripsThroughAsSearchableString()
     {
         var asset = TestAssets.CreateAsset();
@@ -104,6 +115,27 @@ public class PropertyValueAccessorTests
         Assert.False(prop.IsZero);
         Assert.False(PropertyValueAccessor.TrySetStringValue(prop, malformed, asset));
         Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void Guid_RoundTripsInTheFormDumpPrints()
+    {
+        var asset = TestAssets.CreateAsset();
+        var prop = new GuidPropertyData(new FName(asset, "SkeletonGuid")) { IsZero = true };
+        const string value = "{C34B2A45-498A-6B7F-A4CD-D79DF3D94FAC}";
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, value, asset));
+        PropertyValueAccessor.UpdateIsZeroFlag(prop);
+
+        Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+        Assert.False(prop.IsZero);
+        Assert.False(PropertyValueAccessor.TrySetStringValue(prop, "{C34B2A45-498A-6B7F}", asset));
+        Assert.False(PropertyValueAccessor.TrySetStringValue(prop, "not a guid", asset));
+        Assert.Equal(value, PropertyValueAccessor.AsSearchableString(prop, asset));
+
+        Assert.True(PropertyValueAccessor.TrySetStringValue(prop, "{00000000-0000-0000-0000-000000000000}", asset));
+        PropertyValueAccessor.UpdateIsZeroFlag(prop);
+        Assert.True(prop.IsZero);
     }
 
     private static PropertyData CreateSizedInteger(UAsset asset, string kind)
@@ -202,6 +234,18 @@ public class PropertyValueAccessorTests
         };
 
         Assert.Equal("Slot_2", PropertyValueAccessor.AsSearchableString(prop, asset));
+    }
+
+    [Fact]
+    public void AsSearchableString_NamesAnExportReferenceWithItsNumberSuffix()
+    {
+        // Behaviour-tree siblings share one base name and differ only by FName number.
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, "SBBTTask_SbUseSkill");
+        TestAssets.CreateSampleExport(asset, "SBBTTask_SbUseSkill").ObjectName = new FName(asset, "SBBTTask_SbUseSkill", 143);
+        var prop = new ObjectPropertyData(new FName(asset, "ChildTask")) { Value = FPackageIndex.FromExport(1) };
+
+        Assert.Equal("SBBTTask_SbUseSkill_142", PropertyValueAccessor.AsSearchableString(prop, asset));
     }
 
     [Fact]

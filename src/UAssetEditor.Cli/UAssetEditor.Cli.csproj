@@ -13,4 +13,8 @@
     <ProjectReference Include="..\UAssetEditor.Core\UAssetEditor.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="UAssetEditor.Core.Tests" />
+  </ItemGroup>
+
 </Project>

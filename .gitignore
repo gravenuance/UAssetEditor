@@ -9,3 +9,6 @@ custom.pak
 
 # Agent instructions: local to this machine, not published
 CLAUDE.md
+
+# Cross-repo task notes: name local paths, not published
+TODO.md

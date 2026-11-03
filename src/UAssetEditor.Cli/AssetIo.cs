@@ -6,6 +6,7 @@ using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
+using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Cli;
 
@@ -53,11 +54,11 @@ internal static class AssetIo
     // Loading a usmap is most of a small run's cost, so each is loaded once per process and every asset gets its own scope of it.
     private static readonly ConcurrentDictionary<string, Lazy<Usmap>> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
 
-    public static Usmap? ResolveMappings(ArgReader args)
+    public static Usmap? ResolveMappings(ArgReader args, string option = "usmap")
     {
-        var path = args.Option("usmap");
+        var path = args.Option(option);
         if (path == null) return null;
-        if (!File.Exists(path)) throw new ArgException($"--usmap file not found: {path}");
+        if (!File.Exists(path)) throw new ArgException($"--{option} file not found: {path}");
         return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value.CreateAssetScope();
     }
 
@@ -161,7 +162,7 @@ internal static class AssetIo
         var matches = new List<int>();
         for (var i = 0; i < asset.Exports.Count; i++)
         {
-            var name = asset.Exports[i].ObjectName.Value?.Value ?? "";
+            var name = FNameDisplay.ToDisplayString(asset.Exports[i].ObjectName);
             if (name.Contains(value, StringComparison.OrdinalIgnoreCase))
                 matches.Add(i);
         }
@@ -171,7 +172,7 @@ internal static class AssetIo
             0 => throw new ArgException($"No export name contains '{value}'."),
             1 => matches[0],
             _ => throw new ArgException(
-                $"'{value}' matches {matches.Count} exports ({string.Join(", ", matches.Select(i => $"{i}:{asset.Exports[i].ObjectName.Value?.Value}"))}) - use an index instead."),
+                $"'{value}' matches {matches.Count} exports ({string.Join(", ", matches.Select(i => $"{i}:{FNameDisplay.ToDisplayString(asset.Exports[i].ObjectName)}"))}) - use an index instead."),
         };
     }
 }

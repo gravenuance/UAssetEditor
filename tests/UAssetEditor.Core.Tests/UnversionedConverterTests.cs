@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
@@ -170,5 +171,102 @@ public class UnversionedConverterTests
         asset.PackageFlags |= EPackageFlags.PKG_UnversionedProperties;
 
         Assert.Throws<ArgumentException>(() => UnversionedConverter.Convert(asset, Schema()));
+    }
+
+    private static Usmap IntSchema(params string[] fields) =>
+        TypedSchema([.. fields.Select(name => (name, UsmapPropertyType.IntProperty))]);
+
+    private static Usmap TypedSchema(params (string Name, UsmapPropertyType Type)[] fields)
+    {
+        var properties = new ConcurrentDictionary<int, UsmapProperty>();
+        for (var i = 0; i < fields.Length; i++)
+            properties[i] = new UsmapProperty(fields[i].Name, (ushort)i, 0, 1, new UsmapPropertyData(fields[i].Type));
+        return new Usmap
+        {
+            Schemas = new Dictionary<string, UsmapSchema>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["TestClass"] = new UsmapSchema("TestClass", null, properties.Count, properties, true, null),
+            },
+            EnumMap = new Dictionary<string, UsmapEnum>(StringComparer.OrdinalIgnoreCase),
+        };
+    }
+
+    // An unversioned package as a game build wrote it: Keep = 7, Later = 9 under the given schema.
+    private static (UAsset Asset, NormalExport Export) UnversionedAsset(Usmap schema)
+    {
+        var (asset, export) = VersionedAsset();
+        export.Data = [new IntPropertyData(new FName(asset, "Keep")) { Value = 7 }, new IntPropertyData(new FName(asset, "Later")) { Value = 9 }];
+        asset.Mappings = schema;
+        asset.PackageFlags |= EPackageFlags.PKG_UnversionedProperties;
+        asset.IsUnversioned = true;
+        export.ResolveAncestries(asset, new AncestryInfo());
+        return (asset, export);
+    }
+
+    // Serialises the export as the asset is now, then reads the bytes back the way a game with that schema would.
+    private static List<PropertyData> WriteThenReadWith(UAsset asset, Usmap schema)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new AssetBinaryWriter(stream, Encoding.UTF8, leaveOpen: true, asset)) asset.Exports[0].Write(writer);
+        asset.Mappings = schema;
+        stream.Position = 0;
+        var readBack = new NormalExport(asset, []) { ObjectName = asset.Exports[0].ObjectName, ClassIndex = asset.Exports[0].ClassIndex };
+        using var reader = new AssetBinaryReader(stream, asset);
+        readBack.Read(reader);
+        return readBack.Data;
+    }
+
+    private static Dictionary<string, int> Values(List<PropertyData> data) =>
+        data.Cast<IntPropertyData>().ToDictionary(p => p.Name.Value.Value, p => p.Value);
+
+    [Fact]
+    public void Unversioned_DataWrittenForAnOlderSchema_IsMisreadByOneThatInsertedAField()
+    {
+        var (asset, _) = UnversionedAsset(IntSchema("Keep", "Later"));
+
+        var read = Values(WriteThenReadWith(asset, IntSchema("Keep", "Inserted", "Later")));
+
+        Assert.Equal(new Dictionary<string, int> { ["Keep"] = 7, ["Inserted"] = 9 }, read);
+    }
+
+    [Fact]
+    public void Reschema_LaysValuesOutForTheNewSchema_SoItReadsThemUnderTheirOwnNames()
+    {
+        var (asset, _) = UnversionedAsset(IntSchema("Keep", "Later"));
+        var target = IntSchema("Keep", "Inserted", "Later");
+
+        UnversionedConverter.Reschema(asset, target);
+
+        Assert.Equal(new Dictionary<string, int> { ["Keep"] = 7, ["Later"] = 9 }, Values(WriteThenReadWith(asset, target)));
+        Assert.True(asset.HasUnversionedProperties);
+    }
+
+    [Fact]
+    public void Reschema_DropsAFieldTheNewSchemaRemoved_AndReportsIt()
+    {
+        var (asset, export) = UnversionedAsset(IntSchema("Keep", "Later"));
+
+        var dropped = UnversionedConverter.Reschema(asset, IntSchema("Later"));
+
+        Assert.Equal(["Thing.Keep"], dropped);
+        Assert.Equal(["Later"], export.Data.Select(p => p.Name.Value.Value));
+    }
+
+    [Fact]
+    public void Reschema_RefusesAFieldWhoseTypeChanged()
+    {
+        var (asset, _) = UnversionedAsset(IntSchema("Keep", "Later"));
+        var retyped = TypedSchema(("Keep", UsmapPropertyType.IntProperty), ("Later", UsmapPropertyType.FloatProperty));
+
+        var error = Assert.Throws<ArgumentException>(() => UnversionedConverter.Reschema(asset, retyped));
+        Assert.Contains("Thing.Later is IntProperty", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Reschema_RefusesATaggedPackage()
+    {
+        var (asset, _) = VersionedAsset();
+
+        Assert.Throws<ArgumentException>(() => UnversionedConverter.Reschema(asset, Schema()));
     }
 }

@@ -13,9 +13,11 @@ namespace UAssetEditor.Core.PropertyAccess;
 /// class's AnimNode_* members, every PoseLink.LinkID holds the index of the node feeding it, and the
 /// class's AnimNodeData table has one row per node, as does the exposed-value handler list in its
 /// sparse data. The engine indexes that list by node index unchecked, so a node without a handler
-/// reads past its end. Two class tables count the other way, from the end of the node list: the
-/// cached-pose update order and the asset players. Adding a node moves every one of those by one,
-/// and the engine trusts them unchecked too, so a stale one runs another node as a cached pose.
+/// reads past its end. Three tables count the other way, from the end of the node list: the class's
+/// cached-pose update order and asset players, and the node tags in its sparse data. Adding a node
+/// moves every one of those by one, and the engine trusts them unchecked too: a stale cached-pose
+/// index runs another node as a cached pose, and a stale tag hands a lookup by tag the wrong node
+/// (Rivals' lobby ShowAnimBPs find their LinkedAnimGraph by tag, and T-pose without it).
 /// </summary>
 internal sealed class AnimGraph
 {
@@ -24,6 +26,7 @@ internal sealed class AnimGraph
     private const string HandlersPath = "AnimBlueprintExtension_Base.ExposedValueHandlers";
     private const string SavedPoseTable = "OrderedSavedPoseIndicesMap";
     private const string AssetPlayerTable = "GraphAssetPlayerInformation";
+    private const string TagTablePath = "AnimBlueprintExtension_Tag.NodeIndices";
     private const string SaveCachedPoseStruct = "AnimNode_SaveCachedPose";
     private const string AssetPlayerRelevancyBase = "AnimNode_AssetPlayerRelevancyBase";
 
@@ -79,10 +82,22 @@ internal sealed class AnimGraph
         return graph;
     }
 
-    /// <summary>Every node index in the tables that count from the end of the node list (cached poses, asset players).</summary>
-    public IEnumerable<IntPropertyData> EndCountedIndices() => EndCountedIndicesIn(SavedPoseTable).Concat(EndCountedIndicesIn(AssetPlayerTable));
+    /// <summary>Every node index in the tables that count from the end of the node list (cached poses, asset players, tags).</summary>
+    public IEnumerable<IntPropertyData> EndCountedIndices() =>
+        EndCountedIndicesIn(SavedPoseTable).Concat(EndCountedIndicesIn(AssetPlayerTable)).Concat(TagIndices());
 
-    /// <summary>Call after appending <paramref name="added"/> nodes: the same nodes are now that much further from the end.</summary>
+    private IEnumerable<IntPropertyData> TagIndices() => Tags().Select(t => t.Index);
+
+    /// <summary>Each node tag with its end-counted node index, in table order; empty when the class has no tag table.</summary>
+    public IEnumerable<(string Tag, IntPropertyData Index)> Tags() =>
+        _sparseData?.Find<MapPropertyData>(TagTablePath)?.Value
+            .Where(e => e.Key is NamePropertyData && e.Value is IntPropertyData)
+            .Select(e => (((NamePropertyData)e.Key).Value.ToString(), (IntPropertyData)e.Value)) ?? [];
+
+    /// <summary>
+    /// Call after appending <paramref name="added"/> nodes: the same nodes are now that much further from the end.
+    /// Tags live in the sparse data, so <see cref="SaveSparseData"/> must follow.
+    /// </summary>
     public void KeepEndCountedIndicesOnTheirNodes(int added)
     {
         foreach (var index in EndCountedIndices()) index.Value += added;

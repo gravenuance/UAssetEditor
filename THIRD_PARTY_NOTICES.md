@@ -5,12 +5,12 @@ This project embeds prebuilt third-party binaries in its single-file publish out
 ## retoc
 
 - **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc
-- **Vendored version**: built from commit `295baed` on branch `feat/game-variant-marvel-rivals`
+- **Vendored version**: built from commit `40fb664` on branch `feat/game-variant-marvel-rivals`
   (`cargo build --release`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
   natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
   plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
-  (SHA-256 `22612284ef508266093f6d0357d1bdffc4aa5bbbd4e2d965325e5d736e8c5b58`)
+  (SHA-256 `48062dc17fa9e60315fb6fed38c266173ddf3af6c09024794f4513e3ed75a93d`)
 - **License**: MIT (`src/UAssetEditor.App/vendor/retoc-LICENSE.txt`)
 - **Purpose**: Converts between Unreal Engine's IoStore/Zen container format (`.utoc`/`.ucas`)
   and legacy `.pak` format. UAssetEditor shells out to it (see
@@ -63,9 +63,15 @@ SOFTWARE.
   not the `1.1.0` NuGet package, which predates upstream's `FInstancedStruct` support (added
   2026-05-25, commit `b23892f`) and was silently falling back to an unparseable `RawExport`
   for any asset using that type anywhere in its data - confirmed on 5 real Marvel Rivals
-  physics blueprints that were previously permanently unreadable by this tool.
+  physics blueprints that were previously permanently unreadable by this tool. Also carries upstream's
+  `OptionalPropertyData` (commit `5d9a258`, 2026-10-13), which newer UE5 games' optional properties need (verified on upstream's UE 5.6 and 5.7 test assets).
 - **License**: MIT (`vendor/UAssetAPI-LICENSE.txt`)
 - **Notice**: `vendor/UAssetAPI-NOTICE.md` (attribution for adapted third-party segments,
   e.g. cue4parse, per upstream's own NOTICE)
 - Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
   by trumank). See https://github.com/trumank/repak for that project's own license/attribution.
+  The Windows `repak_bind.dll.gz` is built from https://github.com/gravenuance/repak branch
+  `feat/upstream-read-fixes` @ `3d3fce0` (`cargo build --release -p repak_bind`, SHA-256
+  `791a01824f39a352ac91874fed8943d77435aebc73116e4c1711fceb5d550acf`): upstream's `cs-bindings` line with our
+  legacy-compression fix and upstream master's `1ef2c6f` and `355b5f6` cherry-picked. `repak_bind.so.gz` is
+  upstream's older build.
