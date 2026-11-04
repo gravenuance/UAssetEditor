@@ -5,12 +5,12 @@ This project embeds prebuilt third-party binaries in its single-file publish out
 ## retoc
 
 - **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc
-- **Vendored version**: built from commit `40fb664` on branch `feat/game-variant-marvel-rivals`
+- **Vendored version**: built from commit `67c1bd1` on branch `feat/game-variant-marvel-rivals`
   (`cargo build --release`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
   natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
   plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
-  (SHA-256 `48062dc17fa9e60315fb6fed38c266173ddf3af6c09024794f4513e3ed75a93d`)
+  (SHA-256 `1a7511045d3e01cf7cec604df9bd3a98588b4ff9b608375215b7259ff8536261`)
 - **License**: MIT (`src/UAssetEditor.App/vendor/retoc-LICENSE.txt`)
 - **Purpose**: Converts between Unreal Engine's IoStore/Zen container format (`.utoc`/`.ucas`)
   and legacy `.pak` format. UAssetEditor shells out to it (see

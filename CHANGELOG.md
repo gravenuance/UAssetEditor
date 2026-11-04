@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Rebuilt the bundled retoc from `67c1bd1`. Without a game selected, `.utoc` output matches stock retoc again: 20-byte chunk hashes, script imports dropped from dependency bundles, and package names split the way Unreal does (retoc `a27a93c`; the fork had kept full hashes and exact names for everyone). `--game rivals` output is unchanged: chunks, manifest and companion `.pak` are identical to the previous build on a real Black Widow mod and on 201 animation blueprints. Its pak library moved to repak `1292815`, which pads encrypted Marvel Rivals entry data to 16 bytes the way the game does and maps legacy compression flag `0x04` to Oodle.
+
 ## [1.11.0] - 2026-10-30
 
 ### Added
