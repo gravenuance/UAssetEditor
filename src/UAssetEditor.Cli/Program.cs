@@ -227,6 +227,27 @@ static void PrintUsage()
               Example: uacli to-unversioned mesh.uasset --game rivals --usmap "$(uacli usmap path --game rivals)"
               Print the newest stored usmap's path and nothing else; exit 1 with a message when there is none.
 
+          uacli usmap diff --game <g> [--from-usmap <old.usmap>] [--usmap <new.usmap>]
+              Example: uacli usmap diff --game rivals        (after adding a new build: what the patch changed)
+              Classes and structs whose property layout differs: "CHANGED<TAB>name<TAB>old->new count", then "+ field=type" and
+              "- field=type" lines; "REMOVED<TAB>name" for one the new usmap lacks. Counts (with added schemas) go to stderr.
+              Without --usmap the new side is the newest stored build; without --from-usmap the old side is the stored build
+              before it (the newest stored one when --usmap is outside the store).
+
+          uacli usmap triage <file|folder|->... --game <g> [--from-usmap <old.usmap>] [--usmap <new.usmap>] [--jobs <n>]
+              Example: uacli usmap triage D:/Mods/MyMod --game rivals        (after a patch: which assets need a rebuild)
+              Opens every .uasset (folders searched recursively, "-" reads paths from stdin) under both usmaps, picked as for
+              diff, and compares each export's properties. One line per asset: status, path, detail (tab-separated; the detail
+              names each export that differs and how). When exports disagree, the first of these four statuses wins:
+                NEW-FAILS  some export parses only under the old usmap
+                MISREAD    both read some export, differently (detail: the first property that differs)
+                OLD-FAILS  some export parses only under the new usmap (likely built for it already)
+                BOTH-FAIL  the rest read the same, but some export parses under neither (often a Blueprint CDO), so is unchecked
+                OK-SAME    both read it the same: the patch does not affect it
+                TAGGED     versioned properties, read by name: no usmap change misreads them
+                ERROR      could not be opened (e.g. no .uexp beside it); the run then exits 1
+              Assets built for the old usmap that come out MISREAD or NEW-FAILS crash or misbehave in the patched game.
+
           uacli game-log [<log>] [--out <file>] [--summary] [--diff <other.log>] [--json]
               Example: uacli game-log --summary        (after a crash: engine build, mounted mods, crash block)
               Example: uacli game-log crashed.log --diff working.log        (mods only in the first are "- name", only in the second "+ name")

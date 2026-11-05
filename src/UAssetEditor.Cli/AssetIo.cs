@@ -63,9 +63,21 @@ internal static class AssetIo
     public static Usmap? ResolveMappings(ArgReader args, string option = "usmap")
     {
         var path = ResolveUsmapPath(args, option);
-        if (path == null) return null;
-        if (!File.Exists(path)) throw new ArgException($"--{option} file not found: {path}");
-        return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value.CreateAssetScope();
+        return path == null ? null : LoadMappings(path, $"--{option}").CreateAssetScope();
+    }
+
+    /// <summary>The usmap at <paramref name="path"/>, loaded once per process and shared: give each asset its own <c>CreateAssetScope()</c>.</summary>
+    public static Usmap LoadMappings(string path, string label)
+    {
+        if (!File.Exists(path)) throw new ArgException($"{label} file not found: {path}");
+        return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value;
+    }
+
+    /// <summary>--jobs, else one worker per CPU.</summary>
+    public static int ResolveJobs(ArgReader args)
+    {
+        if (args.Option("jobs") is not { } text) return Environment.ProcessorCount;
+        return int.TryParse(text, out var jobs) && jobs > 0 ? jobs : throw new ArgException($"--jobs must be a positive number, not '{text}'.");
     }
 
     /// <summary>

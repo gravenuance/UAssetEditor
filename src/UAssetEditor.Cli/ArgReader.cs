@@ -61,6 +61,9 @@ internal sealed class ArgReader
 
     public string? Positional(int index) => index < _positional.Count ? _positional[index] : null;
 
+    /// <summary>Every positional from <paramref name="index"/> on, for a command that takes a list.</summary>
+    public IReadOnlyList<string> PositionalsFrom(int index) => [.. _positional.Skip(index)];
+
     public string? Option(string name) => _options.GetValueOrDefault(name);
 
     public string RequireOption(string name) => Option(name) ?? throw new ArgException($"Missing --{name}");

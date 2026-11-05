@@ -120,7 +120,7 @@ internal static class ScriptRunner
             jobs.Add((parts[0], ops));
         }
 
-        var degree = ResolveJobs(args);
+        var degree = AssetIo.ResolveJobs(args);
         var failures = new ConcurrentBag<string>();
         var consoleLock = new object();
         Parallel.ForEach(jobs, new ParallelOptions { MaxDegreeOfParallelism = degree }, job =>
@@ -141,12 +141,6 @@ internal static class ScriptRunner
 
         Console.Error.WriteLine($"{jobs.Count - failures.Count}/{jobs.Count} assets done ({degree} at a time).");
         return failures.IsEmpty ? 0 : 1;
-    }
-
-    private static int ResolveJobs(ArgReader args)
-    {
-        if (args.Option("jobs") is not { } text) return Environment.ProcessorCount;
-        return int.TryParse(text, out var jobs) && jobs > 0 ? jobs : throw new ArgException($"--jobs must be a positive number, not '{text}'.");
     }
 
     /// <summary>
