@@ -4,6 +4,10 @@ All notable changes to this project are documented here.
 
 ## [Unreleased]
 
+### Added
+- `uacli usmap add|list|path` keeps each game's usmaps in one store (`%LOCALAPPDATA%\UAssetEditor\Mappings\<game>`, or `UASSETEDITOR_MAPPINGS_DIR`), keyed by the game build in the Dumper-7 file name or `--build`. With `--game` and no `--usmap`, every command (including `pack --kawaii-physics` and `--patch-default-hidden-mats`) uses the newest stored build, and says which on stderr. For Marvel Rivals, a usmap from a different build than the game last ran (read from its newest log) now draws a warning: a patch changes the schema, and mods converted with the old one crash the game.
+- `uacli game-log` decodes Marvel Rivals' encrypted logs (`%LOCALAPPDATA%\Marvel\Saved\Logs`). `--summary` shows the engine build, mounted `~mods` containers, the last `hero_id_list`, the crash block and serialization errors; `--diff <other.log>` lists the mods mounted in one session and not the other; `--json` writes either as JSON. Records that fail to inflate and a log that stops early are reported instead of skipped.
+
 ### Changed
 - Rebuilt the bundled retoc from `67c1bd1`. Without a game selected, `.utoc` output matches stock retoc again: 20-byte chunk hashes, script imports dropped from dependency bundles, and package names split the way Unreal does (retoc `a27a93c`; the fork had kept full hashes and exact names for everyone). `--game rivals` output is unchanged: chunks, manifest and companion `.pak` are identical to the previous build on a real Black Widow mod and on 201 animation blueprints. Its pak library moved to repak `1292815`, which pads encrypted Marvel Rivals entry data to 16 bytes the way the game does and maps legacy compression flag `0x04` to Oodle.
 

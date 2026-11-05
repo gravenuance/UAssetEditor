@@ -19,9 +19,9 @@ internal sealed class ArgReader
     // Every --name any command reads. Checked up front so a typo fails before anything runs, not after.
     private static readonly HashSet<string> KnownNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "aes", "apply", "as", "backup", "compression", "default-hidden-material-bitmaps", "depth", "export", "export-name", "filter", "from", "from-export",
-        "from-file", "from-usmap", "game", "nodes", "into", "into-export", "into-path", "jobs", "kawaii-physics", "key", "layer", "members", "mount", "no-paks-resolve", "obfuscate", "ops",
-        "out", "pak-version", "patch-default-hidden-mats", "path", "plan", "property-name", "reference", "regex", "rename", "row", "ruleset", "save", "strict", "tag", "template", "usmap", "value", "version",
+        "aes", "apply", "as", "backup", "build", "compression", "default-hidden-material-bitmaps", "depth", "diff", "export", "export-name", "filter", "force", "from", "from-export",
+        "from-file", "from-usmap", "game", "nodes", "into", "into-export", "into-path", "jobs", "json", "kawaii-physics", "key", "layer", "members", "mount", "no-paks-resolve", "obfuscate", "ops",
+        "out", "pak-version", "patch-default-hidden-mats", "path", "plan", "property-name", "reference", "regex", "rename", "row", "ruleset", "save", "strict", "summary", "tag", "template", "usmap", "value", "version",
     };
 
     private readonly List<string> _positional = [];
@@ -66,6 +66,10 @@ internal sealed class ArgReader
     public string RequireOption(string name) => Option(name) ?? throw new ArgException($"Missing --{name}");
 
     public bool Flag(string name) => _flags.Contains(name);
+
+    /// <summary>A valueless switch. One written before a positional would swallow it as its value, which is refused rather than guessed at.</summary>
+    public bool Switch(string name) =>
+        Option(name) == null ? Flag(name) : throw new ArgException($"--{name} takes no value; write it after the other arguments.");
 
     /// <summary>These arguments plus how the run opens assets (--game, --version, --usmap, --strict), unless already given.</summary>
     public ArgReader WithOpenSettingsFrom(ArgReader run)

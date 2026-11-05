@@ -145,7 +145,7 @@ internal static class PakCommands
             {
                 var stagedSource = Path.Combine(stageRoot, new DirectoryInfo(sourceFolder.TrimEnd('\\', '/')).Name);
                 CopyDirectory(sourceFolder, stagedSource);
-                PatchRivalsAssets(stagedSource, args.RequireOption("usmap"), patchOptions);
+                PatchRivalsAssets(stagedSource, AssetIo.ResolveUsmapPath(args) ?? throw new ArgException(MissingUsmapMessage), patchOptions);
                 ConvertFolderToZen(stagedSource, output, retocVersion, aesKey, zenOptions);
             }
             finally
@@ -165,6 +165,9 @@ internal static class PakCommands
         RetocProcess.ConvertToZenAsync(retocInput, output, retocVersion, aesKey, options, onOutputLine: Console.WriteLine).GetAwaiter().GetResult();
     }
 
+    private const string MissingUsmapMessage =
+        "The Marvel Rivals asset patches need --usmap <path> (or a stored usmap: 'uacli usmap add') for packages that cannot be read without it.";
+
     /// <summary>The Marvel Rivals asset patches the pack flags ask for, or null when none are.</summary>
     private static KawaiiPhysicsPortOptions? ResolveRivalsPatchOptions(ArgReader args, Game game)
     {
@@ -177,8 +180,7 @@ internal static class PakCommands
             throw new ArgException("--default-hidden-material-bitmaps is only supported with --game rivals.");
         if (!kawaiiPhysics && !defaultHiddenMats && bitmapsText == null) return null;
 
-        if (args.Option("usmap") == null)
-            throw new ArgException("The Marvel Rivals asset patches need --usmap <path> for packages that cannot be read without it.");
+        if (AssetIo.ResolveUsmapPath(args) == null) throw new ArgException(MissingUsmapMessage);
 
         IReadOnlyList<ulong>? bitmaps;
         try

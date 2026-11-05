@@ -44,6 +44,8 @@ try
         "pack" => PakCommands.Pack(reader),
         "to-legacy" => PakCommands.ToLegacy(reader),
         "repack" => PakCommands.Repack(reader),
+        "usmap" => UsmapCommands.Run(reader),
+        "game-log" => GameLogCommands.GameLog(reader),
         _ => Unknown(verb),
     };
 }
@@ -78,7 +80,8 @@ static void PrintUsage()
     Console.WriteLine("""
         uacli - read/edit .uasset files directly through UAssetEditor.Core, no GUI.
 
-        Global options (any command that opens a file): --version <EngineVersion> (default VER_UE4_27), --usmap <path>,
+        Global options (any command that opens a file): --version <EngineVersion> (default VER_UE4_27), --usmap <path>
+        (without it, --game uses that game's newest stored usmap, see 'usmap' below; an explicit --usmap always wins),
         --game <rivals|ff7r> (fills in that game's engine version and, for the pak commands, its AES key; --version and --aes
         still win when given. ff7r also decodes the game's DataObject tables into editable properties: rows are top-level
         structs named by their row tag, so a path reads "M_MAG_001_heal001_01.UniqueID" or "Row.Field_Array[2]". Such a
@@ -202,6 +205,33 @@ static void PrintUsage()
               addTag/removeTag/replaceReference/duplicateElement rules over a search Scope) across one asset or every asset under a folder.
               Defaults to a dry-run preview; --apply actually writes. An asset that can't be opened prints SKIPPED; one whose edit or
               save fails prints FAILED (nothing of it is saved) and makes the run exit 1.
+
+        Usmap store and game logs (switches go after the other arguments: a value-less switch before one would take it as its value).
+
+          uacli usmap add <file.usmap> --game rivals [--build <n>] [--force]
+              Example: uacli usmap add "D:/Downloads/5.3.2-3939753+++depot_marvel+S10.5_release-Marvel.usmap" --game rivals
+              Copy a dumped usmap into the store (one folder per game, under %LOCALAPPDATA%\UAssetEditor\Mappings or the folder in
+              UASSETEDITOR_MAPPINGS_DIR). The build comes from a Dumper-7 file name (the digits after the engine version's "-"), or
+              --build; a name without it is stored as "<build>-<name>". The file must load as a usmap. Adding a build that is already
+              stored needs --force. Run it after each dump: commands with --game then pick the newest build on their own.
+              Rivals only: if the usmap in use is not the build the game last ran (read from its newest log), a warning says so.
+
+          uacli usmap list [--game <rivals|ff7r>]
+              Example: uacli usmap list --game rivals
+              One line per stored usmap, highest build first: game, build, path (tab-separated).
+
+          uacli usmap path --game <rivals|ff7r>
+              Example: uacli to-unversioned mesh.uasset --game rivals --usmap "$(uacli usmap path --game rivals)"
+              Print the newest stored usmap's path and nothing else; exit 1 with a message when there is none.
+
+          uacli game-log [<log>] [--out <file>] [--summary] [--diff <other.log>] [--json]
+              Example: uacli game-log --summary        (after a crash: engine build, mounted mods, crash block)
+              Example: uacli game-log crashed.log --diff working.log        (mods only in the first are "- name", only in the second "+ name")
+              Decode a Marvel Rivals log (they are encrypted) from %LOCALAPPDATA%\Marvel\Saved\Logs; without <log>, the newest one
+              (named on stderr). Default: the decoded text, to stdout or --out. --summary: one "key: value" line per fact (engine,
+              build, crashed, last hero_id_list, hero ids loaded just before the crash, mod, error, crash). --diff: compare the mods
+              mounted under ~mods. --json writes --summary or --diff as JSON, --out redirects any of them to a file.
+              Records that fail to inflate and a log that stops early are reported on stderr.
 
         Pak/IoStore archive commands (mirror the app's Unpack/Pack/Convert dialogs and Repack). All take --aes <hex> for an encrypted pak.
 

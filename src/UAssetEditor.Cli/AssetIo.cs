@@ -6,6 +6,7 @@ using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
+using UAssetEditor.Core.Games.Rivals;
 using UAssetEditor.Core.PropertyAccess;
 
 namespace UAssetEditor.Cli;
@@ -31,7 +32,8 @@ internal static class AssetIo
     /// <summary>The game named by --game, or <see cref="Game.None"/> when it isn't given.</summary>
     public static Game ResolveGame(ArgReader args) => ResolveProfile(args)?.Game ?? Game.None;
 
-    private static GameProfile? ResolveProfile(ArgReader args)
+    /// <summary>The profile named by --game, or null when it isn't given.</summary>
+    public static GameProfile? ResolveProfile(ArgReader args)
     {
         var name = args.Option("game");
         if (name == null)
@@ -54,12 +56,51 @@ internal static class AssetIo
     // Loading a usmap is most of a small run's cost, so each is loaded once per process and every asset gets its own scope of it.
     private static readonly ConcurrentDictionary<string, Lazy<Usmap>> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
 
+    // One notice and one stale check per process, however many assets a --plan run opens.
+    private static readonly ConcurrentDictionary<string, Lazy<string?>> StoredUsmapPaths = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, byte> StaleChecked = new(StringComparer.OrdinalIgnoreCase);
+
     public static Usmap? ResolveMappings(ArgReader args, string option = "usmap")
     {
-        var path = args.Option(option);
+        var path = ResolveUsmapPath(args, option);
         if (path == null) return null;
         if (!File.Exists(path)) throw new ArgException($"--{option} file not found: {path}");
         return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value.CreateAssetScope();
+    }
+
+    /// <summary>
+    /// The usmap to use: the explicit option, else (for --usmap only) the newest one stored for --game, else null.
+    /// Rivals gets a warning when the usmap is from a different build than the game last ran.
+    /// </summary>
+    public static string? ResolveUsmapPath(ArgReader args, string option = "usmap")
+    {
+        var explicitPath = args.Option(option);
+        if (explicitPath != null)
+        {
+            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath);
+            return explicitPath;
+        }
+
+        if (option != "usmap" || ResolveProfile(args) is not { } profile) return null;
+        return StoredUsmapPaths.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile))).Value;
+    }
+
+    private static string? UseStoredUsmap(GameProfile profile)
+    {
+        if (MappingsStore.Default().Latest(profile) is not { } stored) return null;
+        Console.Error.WriteLine($"Using stored usmap {stored.Path} (build {stored.Build}).");
+        WarnIfStale(profile, stored.Path);
+        return stored.Path;
+    }
+
+    private static void WarnIfStale(GameProfile? profile, string usmapPath)
+    {
+        if (profile?.Game != Game.MarvelRivals) return;
+        if (MappingsStore.ParseBuild(Path.GetFileName(usmapPath)) is not { } usmapBuild) return;
+        if (!StaleChecked.TryAdd(Path.GetFullPath(usmapPath), 0)) return;
+        if (RivalsLogs.InstalledBuild(RivalsLogs.DefaultDirectory) is not { } installed || installed == usmapBuild) return;
+        Console.Error.WriteLine(
+            $"Warning: usmap is build {usmapBuild} but Marvel Rivals last ran build {installed}; dump a new usmap (Dumper-7) and add it with 'uacli usmap add'.");
     }
 
     /// <summary>--aes if given, else the --game profile's key, else none.</summary>

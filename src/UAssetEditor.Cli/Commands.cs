@@ -262,7 +262,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var output = args.Option("out") ?? path;
-        var schema = AssetIo.ResolveMappings(args) ?? throw new ArgException("--usmap is required: it is the game's schema to write for.");
+        var schema = AssetIo.ResolveMappings(args) ?? throw new ArgException("--usmap is required (or --game with a stored usmap, see 'uacli usmap'): it is the game's schema to write for.");
         if (!File.Exists(path)) throw new ArgException($"File not found: {path}");
         // A tagged package is read without a schema: the schema describes the game, not the editor that cooked it.
         // An unversioned one can only be read with the schema it was written for.
