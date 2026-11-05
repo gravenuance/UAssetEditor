@@ -99,7 +99,7 @@ internal static class AssetIo
                 $" Pass --usmap or run 'uacli usmap add <file> --game {profile.CliName}'.");
             return null;
         }
-        diagnostics.WriteLine($"Using stored usmap {stored.Path} (build {stored.Build}).");
+        diagnostics.WriteLine($"Using stored usmap {stored.Path} ({UsmapCommands.DescribeBuild(stored)}).");
         WarnIfStale(profile, stored.Path);
         return stored.Path;
     }

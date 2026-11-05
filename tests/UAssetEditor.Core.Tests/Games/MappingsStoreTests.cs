@@ -18,6 +18,7 @@ public sealed class MappingsStoreTests : IDisposable
     private readonly MappingsStore _store;
     private readonly GameProfile _rivals = GameProfile.For(Game.MarvelRivals)!;
     private readonly GameProfile _ff7r = GameProfile.For(Game.FinalFantasy7Remake)!;
+    private readonly GameProfile _stellarBlade = GameProfile.For(Game.StellarBlade)!;
 
     public MappingsStoreTests()
     {
@@ -55,12 +56,38 @@ public sealed class MappingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void Add_WithoutAnyBuild_IsAClearError()
+    public void Add_WithoutAnyBuild_StoresItUnderItsOwnName_AsTheGamesOnlyUsmap()
     {
-        var ex = Assert.Throws<MappingsStoreException>(() => _store.Add(Source("Marvel.usmap"), _rivals));
+        var stored = _store.Add(Source("StellarBlade.usmap"), _stellarBlade);
 
-        Assert.Contains("build", ex.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(_store.List(_rivals));
+        Assert.Null(stored.Build);
+        Assert.Equal(Path.Combine(_dir, "store", "stellarblade", "StellarBlade.usmap"), stored.Path);
+        Assert.Equal(stored, _store.Latest(_stellarBlade));
+    }
+
+    [Fact]
+    public void Add_ASecondUsmapWithoutABuild_NeedsForce_AndForceReplacesTheFirst()
+    {
+        var first = _store.Add(Source("StellarBlade.usmap"), _stellarBlade);
+
+        var ex = Assert.Throws<MappingsStoreException>(() => _store.Add(Source("SB_new.usmap", OtherUsmap), _stellarBlade));
+        Assert.Contains("without a build", ex.Message, StringComparison.Ordinal);
+
+        var second = _store.Add(Source("SB_new.usmap", OtherUsmap), _stellarBlade, force: true);
+
+        Assert.False(File.Exists(first.Path));
+        Assert.Equal([second], _store.List(_stellarBlade));
+        Assert.Equal(OtherUsmap, File.ReadAllBytes(second.Path));
+    }
+
+    [Fact]
+    public void Latest_PrefersAnyBuild_OverTheUsmapWithoutOne()
+    {
+        _store.Add(Source("hand.usmap"), _rivals);
+        _store.Add(Source(DumperName), _rivals);
+
+        Assert.Equal(3939753, _store.Latest(_rivals)?.Build);
+        Assert.Equal([3939753, null], _store.List(_rivals).Select(e => e.Build));
     }
 
     [Fact]
@@ -141,12 +168,14 @@ public sealed class MappingsStoreTests : IDisposable
     }
 
     [Fact]
-    public void List_IgnoresFilesThatCarryNoBuild()
+    public void List_ShowsHandPlacedFilesWithoutABuild_AfterTheBuilds()
     {
         _store.Add(Source(DumperName), _rivals);
         File.WriteAllBytes(Path.Combine(_store.DirectoryFor(_rivals), "hand-placed.usmap"), EmptyUsmap);
 
-        Assert.Equal([3939753], _store.List(_rivals).Select(e => e.Build));
+        Assert.Equal(
+            [new StoredMappings(3939753, Path.Combine(_store.DirectoryFor(_rivals), DumperName)), new StoredMappings(null, Path.Combine(_store.DirectoryFor(_rivals), "hand-placed.usmap"))],
+            _store.List(_rivals));
     }
 
     [Theory]

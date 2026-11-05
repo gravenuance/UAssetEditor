@@ -319,6 +319,7 @@ public class Ff7rDataObjectTests
     [Theory]
     [InlineData(Game.None)]
     [InlineData(Game.MarvelRivals)]
+    [InlineData(Game.StellarBlade)]
     public void PostOpen_LeavesTheTableUndecodedForOtherGames(Game game)
     {
         var (asset, _) = CreateTable();

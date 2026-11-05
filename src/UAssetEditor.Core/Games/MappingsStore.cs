@@ -4,8 +4,8 @@ using UAssetAPI.Unversioned;
 
 namespace UAssetEditor.Core.Games;
 
-/// <summary>One usmap in the <see cref="MappingsStore"/>: the game build it was dumped from and where it lives.</summary>
-public sealed record StoredMappings(int Build, string Path);
+/// <summary>One usmap in the <see cref="MappingsStore"/>: the game build it was dumped from (null when unknown) and where it lives.</summary>
+public sealed record StoredMappings(int? Build, string Path);
 
 /// <summary>A usmap could not be stored or found; the message says what to do about it.</summary>
 public sealed class MappingsStoreException : Exception
@@ -19,8 +19,9 @@ public sealed class MappingsStoreException : Exception
 
 /// <summary>
 /// The known place for each game's current usmap: one folder per <see cref="GameProfile.CliName"/> under a root
-/// (<c>UASSETEDITOR_MAPPINGS_DIR</c>, else <c>%LOCALAPPDATA%\UAssetEditor\Mappings</c>). The game build is part of
-/// every stored file name, so the newest usmap is derivable from the folder alone.
+/// (<c>UASSETEDITOR_MAPPINGS_DIR</c>, else <c>%LOCALAPPDATA%\UAssetEditor\Mappings</c>). A usmap's game build, when known,
+/// is part of its file name, so the newest one is derivable from the folder alone. A game that is rarely patched can
+/// instead keep one usmap with no build; any usmap with a build counts as newer than it.
 /// </summary>
 public sealed partial class MappingsStore
 {
@@ -64,9 +65,10 @@ public sealed partial class MappingsStore
     }
 
     /// <summary>
-    /// Copies <paramref name="sourceFile"/> into the game's folder, keeping its name (prefixed with the build when the name
-    /// has none). The build comes from the name or <paramref name="build"/>. The copy is validated as a usmap and then
-    /// renamed into place, so a failure never leaves a partial file. A build that is already stored needs <paramref name="force"/>.
+    /// Copies <paramref name="sourceFile"/> into the game's folder, keeping its name (prefixed with <paramref name="build"/>
+    /// when given and the name has none). The build comes from the name or <paramref name="build"/>; with neither, the file is
+    /// stored as the game's one usmap without a build. The copy is validated as a usmap and then renamed into place, so a
+    /// failure never leaves a partial file. A build that is already stored, or a second usmap without one, needs <paramref name="force"/>.
     /// </summary>
     public StoredMappings Add(string sourceFile, GameProfile game, int? build = null, bool force = false)
     {
@@ -82,16 +84,19 @@ public sealed partial class MappingsStore
         var fromName = ParseBuild(fileName);
         if (build != null && fromName != null && build != fromName)
             throw new MappingsStoreException($"{fileName} is named for build {fromName}, but build {build} was given.");
-        var resolved = build ?? fromName
-            ?? throw new MappingsStoreException($"Cannot tell which game build {fileName} is from: its name has none (a Dumper-7 name looks like 5.3.2-3939753+++...). Give the build number (--build N).");
+        var resolved = build ?? fromName;
 
         var existing = List(game).Where(entry => entry.Build == resolved).ToList();
         if (existing.Count > 0 && !force)
-            throw new MappingsStoreException($"Build {resolved} is already stored as {existing[0].Path}. Replace it with --force.");
+        {
+            throw new MappingsStoreException(resolved is { } known
+                ? $"Build {known} is already stored as {existing[0].Path}. Replace it with --force."
+                : $"{game.DisplayName} already has a usmap without a build: {existing[0].Path}. Replace it with --force, or give this one a build (--build N).");
+        }
 
         var directory = DirectoryFor(game);
         Directory.CreateDirectory(directory);
-        var target = Path.Combine(directory, fromName != null ? fileName : $"{resolved}-{fileName}");
+        var target = Path.Combine(directory, fromName != null || resolved == null ? fileName : $"{resolved}-{fileName}");
         var temp = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
@@ -104,13 +109,13 @@ public sealed partial class MappingsStore
             File.Delete(temp);
         }
 
-        // Another file of the same build (a different name) is what force replaces.
+        // Another file of the same build, or another one without a build (a different name), is what force replaces.
         foreach (var stale in existing.Where(entry => !string.Equals(entry.Path, target, StringComparison.OrdinalIgnoreCase)))
             File.Delete(stale.Path);
         return new StoredMappings(resolved, target);
     }
 
-    /// <summary>The game's stored usmaps, highest build first. Files whose name carries no build are not listed.</summary>
+    /// <summary>The game's stored usmaps, highest build first, then any without a build (by name).</summary>
     public IReadOnlyList<StoredMappings> List(GameProfile game)
     {
         var directory = DirectoryFor(game);
@@ -120,13 +125,14 @@ public sealed partial class MappingsStore
         foreach (var path in Directory.EnumerateFiles(directory, "*" + Extension))
         {
             if (!path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase)) continue;
-            if (ParseBuild(Path.GetFileName(path)) is { } build) entries.Add(new StoredMappings(build, path));
+            entries.Add(new StoredMappings(ParseBuild(Path.GetFileName(path)), path));
         }
-        entries.Sort((a, b) => a.Build != b.Build ? b.Build.CompareTo(a.Build) : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase));
+        // Nullable<int>.CompareTo puts null first, so descending order puts the build-less entries last.
+        entries.Sort((a, b) => a.Build != b.Build ? Nullable.Compare(b.Build, a.Build) : string.Compare(a.Path, b.Path, StringComparison.OrdinalIgnoreCase));
         return entries;
     }
 
-    /// <summary>The stored usmap with the highest build, or null when the game has none.</summary>
+    /// <summary>The stored usmap with the highest build, else the one without a build, or null when the game has none.</summary>
     public StoredMappings? Latest(GameProfile game) => List(game) is { Count: > 0 } entries ? entries[0] : null;
 
     private static void Validate(string path, string displayName)

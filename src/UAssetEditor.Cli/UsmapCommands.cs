@@ -33,9 +33,15 @@ internal static class UsmapCommands
             throw new ArgException(ex.Message, ex);
         }
 
-        Console.WriteLine($"Stored {stored.Path} ({game.CliName} build {stored.Build}).");
+        Console.WriteLine($"Stored {stored.Path} ({game.CliName}, {DescribeBuild(stored)}).");
+        if (stored.Build == null && game.Game == Game.MarvelRivals)
+            Console.Error.WriteLine("Warning: without a build, uacli cannot tell when this usmap is out of date with the game; add Dumper-7's file as named, or pass --build.");
         return 0;
     }
+
+    /// <summary>"build N", or "no build" for a usmap stored without one.</summary>
+    internal static string DescribeBuild(StoredMappings stored) =>
+        stored.Build is { } build ? $"build {build.ToString(CultureInfo.InvariantCulture)}" : "no build";
 
     private static int List(ArgReader args)
     {
@@ -46,7 +52,7 @@ internal static class UsmapCommands
         {
             foreach (var entry in store.List(game))
             {
-                Console.WriteLine($"{game.CliName}\t{entry.Build}\t{entry.Path}");
+                Console.WriteLine($"{game.CliName}\t{entry.Build?.ToString(CultureInfo.InvariantCulture) ?? "-"}\t{entry.Path}");
                 any = true;
             }
         }

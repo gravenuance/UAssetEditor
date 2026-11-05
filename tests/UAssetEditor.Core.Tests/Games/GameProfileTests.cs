@@ -1,4 +1,5 @@
 using UAssetAPI.UnrealTypes;
+using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.Tests.Games;
@@ -10,6 +11,7 @@ public class GameProfileTests
     [InlineData("RIVALS", Game.MarvelRivals)]
     [InlineData(" ff7r ", Game.FinalFantasy7Remake)]
     [InlineData("Ff7R", Game.FinalFantasy7Remake)]
+    [InlineData("StellarBlade", Game.StellarBlade)]
     public void FindByCliName_IsCaseInsensitive(string name, Game expected)
     {
         Assert.Equal(expected, GameProfile.FindByCliName(name)?.Game);
@@ -48,10 +50,22 @@ public class GameProfileTests
     }
 
     [Fact]
+    public void StellarBlade_CarriesItsEngineVersionAndNoKey()
+    {
+        var profile = GameProfile.For(Game.StellarBlade)!;
+
+        Assert.Equal("stellarblade", profile.CliName);
+        Assert.Equal("Stellar Blade", profile.DisplayName);
+        Assert.Equal(EngineVersion.VER_UE4_27, profile.EngineVersion);
+        Assert.Equal("", profile.AesKeyHex);
+        Assert.Null(PakAesKey.Parse(GameProfile.ResolveAesKeyHex(profile, null)));
+    }
+
+    [Fact]
     public void None_HasNoProfile()
     {
         Assert.Null(GameProfile.For(Game.None));
-        Assert.Equal("rivals, ff7r", GameProfile.ValidNames);
+        Assert.Equal("rivals, ff7r, stellarblade", GameProfile.ValidNames);
     }
 
     [Fact]

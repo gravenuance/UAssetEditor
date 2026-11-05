@@ -6,4 +6,5 @@ public enum Game
     None,
     MarvelRivals,
     FinalFantasy7Remake,
+    StellarBlade,
 }
