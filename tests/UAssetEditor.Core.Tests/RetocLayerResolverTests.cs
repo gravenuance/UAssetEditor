@@ -204,4 +204,39 @@ public class RetocLayerResolverTests
             Directory.Delete(workDir, recursive: true);
         }
     }
+
+    [Fact]
+    public void IsBaseGameContainer_TrueOnlyForAChunkDirectlyInPaks()
+    {
+        var (workDir, paksFolder, modUtoc) = CreateFixture();
+        var looseMod = Path.Combine(paksFolder, "zLoose_9999999_P.utoc");
+        File.WriteAllText(looseMod, "loose-toc");
+        try
+        {
+            Assert.True(RetocLayerResolver.IsBaseGameContainer(Path.Combine(paksFolder, "pakchunk0-Windows.utoc")));
+            Assert.False(RetocLayerResolver.IsBaseGameContainer(modUtoc));
+            Assert.False(RetocLayerResolver.IsBaseGameContainer(looseMod));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void IsBaseGameContainer_FalseWithNoEnclosingPaksFolder()
+    {
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_RetocLayer_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        var utocPath = Path.Combine(workDir, "pakchunk0-Windows.utoc");
+        File.WriteAllText(utocPath, "x");
+        try
+        {
+            Assert.False(RetocLayerResolver.IsBaseGameContainer(utocPath));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
 }

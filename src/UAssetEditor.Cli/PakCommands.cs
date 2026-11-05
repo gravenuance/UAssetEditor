@@ -311,7 +311,10 @@ internal static class PakCommands
         var layer = ResolveLayer(args);
         var result = IoStoreLegacyConverter.ConvertAsync(utocPath, output, layer, filters, aesKey).GetAwaiter().GetResult();
         if (result.ResolvedThroughPaksFolder)
-            Console.WriteLine($"-- resolved imports via enclosing Paks folder ({layer} layer, {result.OwnEntryCount} entr(y/ies) of '{Path.GetFileName(utocPath)}')");
+        {
+            var scoped = result.OwnEntryCount > 0 ? $", {result.OwnEntryCount} entr(y/ies) of '{Path.GetFileName(utocPath)}'" : "";
+            Console.WriteLine($"-- resolved imports via enclosing Paks folder ({layer} layer{scoped})");
+        }
         foreach (var removed in result.RemovedBaseGameBulkFiles)
             Console.WriteLine($"-- not shipped by the container, removed base-game bulk: {removed}");
         if (result.BaseGameBulkKept)

@@ -48,8 +48,7 @@ public static class RetocLayerResolver
             return RetocInputScope.Unwidened(utocPath);
 
         // A "_P" (patch) container loose in Paks is a mod; a base-game chunk there is the vanilla content itself.
-        var targetIsLooseMod = string.Equals(Path.GetFullPath(Path.GetDirectoryName(utocPath)!), Path.GetFullPath(paksFolder), StringComparison.OrdinalIgnoreCase)
-            && Path.GetFileNameWithoutExtension(utocPath).EndsWith("_P", StringComparison.OrdinalIgnoreCase);
+        var targetIsLooseMod = IsDirectlyIn(utocPath, paksFolder) && HasModName(utocPath);
         if (layer == RetocLayer.Original && !targetIsLooseMod)
             return RetocInputScope.Widened(paksFolder, temporaryDirectory: null);
 
@@ -80,6 +79,21 @@ public static class RetocLayerResolver
 
         return RetocInputScope.Widened(scratch, scratch);
     }
+
+    /// <summary>True for a game's own container: directly in its Paks folder and not named like a "_P" mod.</summary>
+    public static bool IsBaseGameContainer(string utocPath)
+    {
+        ArgumentNullException.ThrowIfNull(utocPath);
+
+        var paksFolder = RetocPaksFolderResolver.FindEnclosingPaksFolder(utocPath);
+        return paksFolder != null && IsDirectlyIn(utocPath, paksFolder) && !HasModName(utocPath);
+    }
+
+    private static bool IsDirectlyIn(string utocPath, string folder) =>
+        string.Equals(Path.GetFullPath(Path.GetDirectoryName(utocPath)!), Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasModName(string utocPath) =>
+        Path.GetFileNameWithoutExtension(utocPath).EndsWith("_P", StringComparison.OrdinalIgnoreCase);
 
     private static void LinkContainersFrom(string sourceFolder, string destFolder, string? exclude)
     {

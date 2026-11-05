@@ -1,12 +1,13 @@
 namespace UAssetEditor.Core.AssetSources.IoStore;
 
 /// <summary>What <see cref="IoStoreLegacyConverter.ConvertAsync"/> did besides converting the requested entries.</summary>
-/// <param name="OwnEntryCount">Entries of the container itself when imports were resolved through its enclosing Paks folder; 0 when it was converted alone.</param>
+/// <param name="ResolvedThroughPaksFolder">Imports were resolved through the container's enclosing Paks folder, not the container alone.</param>
+/// <param name="OwnEntryCount">Entries of the container itself, when they were listed; 0 otherwise.</param>
 /// <param name="RemovedBaseGameBulkFiles">Output-relative paths of bulk files that came from the base game and were deleted.</param>
 /// <param name="BaseGameBulkKept">True when a <see cref="RetocLayer.Modded"/> conversion wrote a .pak, which can't be pruned, so it may hold base-game bulk data.</param>
-public sealed record LegacyConversionResult(int OwnEntryCount, IReadOnlyList<string> RemovedBaseGameBulkFiles, bool BaseGameBulkKept)
+public sealed record LegacyConversionResult(bool ResolvedThroughPaksFolder, int OwnEntryCount, IReadOnlyList<string> RemovedBaseGameBulkFiles, bool BaseGameBulkKept)
 {
-    public bool ResolvedThroughPaksFolder => OwnEntryCount > 0;
+    internal static LegacyConversionResult Alone { get; } = new(false, 0, [], BaseGameBulkKept: false);
 }
 
 /// <summary>
@@ -30,22 +31,33 @@ public static class IoStoreLegacyConverter
         ArgumentNullException.ThrowIfNull(filters);
 
         using var scope = RetocLayerResolver.Resolve(utocPath, layer);
-        IReadOnlyList<string> ownEntries = scope.InputDirectory == utocPath ? [] : await RetocProcess.ListAsync(utocPath, aesKey, cancellationToken).ConfigureAwait(false);
-
-        // With no entries of its own to scope the merged view to, converting it would convert the whole game
-        if (ownEntries.Count == 0)
+        if (scope.InputDirectory == utocPath)
         {
             await RetocProcess.ConvertToLegacyAsync(utocPath, output, filters, aesKey, cancellationToken).ConfigureAwait(false);
-            return new LegacyConversionResult(0, [], BaseGameBulkKept: false);
+            return LegacyConversionResult.Alone;
+        }
+
+        // The entries scope an unfiltered run and tell a mod's bulk from the base game's. A base-game chunk ships its
+        // own bulk, and listing one costs seconds, so a filtered run on it skips the listing
+        var prune = layer == RetocLayer.Modded && !RetocLayerResolver.IsBaseGameContainer(utocPath);
+        IReadOnlyList<string> ownEntries = filters.Count == 0 || prune
+            ? await RetocProcess.ListAsync(utocPath, aesKey, cancellationToken).ConfigureAwait(false)
+            : [];
+
+        if (filters.Count == 0 && ownEntries.Count == 0)
+        {
+            // Nothing to scope the merged view to: unfiltered, it would convert the whole game
+            await RetocProcess.ConvertToLegacyAsync(utocPath, output, filters, aesKey, cancellationToken).ConfigureAwait(false);
+            return LegacyConversionResult.Alone;
         }
 
         await RetocProcess.ConvertToLegacyAsync(scope.InputDirectory, output, filters.Count > 0 ? filters : ownEntries, aesKey, cancellationToken).ConfigureAwait(false);
 
-        if (layer != RetocLayer.Modded)
-            return new LegacyConversionResult(ownEntries.Count, [], BaseGameBulkKept: false);
+        if (!prune)
+            return new LegacyConversionResult(true, ownEntries.Count, [], BaseGameBulkKept: false);
         if (string.Equals(Path.GetExtension(output), ".pak", StringComparison.OrdinalIgnoreCase))
-            return new LegacyConversionResult(ownEntries.Count, [], BaseGameBulkKept: true);
-        return new LegacyConversionResult(ownEntries.Count, RemoveBulkFilesNotShipped(output, ownEntries), BaseGameBulkKept: false);
+            return new LegacyConversionResult(true, ownEntries.Count, [], BaseGameBulkKept: true);
+        return new LegacyConversionResult(true, ownEntries.Count, RemoveBulkFilesNotShipped(output, ownEntries), BaseGameBulkKept: false);
     }
 
     /// <summary>
