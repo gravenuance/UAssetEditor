@@ -229,7 +229,7 @@ static void PrintUsage()
               Example: uacli game-log crashed.log --diff working.log        (mods only in the first are "- name", only in the second "+ name")
               Decode a Marvel Rivals log (they are encrypted) from %LOCALAPPDATA%\Marvel\Saved\Logs; without <log>, the newest one
               (named on stderr). Default: the decoded text, to stdout or --out. --summary: one "key: value" line per fact (engine,
-              build, crashed, last hero_id_list, hero ids loaded just before the crash, mod, error, crash). --diff: compare the mods
+              build, crashed, allies, enemies, hero ids loaded just before the crash, mod, error, crash). --diff: compare the mods
               mounted under ~mods. --json writes --summary or --diff as JSON, --out redirects any of them to a file.
               Records that fail to inflate and a log that stops early are reported on stderr.
 
