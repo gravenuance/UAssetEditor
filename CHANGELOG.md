@@ -12,6 +12,11 @@ All notable changes to this project are documented here.
 
 ### Changed
 - Rebuilt the bundled retoc from `67c1bd1`. Without a game selected, `.utoc` output matches stock retoc again: 20-byte chunk hashes, script imports dropped from dependency bundles, and package names split the way Unreal does (retoc `a27a93c`; the fork had kept full hashes and exact names for everyone). `--game rivals` output is unchanged: chunks, manifest and companion `.pak` are identical to the previous build on a real Black Widow mod and on 201 animation blueprints. Its pak library moved to repak `1292815`, which pads encrypted Marvel Rivals entry data to 16 bytes the way the game does and maps legacy compression flag `0x04` to Oodle.
+- `to-legacy` (and **Convert IoStore to Legacy**, **Convert selected**) with the default `--layer modded` writes only the `.ubulk`/`.uptnl` files the container ships. A mod that replaces a mesh or texture without its bulk data used to get the base game's bulk file too, which repacking would then add to the mod. A `.pak` output can't be pruned and warns instead.
+
+### Fixed
+- `to-legacy` no longer fails on some mods (e.g. a Hela skin whose lobby mesh was not written): the bundled retoc (`96c2cc4`) panicked when several import slots pointed at the same import. It also keeps the real path of an import whose package ships in no container, instead of writing `/Engine/UnknownPackage.UnknownExport`. `.utoc` output is unchanged, for `--game rivals` and without a game.
+- `to-legacy` on a container with no entries of its own under a Paks folder converted with no filter against the whole merged Paks view; it now converts the container alone.
 
 ## [1.11.0] - 2026-10-30
 

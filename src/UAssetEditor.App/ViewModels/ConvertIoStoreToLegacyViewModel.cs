@@ -23,7 +23,7 @@ public sealed record RetocLayerOption(RetocLayer Value, string Label);
 
 /// <summary>
 /// Backs the Convert IoStore to Legacy dialog - converts every entry of a chosen .utoc container
-/// into legacy format via retoc's to-legacy (<see cref="RetocProcess.ConvertToLegacyAsync"/>),
+/// into legacy format via retoc's to-legacy (<see cref="IoStoreLegacyConverter.ConvertAsync"/>),
 /// into either a loose folder or a fresh .pak directly (retoc's own OUTPUT argument accepts
 /// either), off the UI thread. Unlike <see cref="MainViewModel.ConvertSelectedCommand"/> (which
 /// only converts checked entries of an already-browsed container into the app's own workspace),
@@ -95,30 +95,9 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
         {
             var aesKey = PakAesKey.Parse(AesKeyHex);
 
-            // A standalone .utoc that only overrides a handful of a base game's assets can't
-            // resolve imports into whatever container actually owns the rest on its own - see
-            // RetocLayerResolver's own remarks for the real repro (and why a merged view, not the
-            // Paks folder itself, is required for Layer.Modded to actually apply this source's own
-            // edits rather than silently falling back to the base game's vanilla content for its
-            // own entries). Scope the -f filter to exactly this file's own entries first - an
-            // empty filter against the whole merged view would attempt to convert the entire game,
-            // not just what was actually asked for. Falls back to the plain single-file behavior
-            // (convert everything in it, no filter) whenever no Paks folder is found, or this file
-            // turns out to have no real packages of its own to scope to.
-            var input = SourceUtocPath;
-            IReadOnlyList<string> filters = [];
-            using var scope = RetocLayerResolver.Resolve(SourceUtocPath, Layer);
-            if (scope.InputDirectory != SourceUtocPath)
-            {
-                var ownEntries = await RetocProcess.ListAsync(SourceUtocPath, aesKey, _cts.Token);
-                if (ownEntries.Count > 0)
-                {
-                    input = scope.InputDirectory;
-                    filters = ownEntries;
-                }
-            }
-
-            await RetocProcess.ConvertToLegacyAsync(input, OutputPath, filters, aesKey, _cts.Token);
+            var result = await IoStoreLegacyConverter.ConvertAsync(SourceUtocPath, OutputPath, Layer, [], aesKey, _cts.Token);
+            if (result.BaseGameBulkKept)
+                Logger.LogWarning("'{OutputPath}' may hold base-game bulk files '{UtocPath}' doesn't ship: a .pak output can't be pruned.", OutputPath, SourceUtocPath);
             Status = $"Converted to {OutputPath}.";
             IsDone = true;
         }

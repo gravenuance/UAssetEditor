@@ -1361,27 +1361,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         var aesKey = ParseAesKey(PakAesKeyHex);
         var count = selected.Count;
 
-        // A single-mod .utoc that only overrides a few of a base game's assets can't resolve
-        // imports into whatever container actually owns the rest on its own (real repro - see
-        // RetocLayerResolver's own remarks); resolving through a merged view of the enclosing
-        // Paks folder instead gives it that context - and RetocLayer.Modded is what makes this
-        // .utoc's own edits actually apply rather than silently falling back to the base game's
-        // vanilla content for the very entries being converted, since retoc's own directory scan
-        // can't otherwise see a container sitting under "~mods" at all. Always Modded, not a user
-        // choice, here specifically: this builds an editable workspace *from* the browsed
-        // container, and there's no sensible reason to populate it with vanilla content instead
-        // of what's actually being browsed - the deliberate original-vs-modded choice belongs to
-        // the standalone Convert IoStore to Legacy dialog (ConvertIoStoreToLegacyViewModel.Layer),
-        // a diffing/export tool where picking vanilla on purpose is a real use case. `selected`
-        // (already a concrete, non-empty list from the guard above) keeps the actual conversion
-        // scoped to exactly the checked entries, not the whole merged view's contents.
-        using var scope = RetocLayerResolver.Resolve(utocPath, RetocLayer.Modded);
-
+        // Always Modded, not a user choice, here: this builds an editable workspace from the browsed container, so it
+        // holds what is being browsed. The original-vs-modded choice belongs to the Convert IoStore to Legacy dialog
+        // (ConvertIoStoreToLegacyViewModel.Layer), a diffing tool where picking vanilla on purpose is a real use case.
         IsBusy = true;
         StatusMessage = $"Converting {count} entr{(count == 1 ? "y" : "ies")} to legacy format...";
         try
         {
-            await RetocProcess.ConvertToLegacyAsync(scope.InputDirectory, destination, selected, aesKey);
+            await IoStoreLegacyConverter.ConvertAsync(utocPath, destination, RetocLayer.Modded, selected, aesKey);
         }
         catch (Exception ex)
         {

@@ -298,38 +298,24 @@ internal static class PakCommands
         if (!File.Exists(utocPath)) throw new ArgException($"File not found: {utocPath}");
 
         var aesKey = AssetIo.ResolveAesKey(args);
-        var input = utocPath;
         IReadOnlyList<string> filters = args.Option("filter")
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
-        RetocInputScope? scope = null;
-        if (!args.Flag("no-paks-resolve"))
+        if (args.Flag("no-paks-resolve"))
         {
-            var layer = ResolveLayer(args);
-            scope = RetocLayerResolver.Resolve(utocPath, layer);
-            if (scope.InputDirectory != utocPath)
-            {
-                if (filters.Count == 0)
-                {
-                    var ownEntries = RetocProcess.ListAsync(utocPath, aesKey).GetAwaiter().GetResult();
-                    if (ownEntries.Count > 0)
-                    {
-                        filters = ownEntries;
-                        Console.WriteLine($"-- resolving imports via enclosing Paks folder ({layer} layer, {ownEntries.Count} entr(y/ies) of '{Path.GetFileName(utocPath)}')");
-                    }
-                }
-                input = scope.InputDirectory;
-            }
+            RetocProcess.ConvertToLegacyAsync(utocPath, output, filters, aesKey).GetAwaiter().GetResult();
+            Console.WriteLine($"-- converted to {output}");
+            return 0;
         }
 
-        try
-        {
-            RetocProcess.ConvertToLegacyAsync(input, output, filters, aesKey).GetAwaiter().GetResult();
-        }
-        finally
-        {
-            scope?.Dispose();
-        }
+        var layer = ResolveLayer(args);
+        var result = IoStoreLegacyConverter.ConvertAsync(utocPath, output, layer, filters, aesKey).GetAwaiter().GetResult();
+        if (result.ResolvedThroughPaksFolder)
+            Console.WriteLine($"-- resolved imports via enclosing Paks folder ({layer} layer, {result.OwnEntryCount} entr(y/ies) of '{Path.GetFileName(utocPath)}')");
+        foreach (var removed in result.RemovedBaseGameBulkFiles)
+            Console.WriteLine($"-- not shipped by the container, removed base-game bulk: {removed}");
+        if (result.BaseGameBulkKept)
+            Console.Error.WriteLine("warning: a .pak output can't be pruned, so it may hold base-game bulk files the container doesn't ship; convert to a folder to drop them");
 
         Console.WriteLine($"-- converted to {output}");
         return 0;

@@ -290,7 +290,9 @@ static void PrintUsage()
               like pakchunkCharacter-Windows.utoc). Auto-resolves imports through the enclosing "Paks" folder when found (pass
               --no-paks-resolve to convert with no wider context). --layer picks which version of <utoc>'s own overridden entries
               that resolution returns: "modded" (default) keeps <utoc>'s own edits; "original" discards them for the base game's
-              vanilla content instead - useful for diffing a mod against what it actually changed.
+              vanilla content instead - useful for diffing a mod against what it actually changed. "modded" writes only the
+              .ubulk/.uptnl files <utoc> ships: base-game bulk files of a package it replaces are removed (not possible for a .pak
+              output, which warns instead).
 
           uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>]
               Rebuild a .pak, optionally applying a RuleSet's edits first (same JSON as 'batch') - the pak counterpart to editing a loose
