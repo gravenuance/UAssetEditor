@@ -21,7 +21,7 @@ internal sealed class ArgReader
     {
         "aes", "apply", "as", "backup", "build", "compression", "default-hidden-material-bitmaps", "depth", "diff", "export", "export-name", "filter", "force", "from", "from-export",
         "from-file", "from-usmap", "game", "nodes", "into", "into-export", "into-path", "jobs", "json", "kawaii-physics", "key", "layer", "members", "mount", "no-paks-resolve", "obfuscate", "ops",
-        "out", "pak-version", "patch-default-hidden-mats", "path", "plan", "property-name", "reference", "regex", "rename", "row", "ruleset", "save", "strict", "summary", "tag", "template", "usmap", "value", "version",
+        "out", "pak-version", "paks", "patch-default-hidden-mats", "path", "plan", "property-name", "reference", "regex", "rename", "row", "ruleset", "save", "strict", "summary", "tag", "template", "usmap", "value", "version",
     };
 
     private readonly List<string> _positional = [];

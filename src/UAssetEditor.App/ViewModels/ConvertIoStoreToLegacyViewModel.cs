@@ -95,7 +95,7 @@ public sealed partial class ConvertIoStoreToLegacyViewModel : ObservableObject, 
         {
             var aesKey = PakAesKey.Parse(AesKeyHex);
 
-            var result = await IoStoreLegacyConverter.ConvertAsync(SourceUtocPath, OutputPath, Layer, [], aesKey, _cts.Token);
+            var result = await IoStoreLegacyConverter.ConvertAsync(SourceUtocPath, OutputPath, Layer, [], aesKey, paksFolder: null, _cts.Token);
             if (result.BaseGameBulkKept)
                 Logger.LogWarning("'{OutputPath}' may hold base-game bulk files '{UtocPath}' doesn't ship: a .pak output can't be pruned.", OutputPath, SourceUtocPath);
             Status = $"Converted to {OutputPath}.";

@@ -23,14 +23,16 @@ public static class IoStoreLegacyConverter
     private static readonly string[] PackageExtensions = [".uasset", ".umap"];
 
     /// <param name="filters">Entries to convert; empty converts every entry of <paramref name="utocPath"/>.</param>
+    /// <param name="paksFolder">The game's Paks folder, for a container outside it; null uses the enclosing one, if any.</param>
     public static async Task<LegacyConversionResult> ConvertAsync(
-        string utocPath, string output, RetocLayer layer, IReadOnlyList<string> filters, byte[]? aesKey, CancellationToken cancellationToken = default)
+        string utocPath, string output, RetocLayer layer, IReadOnlyList<string> filters, byte[]? aesKey, string? paksFolder,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(utocPath);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
 
-        using var scope = RetocLayerResolver.Resolve(utocPath, layer);
+        using var scope = RetocLayerResolver.Resolve(utocPath, layer, paksFolder);
         if (scope.InputDirectory == utocPath)
         {
             await RetocProcess.ConvertToLegacyAsync(utocPath, output, filters, aesKey, cancellationToken).ConfigureAwait(false);

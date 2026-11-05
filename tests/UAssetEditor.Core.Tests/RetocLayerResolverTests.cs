@@ -224,6 +224,39 @@ public class RetocLayerResolverTests
     }
 
     [Fact]
+    public void Resolve_WithAnExplicitPaksFolder_LinksABuildOutsideItAlongsideTheGame()
+    {
+        var (workDir, paksFolder, _) = CreateFixture();
+        var buildDir = Path.Combine(workDir, "build");
+        Directory.CreateDirectory(buildDir);
+        var built = Path.Combine(buildDir, "zBuilt_9999999_P.utoc");
+        File.WriteAllText(built, "built-toc");
+        File.WriteAllText(Path.Combine(buildDir, "zBuilt_9999999_P.ucas"), "built-cas");
+        try
+        {
+            using (var modded = RetocLayerResolver.Resolve(built, RetocLayer.Modded, paksFolder))
+            {
+                Assert.Equal("base-toc", File.ReadAllText(Path.Combine(modded.InputDirectory, "pakchunk0-Windows.utoc")));
+                Assert.Equal("built-toc", File.ReadAllText(Path.Combine(modded.InputDirectory, "zBuilt_9999999_P.utoc")));
+            }
+
+            using var original = RetocLayerResolver.Resolve(built, RetocLayer.Original, paksFolder);
+            Assert.Equal(Path.GetFullPath(paksFolder), Path.GetFullPath(original.InputDirectory));
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Resolve_WithAMissingExplicitPaksFolder_Throws()
+    {
+        Assert.Throws<DirectoryNotFoundException>(() =>
+            RetocLayerResolver.Resolve("x.utoc", RetocLayer.Modded, Path.Combine(Path.GetTempPath(), "UAssetEditorTest_NoSuchPaks_" + Guid.NewGuid())));
+    }
+
+    [Fact]
     public void IsBaseGameContainer_FalseWithNoEnclosingPaksFolder()
     {
         var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_RetocLayer_" + Guid.NewGuid());

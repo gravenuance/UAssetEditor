@@ -39,11 +39,14 @@ public static class RetocLayerResolver
     /// retoc should be given as its INPUT. Dispose the returned scope once the retoc call
     /// finishes to clean up any scratch directory it created.
     /// </summary>
-    public static RetocInputScope Resolve(string utocPath, RetocLayer layer)
+    /// <param name="paksFolder">The game's Paks folder, for a container outside it (a fresh build); null finds the enclosing one.</param>
+    public static RetocInputScope Resolve(string utocPath, RetocLayer layer, string? paksFolder = null)
     {
         ArgumentNullException.ThrowIfNull(utocPath);
+        if (paksFolder != null && !Directory.Exists(paksFolder))
+            throw new DirectoryNotFoundException($"Paks folder not found: {paksFolder}");
 
-        var paksFolder = RetocPaksFolderResolver.FindEnclosingPaksFolder(utocPath);
+        paksFolder ??= RetocPaksFolderResolver.FindEnclosingPaksFolder(utocPath);
         if (paksFolder == null)
             return RetocInputScope.Unwidened(utocPath);
 

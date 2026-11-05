@@ -1368,7 +1368,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = $"Converting {count} entr{(count == 1 ? "y" : "ies")} to legacy format...";
         try
         {
-            await IoStoreLegacyConverter.ConvertAsync(utocPath, destination, RetocLayer.Modded, selected, aesKey);
+            await IoStoreLegacyConverter.ConvertAsync(utocPath, destination, RetocLayer.Modded, selected, aesKey, paksFolder: null);
         }
         catch (Exception ex)
         {
