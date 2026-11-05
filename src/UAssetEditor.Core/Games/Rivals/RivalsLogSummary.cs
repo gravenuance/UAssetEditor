@@ -30,10 +30,13 @@ public sealed partial record RivalsLogSummary
     public bool Crashed { get; init; }
 
     /// <summary>
-    /// The ids in the last <c>hero_id_list=[...]</c> (the bare key: <c>teammates_hero_id_list</c> and the like are other fields)
-    /// logged before the crash block, or in the whole log when it did not crash. Empty when there is none.
+    /// The player's team: the last <c>hero_id_list=[...]</c> on an <c>is_allies=True</c> line (the match's bond lines) before the
+    /// crash block, or in the whole log when it did not crash. Empty when there is none.
     /// </summary>
-    public required IReadOnlyList<int> LastHeroIdList { get; init; }
+    public required IReadOnlyList<int> AllyHeroIds { get; init; }
+
+    /// <summary>The enemy team: as <see cref="AllyHeroIds"/>, from <c>is_allies=False</c> lines.</summary>
+    public required IReadOnlyList<int> EnemyHeroIds { get; init; }
 
     /// <summary>
     /// Hero ids of the <c>&lt;heroId&gt;_CharacterBP</c> actors named in the <see cref="CharacterLoadWindow"/> lines before the
@@ -59,7 +62,8 @@ public sealed partial record RivalsLogSummary
         var window = new Queue<string>(CharacterLoadWindow + 1);
         string? engineVersion = null;
         int? build = null;
-        IReadOnlyList<int> heroIds = [];
+        IReadOnlyList<int> allies = [];
+        IReadOnlyList<int> enemies = [];
         IReadOnlyList<int> characterHeroes = [];
         var crashed = false;
         var inCrashBlock = false;
@@ -95,7 +99,11 @@ public sealed partial record RivalsLogSummary
             }
             else if (!crashed)
             {
-                if (HeroIdList().Match(line) is { Success: true } heroList) heroIds = ParseIds(heroList.Groups["ids"].Value);
+                if (TeamHeroIdList().Match(line) is { Success: true } team)
+                {
+                    var ids = ParseIds(team.Groups["ids"].Value);
+                    if (team.Groups["allies"].Value == "True") allies = ids; else enemies = ids;
+                }
                 window.Enqueue(line);
                 if (window.Count > CharacterLoadWindow) window.Dequeue();
             }
@@ -107,7 +115,8 @@ public sealed partial record RivalsLogSummary
             Build = build,
             Mods = mods,
             Crashed = crashed,
-            LastHeroIdList = heroIds,
+            AllyHeroIds = allies,
+            EnemyHeroIds = enemies,
             CharacterLoadHeroIds = characterHeroes,
             ErrorLines = errors,
             CrashBlock = crashBlock,
@@ -179,8 +188,8 @@ public sealed partial record RivalsLogSummary
     [GeneratedRegex(@"[/\\]~mods[/\\](?<path>[^'""]+?\.utoc)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex ModContainer();
 
-    [GeneratedRegex(@"(?<![A-Za-z_])hero_id_list=\[(?<ids>[0-9, ]*)\]", RegexOptions.CultureInvariant)]
-    private static partial Regex HeroIdList();
+    [GeneratedRegex(@"\bis_allies=(?<allies>True|False)\b.*?(?<![A-Za-z_])hero_id_list=\[(?<ids>[0-9, ]*)\]", RegexOptions.CultureInvariant)]
+    private static partial Regex TeamHeroIdList();
 
     [GeneratedRegex(@"(?<![0-9])(?<id>[0-9]{3,5})_CharacterBP", RegexOptions.CultureInvariant)]
     private static partial Regex CharacterActor();

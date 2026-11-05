@@ -126,7 +126,8 @@ internal static class GameLogCommands
         output.WriteLine($"engine: {summary.EngineVersion ?? "unknown"}");
         output.WriteLine($"build: {summary.Build?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}");
         output.WriteLine($"crashed: {(summary.Crashed ? "yes" : "no")}");
-        output.WriteLine($"last-hero-id-list: {string.Join(", ", summary.LastHeroIdList)}");
+        output.WriteLine($"allies: {string.Join(", ", summary.AllyHeroIds)}");
+        output.WriteLine($"enemies: {string.Join(", ", summary.EnemyHeroIds)}");
         if (summary.Crashed)
             output.WriteLine($"character-loads-before-crash: {string.Join(", ", summary.CharacterLoadHeroIds)}");
         foreach (var mod in summary.Mods) output.WriteLine($"mod: {mod}");

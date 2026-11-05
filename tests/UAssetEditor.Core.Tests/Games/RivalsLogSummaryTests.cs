@@ -17,9 +17,10 @@ public class RivalsLogSummaryTests
         "LogPakFile: Display: Mounted IoStore container \"../../../Marvel/Content/Paks/~mods/zA_9999999_P.utoc\"",
         "LogPakFile: Display: Mounted IoStore container \"../../../Marvel/Content/Paks/~mods/Sub/zB_9999999_P.utoc\"",
         "LogIoDispatcher: Display: Mounting container '../../../Marvel/Content/Paks/global.utoc' in location slot 0",
-        $"{P}LogHeroBonds: Display: [BondDiag] hero_id_list=[1042, 1060] bond_id_list=[1] teammates_hero_id_list=[7, 8]",
-        $"{P}LogHeroBonds: Display: [BondDiag] hero_id_list=[1032, 1050, 1060] teammates_hero_id_list=[1050, 1060]",
-        $"{P}LogSelectHeroUI: Display: final_hero_id_list=[9, 9] mixed_hero_id_list=[9]",
+        $"{P}LogHeroBonds: Display: [BondDiag] _update_bond_data is_allies=False local_side=0 players=12 hero_id_list=[1042, 1048] bond_id_list=[1]",
+        $"{P}LogHeroBonds: Display: [BondDiag] _update_bond_data is_allies=True local_side=0 players=12 hero_id_list=[1042, 1060] teammates_hero_id_list=[7, 8]",
+        $"{P}LogHeroBonds: Display: [BondDiag] build ENTER is_allies=True hero_id_list=[1032, 1050, 1060] teammates_hero_id_list=[1050, 1060]",
+        $"{P}LogSelectHeroUI: Display: grouping hero_id_list=[1011, 1014] final_hero_id_list=[9, 9] mixed_hero_id_list=[9]",
         $"{P}LogCharacter: Display: 1048_CharacterBP_C_2147465296 hero ability assets load completed!",
         $"{P}LogUObjectGlobals: Error: ObjectSerializationError: Bad name index 12345/6",
         $"{P}LogCharacter: Display: 1032_CharacterBP_C_2147448542 hero sculpt assets load completed! 1048_CharacterBP_C_1",
@@ -29,7 +30,7 @@ public class RivalsLogSummaryTests
         $"{P}LogWindows: Error: Unhandled Exception: EXCEPTION_ACCESS_VIOLATION writing address 0x0000",
         $"{P}LogWindows: Error: [Callstack] 0x00007ff6 Marvel-Win64-Shipping.exe!UnknownFunction []",
         $"{P}LogWindows: Error: Crash in runnable thread FAsyncLoadingThread",
-        $"{P}LogHeroBonds: Display: [BondDiag] hero_id_list=[1, 2] after the crash",
+        $"{P}LogHeroBonds: Display: [BondDiag] is_allies=True hero_id_list=[1, 2] after the crash",
     ];
 
     [Fact]
@@ -66,12 +67,13 @@ public class RivalsLogSummaryTests
     }
 
     [Fact]
-    public void Parse_TakesTheLastBareHeroIdListBeforeTheCrash()
+    public void Parse_TakesEachTeamsLastHeroIdListBeforeTheCrash()
     {
         var summary = RivalsLogSummary.Parse(CrashingLog);
 
-        // Not the teammates_/final_/mixed_ variants, and not the list logged after the crash block.
-        Assert.Equal([1032, 1050, 1060], summary.LastHeroIdList);
+        // Not the teammates_/final_/mixed_ variants, not a list without a side, and not the list logged after the crash block.
+        Assert.Equal([1032, 1050, 1060], summary.AllyHeroIds);
+        Assert.Equal([1042, 1048], summary.EnemyHeroIds);
     }
 
     [Fact]
@@ -115,8 +117,8 @@ public class RivalsLogSummaryTests
         [
             $"{P}LogInit: Display: Engine Version: 5.3.2-3939753+++depot_marvel+S10.5_release",
             "LogPakFile: Display: Mounted IoStore container \"../../../Marvel/Content/Paks/~mods/zA_9999999_P.utoc\"",
-            $"{P}LogHeroBonds: Display: hero_id_list=[1, 2]",
-            $"{P}LogHeroBonds: Display: hero_id_list=[3, 4]",
+            $"{P}LogHeroBonds: Display: is_allies=True hero_id_list=[1, 2]",
+            $"{P}LogHeroBonds: Display: is_allies=True hero_id_list=[3, 4]",
             "1048_CharacterBP_C_1 loaded",
         ];
 
@@ -125,7 +127,8 @@ public class RivalsLogSummaryTests
         Assert.False(summary.Crashed);
         Assert.Equal(3939753, summary.Build);
         Assert.Equal(["zA_9999999_P.utoc"], summary.Mods);
-        Assert.Equal([3, 4], summary.LastHeroIdList);
+        Assert.Equal([3, 4], summary.AllyHeroIds);
+        Assert.Empty(summary.EnemyHeroIds);
         Assert.Empty(summary.CharacterLoadHeroIds);
         Assert.Empty(summary.CrashBlock);
         Assert.Empty(summary.ErrorLines);
@@ -140,7 +143,8 @@ public class RivalsLogSummaryTests
         Assert.Null(summary.Build);
         Assert.False(summary.Crashed);
         Assert.Empty(summary.Mods);
-        Assert.Empty(summary.LastHeroIdList);
+        Assert.Empty(summary.AllyHeroIds);
+        Assert.Empty(summary.EnemyHeroIds);
     }
 
     [Fact]
