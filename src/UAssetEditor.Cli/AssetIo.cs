@@ -69,8 +69,8 @@ internal static class AssetIo
     }
 
     /// <summary>
-    /// The usmap to use: the explicit option, else (for --usmap only) the newest one stored for --game, else null.
-    /// Rivals gets a warning when the usmap is from a different build than the game last ran.
+    /// The usmap to use: the explicit option, else (for --usmap only) the newest one stored for --game, else null (with a
+    /// warning when --game was given). Rivals gets a warning when the usmap is from a different build than the game last ran.
     /// </summary>
     public static string? ResolveUsmapPath(ArgReader args, string option = "usmap")
     {
@@ -82,13 +82,24 @@ internal static class AssetIo
         }
 
         if (option != "usmap" || ResolveProfile(args) is not { } profile) return null;
-        return StoredUsmapPaths.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile))).Value;
+        return StoredUsmapPaths.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, MappingsStore.Default(), Console.Error))).Value;
     }
 
-    private static string? UseStoredUsmap(GameProfile profile)
+    /// <summary>
+    /// The newest usmap stored for <paramref name="profile"/>, announced on <paramref name="diagnostics"/>. When there is none,
+    /// says so: assets of these games open without one and quietly parse to nothing.
+    /// </summary>
+    internal static string? UseStoredUsmap(GameProfile profile, MappingsStore store, TextWriter diagnostics)
     {
-        if (MappingsStore.Default().Latest(profile) is not { } stored) return null;
-        Console.Error.WriteLine($"Using stored usmap {stored.Path} (build {stored.Build}).");
+        if (store.Latest(profile) is not { } stored)
+        {
+            diagnostics.WriteLine(
+                $"Warning: --game {profile.CliName} without --usmap, and no usmap is stored in {store.DirectoryFor(profile)}" +
+                $" ({MappingsStore.RootEnvironmentVariable} sets the store); unversioned assets will read as empty." +
+                $" Pass --usmap or run 'uacli usmap add <file> --game {profile.CliName}'.");
+            return null;
+        }
+        diagnostics.WriteLine($"Using stored usmap {stored.Path} (build {stored.Build}).");
         WarnIfStale(profile, stored.Path);
         return stored.Path;
     }
