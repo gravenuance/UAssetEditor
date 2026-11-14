@@ -52,6 +52,37 @@ public sealed class StoredUsmapResolutionTests : IDisposable
     }
 
     [Fact]
+    public void ResolveUsmapPath_LooksTheStoreUpOncePerRun_ButSeesAUsmapStoredBeforeTheNextRun()
+    {
+        using var diagnostics = new StringWriter();
+        var run = new ArgReader(["--game", "ff7r"]) { Mappings = _store, Diagnostics = diagnostics };
+        Assert.Null(AssetIo.ResolveUsmapPath(run));
+
+        var source = Path.Combine(_dir, "ff7r.usmap");
+        File.WriteAllBytes(source, EmptyUsmap);
+        _store.Add(source, _ff7r, build: 196);
+
+        Assert.Null(AssetIo.ResolveUsmapPath(run)); // the same run keeps its first answer, and warned once
+        Assert.Equal(1, diagnostics.ToString().Split("Warning:").Length - 1);
+        var nextRun = new ArgReader(["--game", "ff7r"]) { Mappings = _store, Diagnostics = diagnostics };
+        Assert.Equal(Path.Combine(_dir, "store", "ff7r", "196-ff7r.usmap"), AssetIo.ResolveUsmapPath(nextRun));
+    }
+
+    [Fact]
+    public void WithOpenSettingsFrom_ShareTheRunsStoreLookupDiagnosticsAndStore()
+    {
+        using var diagnostics = new StringWriter();
+        var run = new ArgReader(["--game", "ff7r"]) { Mappings = _store, Diagnostics = diagnostics };
+
+        var op = new ArgReader(["--export", "0"]).WithOpenSettingsFrom(run);
+
+        Assert.Same(run.Mappings, op.Mappings);
+        Assert.Same(run.Diagnostics, op.Diagnostics);
+        Assert.Same(run.StoredUsmaps, op.StoredUsmaps);
+        Assert.Equal("ff7r", op.Option("game"));
+    }
+
+    [Fact]
     public void LoadMappings_SharesOneInstanceForAnUnchangedFile()
     {
         var file = Path.Combine(_dir, "shared.usmap");

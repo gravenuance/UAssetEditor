@@ -57,8 +57,7 @@ internal static class AssetIo
     // Loading a usmap is most of a small run's cost, so each is loaded once per process and every asset gets its own scope of it.
     private static readonly ConcurrentDictionary<string, Lazy<Usmap>> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
 
-    // One notice and one stale check per process, however many assets a --plan run opens.
-    private static readonly ConcurrentDictionary<string, Lazy<string?>> StoredUsmapPaths = new(StringComparer.OrdinalIgnoreCase);
+    // One stale check per process, however many assets a --plan run opens.
     private static readonly ConcurrentDictionary<string, byte> StaleChecked = new(StringComparer.OrdinalIgnoreCase);
 
     public static Usmap? ResolveMappings(ArgReader args, string option = "usmap")
@@ -100,7 +99,7 @@ internal static class AssetIo
         }
 
         if (option != "usmap" || ResolveProfile(args) is not { } profile) return null;
-        return StoredUsmapPaths.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, MappingsStore.Default(), args.Diagnostics))).Value;
+        return args.StoredUsmaps.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, args.Mappings, args.Diagnostics))).Value;
     }
 
     /// <summary>"build N", or "no build" for a usmap stored without one.</summary>

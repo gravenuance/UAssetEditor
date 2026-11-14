@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using UAssetEditor.Core.Games;
+
 namespace UAssetEditor.Tooling;
 
 /// <summary>Thrown for a malformed or missing argument; caught at the top level and reported as a one-line error instead of a stack trace.</summary>
@@ -28,8 +31,24 @@ internal sealed class ArgReader
     private readonly Dictionary<string, string> _options = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
 
+    private MappingsStore? _mappings;
+
     /// <summary>Where warnings about the run go (stderr for the CLI); the MCP server collects them into the tool result.</summary>
     public TextWriter Diagnostics { get; init; } = Console.Error;
+
+    /// <summary>The usmap store a --game without --usmap reads: the default one unless the host names another.</summary>
+    public MappingsStore Mappings
+    {
+        get => _mappings ??= MappingsStore.Default();
+        init => _mappings = value;
+    }
+
+    /// <summary>
+    /// The newest stored usmap per game, looked up once per run (one notice however many assets a --plan run opens) and shared
+    /// by every reader derived from this one. A host that runs many requests in one process makes a reader per request, so
+    /// a usmap stored in between is seen.
+    /// </summary>
+    internal ConcurrentDictionary<string, Lazy<string?>> StoredUsmaps { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public ArgReader(IEnumerable<string> args)
     {
@@ -81,7 +100,7 @@ internal sealed class ArgReader
     public ArgReader WithOpenSettingsFrom(ArgReader run)
     {
         ArgumentNullException.ThrowIfNull(run);
-        var merged = new ArgReader([]) { Diagnostics = run.Diagnostics };
+        var merged = new ArgReader([]) { Diagnostics = run.Diagnostics, Mappings = run.Mappings, StoredUsmaps = run.StoredUsmaps };
         merged._positional.AddRange(_positional);
         foreach (var (key, value) in _options) merged._options[key] = value;
         merged._flags.UnionWith(_flags);
