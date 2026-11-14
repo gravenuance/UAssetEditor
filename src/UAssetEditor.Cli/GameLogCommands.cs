@@ -41,14 +41,14 @@ internal static class GameLogCommands
         if (outPath != null)
         {
             using var file = new FileStream(outPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            Report(logPath, DecodeInto(logPath, blob, file));
+            Report(logPath, GameLogs.DecodeInto(logPath, blob, file));
             return 0;
         }
 
         // Bytes, not text: the output must match the log's own bytes exactly, whatever the console encoding.
         Console.Out.Flush();
         using var stdout = new BufferedStream(Console.OpenStandardOutput(), 1 << 16);
-        var result = DecodeInto(logPath, blob, stdout);
+        var result = GameLogs.DecodeInto(logPath, blob, stdout);
         stdout.Flush();
         Report(logPath, result);
         return 0;
@@ -86,28 +86,9 @@ internal static class GameLogCommands
 
     private static RivalsLogSummary Summarise(string logPath)
     {
-        using var decoded = new MemoryStream();
-        Report(logPath, DecodeInto(logPath, RivalsLogs.ReadAll(logPath), decoded));
-        decoded.Position = 0;
-        return RivalsLogSummary.Parse(ReadLines(decoded));
-    }
-
-    private static IEnumerable<string> ReadLines(Stream stream)
-    {
-        using var reader = new StreamReader(stream, Utf8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-        while (reader.ReadLine() is { } line) yield return line;
-    }
-
-    private static RivalsLogDecodeResult DecodeInto(string logPath, byte[] blob, Stream output)
-    {
-        try
-        {
-            return RivalsLogDecoder.Decode(blob, output);
-        }
-        catch (InvalidDataException ex)
-        {
-            throw new ArgException($"{logPath}: {ex.Message}", ex);
-        }
+        var (summary, decoded) = GameLogs.Summarise(logPath);
+        Report(logPath, decoded);
+        return summary;
     }
 
     // Diagnostics go to stderr so the decoded text on stdout stays clean.

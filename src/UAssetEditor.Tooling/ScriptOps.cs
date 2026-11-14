@@ -11,6 +11,9 @@ namespace UAssetEditor.Tooling;
 /// <summary>One parsed line of an ops file.</summary>
 internal sealed record ScriptOp(int Line, string Verb, ArgReader Args);
 
+/// <summary>What one op did: its result text, or (when <paramref name="Skipped"/>) why it could not run.</summary>
+internal sealed record OpResult(ScriptOp Op, string Text, bool Skipped);
+
 /// <summary>
 /// The edit operations a script line can name, and the interpreter that runs a list of them against one open asset.
 /// Each op is also what the single-property CLI verbs (<c>set</c>, <c>duplicate</c>, ...) run, so there is one
@@ -79,20 +82,31 @@ internal static class ScriptOps
     public static string Run(UAsset asset, IReadOnlyList<ScriptOp> ops, ArgReader openSettings)
     {
         var output = new StringBuilder();
+        foreach (var result in Execute(asset, ops, openSettings))
+        {
+            if (result.Skipped) output.AppendLine(CultureInfo.InvariantCulture, $"[{result.Op.Line}] {result.Op.Verb}: SKIPPED - {result.Text}");
+            else if (result.Op.Verb == "dump") output.Append(result.Text);
+            else output.AppendLine(CultureInfo.InvariantCulture, $"[{result.Op.Line}] {result.Op.Verb}: {result.Text}");
+        }
+        return output.ToString();
+    }
+
+    /// <summary>Runs <paramref name="ops"/> like <see cref="Run"/>, but returns each op's outcome instead of a formatted report.</summary>
+    public static IReadOnlyList<OpResult> Execute(UAsset asset, IReadOnlyList<ScriptOp> ops, ArgReader openSettings)
+    {
+        var results = new List<OpResult>(ops.Count);
         foreach (var op in ops)
         {
             try
             {
-                var result = Ops[op.Verb](asset, op.Args.WithOpenSettingsFrom(openSettings));
-                if (op.Verb == "dump") output.Append(result);
-                else output.AppendLine(CultureInfo.InvariantCulture, $"[{op.Line}] {op.Verb}: {result}");
+                results.Add(new OpResult(op, Ops[op.Verb](asset, op.Args.WithOpenSettingsFrom(openSettings)), Skipped: false));
             }
             catch (Exception ex) when (ex is ArgException or InvalidOperationException)
             {
-                output.AppendLine(CultureInfo.InvariantCulture, $"[{op.Line}] {op.Verb}: SKIPPED - {ex.Message}");
+                results.Add(new OpResult(op, ex.Message, Skipped: true));
             }
         }
-        return output.ToString();
+        return results;
     }
 
     /// <summary>

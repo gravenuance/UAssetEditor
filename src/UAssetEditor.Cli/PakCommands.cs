@@ -155,24 +155,7 @@ internal static class PakCommands
 
         if (AssetIo.ResolveUsmapPath(args) == null) throw new ArgException(MissingUsmapMessage);
 
-        IReadOnlyList<ulong>? bitmaps;
-        try
-        {
-            bitmaps = bitmapsText == null ? null : DefaultHiddenMaterialBitmaps.Parse(bitmapsText);
-        }
-        catch (FormatException ex)
-        {
-            throw new ArgException(ex.Message, ex);
-        }
-
-        return new KawaiiPhysicsPortOptions
-        {
-            PatchKawaiiPhysics = kawaiiPhysics,
-            // As repak-rivals' own commands do, so an already-ported node is rebuilt instead of skipped.
-            ForceRebuildChain0 = true,
-            PatchDefaultHiddenMaterials = defaultHiddenMats,
-            DefaultHiddenMaterialBitmaps = bitmaps,
-        };
+        return RivalsPatches.Create(kawaiiPhysics, defaultHiddenMats, bitmapsText);
     }
 
     /// <summary>Reads a valueless switch that only means something for Marvel Rivals.</summary>
