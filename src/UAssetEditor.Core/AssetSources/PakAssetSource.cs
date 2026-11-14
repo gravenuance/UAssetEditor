@@ -40,28 +40,37 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     private readonly Lock _lock = new();
     private bool _disposed;
 
-    public PakAssetSource(string pakPath, byte[]? aesKey = null, long largePakThresholdBytes = LargePakThresholdBytes)
+    public PakAssetSource(string pakPath, byte[]? aesKey = null, long largePakThresholdBytes = LargePakThresholdBytes, string? tempRoot = null)
     {
         PakPath = pakPath;
         IsLargePak = new FileInfo(pakPath).Length >= largePakThresholdBytes;
-        TempExtractionDirectory = Path.Combine(Path.GetTempPath(), "UAssetEditor_Pak_" + Guid.NewGuid());
+        TempExtractionDirectory = Path.Combine(tempRoot ?? Path.GetTempPath(), "UAssetEditor_Pak_" + Guid.NewGuid());
         Directory.CreateDirectory(TempExtractionDirectory);
 
         // Blocking on the async open is safe here: every current caller already constructs
         // a PakAssetSource from inside Task.Run (never the UI thread), and this constructor
         // must stay synchronous - it's part of this class's public surface.
         _reader = new PakReaderHandle(PakWorkerProcess.Shared, pakPath, aesKey);
-        _reader.OpenAsync().GetAwaiter().GetResult();
-
-        MountPoint = _reader.MountPoint;
-        Version = _reader.Version;
-        _allEntries = new HashSet<string>(_reader.Entries, StringComparer.Ordinal);
-        _uassetEntries = _allEntries.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)).ToList();
-
-        if (!IsLargePak)
+        try
         {
-            foreach (var entry in _uassetEntries)
-                ExtractEntry(entry);
+            _reader.OpenAsync().GetAwaiter().GetResult();
+
+            MountPoint = _reader.MountPoint;
+            Version = _reader.Version;
+            _allEntries = new HashSet<string>(_reader.Entries, StringComparer.Ordinal);
+            _uassetEntries = _allEntries.Where(f => f.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)).ToList();
+
+            if (!IsLargePak)
+            {
+                foreach (var entry in _uassetEntries)
+                    ExtractEntry(entry);
+            }
+        }
+        catch
+        {
+            // The caller never gets an instance to dispose, so a failed open must not leave the temp folder or the worker's reader session behind.
+            Dispose();
+            throw;
         }
     }
 

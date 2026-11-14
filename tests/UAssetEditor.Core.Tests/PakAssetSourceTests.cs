@@ -128,6 +128,24 @@ public class PakAssetSourceTests
     }
 
     [Fact]
+    public void Constructor_WhenExtractionFails_LeavesNoTempDirectoryAndReleasesThePak()
+    {
+        // '*' is not a legal file name character, so extracting this entry throws after the pak was opened.
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/Bad*Name.uasset"] = [1] });
+        var tempRoot = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_PakTempRoot_" + Guid.NewGuid());
+        Directory.CreateDirectory(tempRoot);
+
+        var constructorFailure = Record.Exception(() => new PakAssetSource(pakPath, tempRoot: tempRoot));
+        var leftoverFolders = Directory.GetDirectories(tempRoot);
+        var deleteFailure = Record.Exception(() => File.Delete(pakPath));
+        Directory.Delete(tempRoot, recursive: true);
+
+        Assert.NotNull(constructorFailure);
+        Assert.Empty(leftoverFolders);
+        Assert.Null(deleteFailure); // a leaked reader session keeps the pak open in the worker
+    }
+
+    [Fact]
     public void Dispose_RemovesTempExtractionDirectory()
     {
         var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/Foo.uasset"] = [1] });
