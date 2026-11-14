@@ -171,7 +171,8 @@
       "uasseteditor.cli": {
         "type": "Project",
         "dependencies": {
-          "UAssetEditor.Core": "[1.0.0, )"
+          "UAssetEditor.Core": "[1.0.0, )",
+          "UAssetEditor.Tooling": "[1.0.0, )"
         }
       },
       "uasseteditor.core": {
@@ -182,6 +183,12 @@
         }
       },
       "uasseteditor.pakworker": {
+        "type": "Project",
+        "dependencies": {
+          "UAssetEditor.Core": "[1.0.0, )"
+        }
+      },
+      "uasseteditor.tooling": {
         "type": "Project",
         "dependencies": {
           "UAssetEditor.Core": "[1.0.0, )"

@@ -1,38 +1,16 @@
 using System.Collections.Concurrent;
 using System.Text;
-using UAssetAPI;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Cli;
 
-/// <summary>One parsed line of an ops file.</summary>
-internal sealed record ScriptOp(int Line, string Verb, ArgReader Args);
-
 /// <summary>
 /// Runs ops files against assets opened once each. With --plan, runs many assets in parallel in
-/// this one process, so the usmap is loaded once rather than once per file.
+/// this one process, so the usmap is loaded once rather than once per file. The ops themselves
+/// live in <see cref="ScriptOps"/>, which the MCP server runs too.
 /// </summary>
 internal static class ScriptRunner
 {
-    private static readonly Dictionary<string, Func<UAsset, ArgReader, string>> Ops = new(StringComparer.Ordinal)
-    {
-        ["set"] = Commands.ApplySet,
-        ["duplicate"] = Commands.ApplyDuplicate,
-        ["remove"] = Commands.ApplyRemove,
-        ["add-node"] = Commands.ApplyAddNode,
-        ["splice-node"] = Commands.ApplySpliceNode,
-        ["append-clone"] = Commands.ApplyAppendClone,
-        ["duplicate-export"] = Commands.ApplyDuplicateExport,
-        ["duplicate-row"] = Commands.ApplyDuplicateRow,
-        ["set-string"] = Commands.ApplySetString,
-        ["dump"] = Commands.ApplyDump,
-        ["bypass-node"] = Commands.ApplyBypassNode,
-        ["check-graph"] = Commands.ApplyCheckGraph,
-        ["list-nodes"] = Commands.ApplyListNodes,
-        ["list-tags"] = Commands.ApplyListTags,
-        ["set-tag"] = Commands.ApplySetTag,
-        ["graft-nodes"] = Commands.ApplyGraftNodes,
-    };
-
     public static int Run(ArgReader args)
     {
         if (args.Option("plan") is { } planPath) return RunPlan(args, planPath);
@@ -47,28 +25,7 @@ internal static class ScriptRunner
     public static IReadOnlyList<ScriptOp> Parse(string opsPath)
     {
         if (!File.Exists(opsPath)) throw new ArgException($"Ops file not found: {opsPath}");
-
-        var ops = new List<ScriptOp>();
-        var lineNumber = 0;
-        foreach (var rawLine in File.ReadLines(opsPath))
-        {
-            lineNumber++;
-            var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#')) continue;
-
-            var tokens = Tokenize(line);
-            if (!Ops.ContainsKey(tokens[0]))
-                throw new ArgException($"{opsPath}:{lineNumber}: unknown op '{tokens[0]}' (expects {string.Join('/', Ops.Keys)}).");
-            try
-            {
-                ops.Add(new ScriptOp(lineNumber, tokens[0], new ArgReader(tokens.Skip(1))));
-            }
-            catch (ArgException ex)
-            {
-                throw new ArgException($"{opsPath}:{lineNumber}: {ex.Message}", ex);
-            }
-        }
-        return ops;
+        return ScriptOps.Parse(File.ReadLines(opsPath), opsPath);
     }
 
     private static string RunOne(string path, IReadOnlyList<ScriptOp> ops, ArgReader args)
@@ -76,19 +33,7 @@ internal static class ScriptRunner
         var output = new StringBuilder();
         var asset = AssetIo.Open(path, args);
 
-        foreach (var op in ops)
-        {
-            try
-            {
-                var result = Ops[op.Verb](asset, op.Args.WithOpenSettingsFrom(args));
-                if (op.Verb == "dump") output.Append(result);
-                else output.AppendLine($"[{op.Line}] {op.Verb}: {result}");
-            }
-            catch (Exception ex) when (ex is ArgException or InvalidOperationException)
-            {
-                output.AppendLine($"[{op.Line}] {op.Verb}: SKIPPED - {ex.Message}");
-            }
-        }
+        output.Append(ScriptOps.Run(asset, ops, args));
 
         if (args.Flag("save"))
         {
@@ -142,39 +87,4 @@ internal static class ScriptRunner
         Console.Error.WriteLine($"{jobs.Count - failures.Count}/{jobs.Count} assets done ({degree} at a time).");
         return failures.IsEmpty ? 0 : 1;
     }
-
-    /// <summary>
-    /// Splits an ops line on whitespace; double quotes group spaces and are dropped. <c>\"</c> is a literal quote
-    /// (e.g. JSON values), except inside quotes right before whitespace or the line end, where it keeps the backslash and
-    /// closes the quote, so <c>"D:\dir\"</c> works. Any other backslash is kept, so Windows paths need no escaping.
-    /// </summary>
-    internal static List<string> Tokenize(string line)
-    {
-        var tokens = new List<string>();
-        var current = new StringBuilder();
-        var inQuotes = false;
-
-        for (var i = 0; i < line.Length; i++)
-        {
-            var c = line[i];
-            if (c == '\\' && i + 1 < line.Length && line[i + 1] == '"' && !(inQuotes && EndsToken(line, i + 2)))
-            {
-                current.Append('"');
-                i++;
-                continue;
-            }
-            if (c == '"') { inQuotes = !inQuotes; continue; }
-            if (char.IsWhiteSpace(c) && !inQuotes)
-            {
-                if (current.Length > 0) { tokens.Add(current.ToString()); current.Clear(); }
-                continue;
-            }
-            current.Append(c);
-        }
-        if (current.Length > 0) tokens.Add(current.ToString());
-
-        return tokens;
-    }
-
-    private static bool EndsToken(string line, int index) => index >= line.Length || char.IsWhiteSpace(line[index]);
 }

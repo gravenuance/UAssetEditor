@@ -1,6 +1,7 @@
 using System.Globalization;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Versioning;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Cli;
 
@@ -126,7 +127,7 @@ internal static class UsmapCommands
         var previous = current + 1 < entries.Count ? entries[current + 1] : null;
         if (previous == null)
             throw new ArgException($"No usmap older than {newPath} is stored for {game.CliName}; pass --from-usmap <old.usmap>.");
-        Console.Error.WriteLine($"Comparing with stored usmap {previous.Path} ({DescribeBuild(previous)}).");
+        Console.Error.WriteLine($"Comparing with stored usmap {previous.Path} ({AssetIo.DescribeBuild(previous)}).");
         return previous.Path;
     }
 
@@ -145,15 +146,11 @@ internal static class UsmapCommands
             throw new ArgException(ex.Message, ex);
         }
 
-        Console.WriteLine($"Stored {stored.Path} ({game.CliName}, {DescribeBuild(stored)}).");
+        Console.WriteLine($"Stored {stored.Path} ({game.CliName}, {AssetIo.DescribeBuild(stored)}).");
         if (stored.Build == null && game.Game == Game.MarvelRivals)
             Console.Error.WriteLine("Warning: without a build, uacli cannot tell when this usmap is out of date with the game; add Dumper-7's file as named, or pass --build.");
         return 0;
     }
-
-    /// <summary>"build N", or "no build" for a usmap stored without one.</summary>
-    internal static string DescribeBuild(StoredMappings stored) =>
-        stored.Build is { } build ? $"build {build.ToString(CultureInfo.InvariantCulture)}" : "no build";
 
     private static int List(ArgReader args)
     {

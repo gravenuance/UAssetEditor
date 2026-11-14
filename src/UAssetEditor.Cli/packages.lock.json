@@ -21,6 +21,12 @@
           "UAssetAPI": "[2.0.0, )"
         }
       },
+      "uasseteditor.tooling": {
+        "type": "Project",
+        "dependencies": {
+          "UAssetEditor.Core": "[1.0.0, )"
+        }
+      },
       "Microsoft.Extensions.Logging.Abstractions": {
         "type": "CentralTransitive",
         "requested": "[10.0.14, )",

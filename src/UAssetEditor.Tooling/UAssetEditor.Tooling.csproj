@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Glue both front ends (uacli and the MCP server) run on: argument/open-setting resolution, the script-op
+       interpreter and the pack pipeline. Internal on purpose; only the listed assemblies see it. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>UAssetEditor.Tooling</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UAssetEditor.Cli" />
+    <InternalsVisibleTo Include="UAssetEditor.Mcp" />
+    <InternalsVisibleTo Include="UAssetEditor.Core.Tests" />
+    <InternalsVisibleTo Include="UAssetEditor.Mcp.Tests" />
+  </ItemGroup>
+
+</Project>

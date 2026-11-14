@@ -1,5 +1,5 @@
-using UAssetEditor.Cli;
 using UAssetEditor.Core.Games;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Core.Tests.Games;
 

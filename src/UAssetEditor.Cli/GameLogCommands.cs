@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using UAssetEditor.Core.Games.Rivals;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Cli;
 

@@ -1,7 +1,7 @@
-namespace UAssetEditor.Cli;
+namespace UAssetEditor.Tooling;
 
-/// <summary>Thrown for a malformed or missing command-line argument; caught at the top level and reported as a one-line error instead of a stack trace.</summary>
-internal sealed class ArgException : Exception
+/// <summary>Thrown for a malformed or missing argument; caught at the top level and reported as a one-line error instead of a stack trace.</summary>
+public sealed class ArgException : Exception
 {
     public ArgException() { }
 
@@ -27,6 +27,9 @@ internal sealed class ArgReader
     private readonly List<string> _positional = [];
     private readonly Dictionary<string, string> _options = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _flags = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Where warnings about the run go (stderr for the CLI); the MCP server collects them into the tool result.</summary>
+    public TextWriter Diagnostics { get; init; } = Console.Error;
 
     public ArgReader(IEnumerable<string> args)
     {
@@ -78,7 +81,7 @@ internal sealed class ArgReader
     public ArgReader WithOpenSettingsFrom(ArgReader run)
     {
         ArgumentNullException.ThrowIfNull(run);
-        var merged = new ArgReader([]);
+        var merged = new ArgReader([]) { Diagnostics = run.Diagnostics };
         merged._positional.AddRange(_positional);
         foreach (var (key, value) in _options) merged._options[key] = value;
         merged._flags.UnionWith(_flags);

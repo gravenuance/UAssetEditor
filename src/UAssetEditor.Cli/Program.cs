@@ -1,5 +1,6 @@
 using UAssetEditor.Cli;
 using UAssetEditor.Core.AssetSources.PakWorker;
+using UAssetEditor.Tooling;
 
 if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 {

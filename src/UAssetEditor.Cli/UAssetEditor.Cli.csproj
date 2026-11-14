@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+    <ProjectReference Include="..\UAssetEditor.Tooling\UAssetEditor.Tooling.csproj" />
   </ItemGroup>
 
   <ItemGroup>

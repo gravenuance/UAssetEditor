@@ -6,6 +6,7 @@ using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Games.Rivals;
 using UAssetEditor.Core.Versioning;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Cli;
 
@@ -129,40 +130,12 @@ internal static class PakCommands
         var retocVersion = EngineVersionMapping.ToRetocVersion(engineVersion)
             ?? throw new ArgException($"'{engineVersion}' has no IoStore equivalent - pass --version with a UE4.25+ engine version.");
 
-        // Checked before staging too, so a drive root is refused instead of copied.
-        if (RetocDirectoryInputResolver.Resolve(sourceFolder) == null)
-            throw new ArgException("Source folder is a drive root - pick a folder that isn't.");
-
-        if (patchOptions == null)
-        {
-            ConvertFolderToZen(sourceFolder, output, retocVersion, aesKey, zenOptions);
-        }
-        else
-        {
-            // The patches rewrite packages in place, so they run on a copy and the source folder is never touched.
-            var stageRoot = Path.Combine(Path.GetTempPath(), "uacli-pack-" + Guid.NewGuid().ToString("N"));
-            try
-            {
-                var stagedSource = Path.Combine(stageRoot, new DirectoryInfo(sourceFolder.TrimEnd('\\', '/')).Name);
-                CopyDirectory(sourceFolder, stagedSource);
-                PatchRivalsAssets(stagedSource, AssetIo.ResolveUsmapPath(args) ?? throw new ArgException(MissingUsmapMessage), patchOptions);
-                ConvertFolderToZen(stagedSource, output, retocVersion, aesKey, zenOptions);
-            }
-            finally
-            {
-                DeleteStage(stageRoot);
-            }
-        }
+        var request = new IoStorePackRequest(
+            sourceFolder, output, retocVersion, aesKey, zenOptions, patchOptions, patchOptions == null ? null : AssetIo.ResolveUsmapPath(args));
+        IoStorePacker.PackAsync(request, Console.WriteLine, warning => Console.Error.WriteLine($"Warning: {warning}"), CancellationToken.None).GetAwaiter().GetResult();
 
         Console.WriteLine($"-- packed to {output} ({retocVersion})");
         return 0;
-    }
-
-    private static void ConvertFolderToZen(string sourceFolder, string output, string retocVersion, byte[]? aesKey, RetocZenOptions options)
-    {
-        var retocInput = RetocDirectoryInputResolver.Resolve(sourceFolder)
-            ?? throw new ArgException("Source folder is a drive root - pick a folder that isn't.");
-        RetocProcess.ConvertToZenAsync(retocInput, output, retocVersion, aesKey, options, onOutputLine: Console.WriteLine).GetAwaiter().GetResult();
     }
 
     private const string MissingUsmapMessage =
@@ -208,54 +181,6 @@ internal static class PakCommands
         if (!args.Flag(name)) return false;
         if (game != Game.MarvelRivals) throw new ArgException($"--{name} is only supported with --game rivals.");
         return true;
-    }
-
-    private static void PatchRivalsAssets(string folder, string usmapPath, KawaiiPhysicsPortOptions options)
-    {
-        IReadOnlyList<PatchedAsset> patched;
-        try
-        {
-            patched = RivalsAssetPatcher.PatchDirectory(folder, usmapPath, options, warning => Console.Error.WriteLine($"Warning: {warning}"));
-        }
-        catch (Exception ex) when (ex is InvalidDataException or FileNotFoundException)
-        {
-            throw new ArgException($"Patching failed, nothing was packed: {ex.Message}", ex);
-        }
-
-        foreach (var asset in patched)
-        {
-            var r = asset.Result;
-            Console.WriteLine(
-                $"PATCHED {asset.RelativePath.Replace('\\', '/')}: visited={r.VisitedAnimNodes} ported={r.PortedAnimNodes} skipped={r.SkippedExistingChains} hiddenLods={r.PatchedDefaultHiddenMaterialLods}");
-        }
-        Console.WriteLine($"-- patched {patched.Count} asset(s)");
-    }
-
-    /// <summary>Copies a folder tree; the copies are made writable, since the patches rewrite them and read-only sources are common.</summary>
-    private static void CopyDirectory(string source, string destination)
-    {
-        foreach (var directory in Directory.EnumerateDirectories(source, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
-        Directory.CreateDirectory(destination);
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-        {
-            var copy = Path.Combine(destination, Path.GetRelativePath(source, file));
-            File.Copy(file, copy);
-            File.SetAttributes(copy, FileAttributes.Normal);
-        }
-    }
-
-    /// <summary>Removes the staging folder; a failure only warns, so it can't hide the pack's own result.</summary>
-    private static void DeleteStage(string stageRoot)
-    {
-        try
-        {
-            if (Directory.Exists(stageRoot)) Directory.Delete(stageRoot, recursive: true);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            Console.Error.WriteLine($"Warning: could not delete the staging folder {stageRoot}: {ex.Message}");
-        }
     }
 
     /// <summary>Lists every chunk path in a .utoc container via retoc's own `list` - the IoStore counterpart to <see cref="PakList"/>, and how to find the exact entry path <see cref="ToLegacy"/>'s --filter expects out of a large shared container.</summary>

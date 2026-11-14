@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using UAssetAPI;
@@ -9,7 +10,7 @@ using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Games.Rivals;
 using UAssetEditor.Core.PropertyAccess;
 
-namespace UAssetEditor.Cli;
+namespace UAssetEditor.Tooling;
 
 /// <summary>Shared open/save/export-resolution plumbing every command needs, kept out of each command so the interesting logic isn't buried under it.</summary>
 internal static class AssetIo
@@ -89,13 +90,17 @@ internal static class AssetIo
         var explicitPath = args.Option(option);
         if (explicitPath != null)
         {
-            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath);
+            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath, args.Diagnostics);
             return explicitPath;
         }
 
         if (option != "usmap" || ResolveProfile(args) is not { } profile) return null;
-        return StoredUsmapPaths.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, MappingsStore.Default(), Console.Error))).Value;
+        return StoredUsmapPaths.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, MappingsStore.Default(), args.Diagnostics))).Value;
     }
+
+    /// <summary>"build N", or "no build" for a usmap stored without one.</summary>
+    public static string DescribeBuild(StoredMappings stored) =>
+        stored.Build is { } build ? $"build {build.ToString(CultureInfo.InvariantCulture)}" : "no build";
 
     /// <summary>
     /// The newest usmap stored for <paramref name="profile"/>, announced on <paramref name="diagnostics"/>. When there is none,
@@ -111,18 +116,18 @@ internal static class AssetIo
                 $" Pass --usmap or run 'uacli usmap add <file> --game {profile.CliName}'.");
             return null;
         }
-        diagnostics.WriteLine($"Using stored usmap {stored.Path} ({UsmapCommands.DescribeBuild(stored)}).");
-        WarnIfStale(profile, stored.Path);
+        diagnostics.WriteLine($"Using stored usmap {stored.Path} ({DescribeBuild(stored)}).");
+        WarnIfStale(profile, stored.Path, diagnostics);
         return stored.Path;
     }
 
-    private static void WarnIfStale(GameProfile? profile, string usmapPath)
+    private static void WarnIfStale(GameProfile? profile, string usmapPath, TextWriter diagnostics)
     {
         if (profile?.Game != Game.MarvelRivals) return;
         if (MappingsStore.ParseBuild(Path.GetFileName(usmapPath)) is not { } usmapBuild) return;
         if (!StaleChecked.TryAdd(Path.GetFullPath(usmapPath), 0)) return;
         if (RivalsLogs.InstalledBuild(RivalsLogs.DefaultDirectory) is not { } installed || installed == usmapBuild) return;
-        Console.Error.WriteLine(
+        diagnostics.WriteLine(
             $"Warning: usmap is build {usmapBuild} but Marvel Rivals last ran build {installed}; dump a new usmap (Dumper-7) and add it with 'uacli usmap add'.");
     }
 
@@ -157,19 +162,19 @@ internal static class AssetIo
         if (args.Flag("strict"))
         {
             var strictAsset = ResilientAssetLoader.OpenStrict(path, version, mappings, game);
-            PrintOpenWarnings(path, ResilientAssetLoader.WarningsFor(strictAsset));
+            PrintOpenWarnings(path, ResilientAssetLoader.WarningsFor(strictAsset), args.Diagnostics);
             return strictAsset;
         }
 
         var asset = ResilientAssetLoader.Open(path, version, mappings, game, out var diagnostics);
-        PrintOpenWarnings(path, diagnostics.Warnings);
+        PrintOpenWarnings(path, diagnostics.Warnings, args.Diagnostics);
         if (diagnostics.ExportsSkipped)
         {
             // Without this the asset looks like it opened fine and simply has no properties,
             // which reads as "nothing to edit here" rather than "this failed to parse" - the
             // difference between moving on and passing --usmap/--version. Warnings go to
             // stderr so they never pollute piped output.
-            Console.Error.WriteLine(
+            args.Diagnostics.WriteLine(
                 $"WARNING: {Path.GetFileName(path)} opened without property data - the structured parse failed, " +
                 $"so every export will read as empty. Cause: {diagnostics.FullParseFailure?.GetType().Name}: " +
                 $"{diagnostics.FullParseFailure?.Message} (re-run with --strict for the full stack; a missing or " +
@@ -179,10 +184,10 @@ internal static class AssetIo
     }
 
     // Warnings go to stderr so they never pollute piped output.
-    private static void PrintOpenWarnings(string path, IReadOnlyList<string> warnings)
+    private static void PrintOpenWarnings(string path, IReadOnlyList<string> warnings, TextWriter diagnostics)
     {
         foreach (var warning in warnings)
-            Console.Error.WriteLine($"WARNING: {Path.GetFileName(path)}: {warning}");
+            diagnostics.WriteLine($"WARNING: {Path.GetFileName(path)}: {warning}");
     }
 
     public static void Save(UAsset asset, string path, bool backup)

@@ -9,6 +9,7 @@ using UAssetEditor.Core.Games;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
 using UAssetEditor.Core.Versioning;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Cli;
 
@@ -16,8 +17,8 @@ namespace UAssetEditor.Cli;
 /// One method per verb, each opening whatever it needs fresh and printing plain, greppable
 /// text - there's no server/session to keep alive between invocations, so every command is
 /// self-contained and safe to call from a script or one at a time. The single-property
-/// mutators (Set/Duplicate/Remove/AddNode) split their actual mutation out into an Apply*
-/// helper so <see cref="Script"/> can run several of them against one already-open asset
+/// mutators (Set/Duplicate/Remove/AddNode) run their actual mutation through <see cref="ScriptOps"/>,
+/// the same code <see cref="Script"/> uses to run several of them against one already-open asset
 /// instead of paying a fresh open+parse per edit (see Script's own doc comment).
 /// </summary>
 internal static class Commands
@@ -86,28 +87,8 @@ internal static class Commands
     public static int Dump(ArgReader args)
     {
         var asset = AssetIo.Open(args.Positional(0, "file"), args);
-        Console.Write(ApplyDump(asset, args));
+        Console.Write(ScriptOps.ApplyDump(asset, args));
         return 0;
-    }
-
-    /// <summary>Read-only, so it also runs as a script op: a --plan run can dump many assets in one process.</summary>
-    internal static string ApplyDump(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var scope = args.Option("path");
-        var filter = args.Option("filter");
-
-        var results = scope != null
-            ? SearchService.PropertiesUnder(asset, asset.FilePath, exportIndex, scope)
-            : SearchService.PropertiesForExport(asset, asset.FilePath, exportIndex);
-
-        var output = new StringBuilder();
-        foreach (var r in results)
-        {
-            if (filter != null && r.PropertyPath?.Contains(filter, StringComparison.OrdinalIgnoreCase) != true) continue;
-            output.Append(r.PropertyPath).Append(" = ").AppendLine(r.MatchedText);
-        }
-        return output.ToString();
     }
 
     public static int Search(ArgReader args)
@@ -154,7 +135,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplySet(asset, args));
+        Console.WriteLine(ScriptOps.ApplySet(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -163,7 +144,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplyDuplicate(asset, args));
+        Console.WriteLine(ScriptOps.ApplyDuplicate(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -172,7 +153,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplyDuplicateRow(asset, args));
+        Console.WriteLine(ScriptOps.ApplyDuplicateRow(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -181,7 +162,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplySetString(asset, args));
+        Console.WriteLine(ScriptOps.ApplySetString(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -190,7 +171,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplyRemove(asset, args));
+        Console.WriteLine(ScriptOps.ApplyRemove(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -199,7 +180,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplySpliceNode(asset, args));
+        Console.WriteLine(ScriptOps.ApplySpliceNode(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -208,7 +189,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplyAddNode(asset, args));
+        Console.WriteLine(ScriptOps.ApplyAddNode(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -217,7 +198,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplyAppendClone(asset, args));
+        Console.WriteLine(ScriptOps.ApplyAppendClone(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -226,7 +207,7 @@ internal static class Commands
     {
         var path = args.Positional(0, "file");
         var asset = AssetIo.Open(path, args);
-        Console.WriteLine(ApplyDuplicateExport(asset, args));
+        Console.WriteLine(ScriptOps.ApplyDuplicateExport(asset, args));
         MaybeSave(asset, path, args);
         return 0;
     }
@@ -322,216 +303,6 @@ internal static class Commands
     }
 
     public static int Script(ArgReader args) => ScriptRunner.Run(args);
-
-    internal static string ApplySet(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var propertyPath = args.RequireOption("path");
-        var newValue = args.RequireOption("value");
-
-        var existing = PropertyLocator.Locate(asset, exportIndex, propertyPath);
-        var node = existing ?? PropertyLocator.LocateOrCreate(asset, exportIndex, propertyPath)
-            ?? throw new ArgException($"No property at path '{propertyPath}'.");
-
-        var oldValue = existing == null ? "(default)" : PropertyValueAccessor.AsSearchableString(node.Property, asset);
-        if (!PropertyValueAccessor.TrySetStringValue(node.Property, newValue, asset))
-        {
-            if (existing == null) node.Owner?.RemoveAt(node.OwnerIndex);
-            throw new ArgException($"'{propertyPath}' ({node.Property.GetType().Name}) can't take the value '{newValue}'.");
-        }
-        PropertyValueAccessor.UpdateIsZeroFlag(node.Property);
-
-        return $"{propertyPath}: {oldValue} -> {newValue}";
-    }
-
-    internal static string ApplyDuplicate(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var elementPath = args.RequireOption("path");
-
-        var (array, index) = PropertyLocator.LocateArrayElement(asset, exportIndex, elementPath)
-            ?? throw new ArgException($"'{elementPath}' isn't an array element.");
-
-        ArrayElementEditor.Duplicate(array, index);
-        var newIndex = array.Value!.Length - 1;
-        return $"Duplicated {elementPath} -> [{newIndex}]";
-    }
-
-    internal static string ApplyDuplicateRow(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var sourceRow = args.RequireOption("row");
-        var newRow = args.RequireOption("as");
-        try
-        {
-            DataTableRowDuplicator.Duplicate(asset, exportIndex, sourceRow, newRow);
-        }
-        catch (ArgumentException ex)
-        {
-            throw new ArgException(ex.Message, ex);
-        }
-        return $"Duplicated row {sourceRow} -> {newRow}";
-    }
-
-    internal static string ApplySetString(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var key = args.RequireOption("key");
-        var value = args.RequireOption("value");
-        string? previous;
-        try
-        {
-            previous = StringTableEditor.Set(asset, exportIndex, key, value);
-        }
-        catch (ArgumentException ex)
-        {
-            throw new ArgException(ex.Message, ex);
-        }
-        return previous is null ? $"{key}: added = {value}" : $"{key}: {previous} -> {value}";
-    }
-
-    internal static string ApplyRemove(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var elementPath = args.RequireOption("path");
-
-        var (array, index) = PropertyLocator.LocateArrayElement(asset, exportIndex, elementPath)
-            ?? throw new ArgException($"'{elementPath}' isn't an array element.");
-
-        ArrayElementEditor.RemoveAt(array, index);
-        return $"Removed {elementPath}";
-    }
-
-    internal static string ApplyAddNode(UAsset asset, ArgReader args)
-    {
-        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var templateName = args.RequireOption("template");
-
-        var (newName, _) = ClassPropertyDeclarer.DeclareClonedProperty(asset, cdoExportIndex, templateName);
-        return $"Declared '{newName}' (cloned from '{templateName}')";
-    }
-
-    internal static string ApplySpliceNode(UAsset asset, ArgReader args)
-    {
-        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var node = AnimNodeSplicer.SpliceAfter(asset, cdoExportIndex, args.RequireOption("template"));
-        return $"Spliced '{node.Name}' (node {node.NodeIndex}) after '{node.TemplateName}' (node {node.TemplateIndex}); '{node.ConsumerName}' now reads node {node.NodeIndex}";
-    }
-
-    internal static string ApplyBypassNode(UAsset asset, ArgReader args)
-    {
-        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var node = AnimNodeSplicer.Bypass(asset, cdoExportIndex, args.RequireOption("template"));
-        return $"Bypassed '{node.Name}' (node {node.NodeIndex}); '{node.ReaderName}' now reads node {node.NowReads}";
-    }
-
-    internal static string ApplyCheckGraph(UAsset asset, ArgReader args)
-    {
-        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        return $"Graph consistent: {AnimGraphValidator.Validate(asset, cdoExportIndex)} nodes, each with a row and a handler, cached poses in place";
-    }
-
-    /// <summary>Read-only: the class's anim-graph nodes in node-index order, comma-separated, whatever they are called.</summary>
-    internal static string ApplyListNodes(UAsset asset, ArgReader args) =>
-        string.Join(",", AnimNodeSplicer.AnimNodeNames(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))));
-
-    /// <summary>Read-only: each node tag as Tag=Index(Node), comma-separated; the index counts from the end of the node list.</summary>
-    internal static string ApplyListTags(UAsset asset, ArgReader args) =>
-        string.Join(",", AnimNodeTags.List(asset, AssetIo.ResolveExportIndex(asset, args.RequireOption("export"))).Select(t => $"{t.Tag}={t.Index}({t.Node})"));
-
-    internal static string ApplySetTag(UAsset asset, ArgReader args)
-    {
-        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var tag = args.RequireOption("tag");
-        var value = args.RequireOption("value");
-        if (!int.TryParse(value, out var index)) throw new ArgException($"--value must be a node index, not '{value}'.");
-        var set = AnimNodeTags.Set(asset, cdoExportIndex, tag, index);
-        return $"{set.Tag} -> {set.Index} ({set.Node})";
-    }
-
-    internal static string ApplyGraftNodes(UAsset asset, ArgReader args)
-    {
-        var cdoExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var donor = AssetIo.Open(args.RequireOption("from-file"), args);
-        var donorCdoIndex = AssetIo.ResolveExportIndex(donor, args.Option("from-export") ?? args.RequireOption("export"));
-        var nodes = args.RequireOption("nodes").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        var grafted = AnimNodeGrafter.GraftBeforeRoot(asset, cdoExportIndex, donor, donorCdoIndex, nodes);
-        return "Grafted before Root: " + string.Join(" -> ", grafted.Select(g => $"{g.DonorName} as '{g.Name}' (node {g.NodeIndex})"));
-    }
-
-    internal static string ApplyAppendClone(UAsset asset, ArgReader args)
-    {
-        var exportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var sourcePath = args.RequireOption("from");
-        var intoPath = args.Option("into");
-        var sourceExportIndex = args.Option("from-export") is { } fromExport
-            ? AssetIo.ResolveExportIndex(asset, fromExport)
-            : exportIndex;
-
-        var source = PropertyLocator.Locate(asset, sourceExportIndex, sourcePath)
-            ?? throw new ArgException($"No property at path '{sourcePath}'.");
-
-        if (intoPath == null)
-        {
-            var rootData = PropertyLocator.LocateExportData(asset, exportIndex)
-                ?? throw new ArgException("Export has no top-level property list.");
-            StructFieldEditor.AppendClone(rootData, source.Property);
-            return $"Appended clone of {sourcePath} -> export root ({source.Property.Name})";
-        }
-
-        var target = PropertyLocator.Locate(asset, exportIndex, intoPath)?.Property;
-
-        switch (target)
-        {
-            case UAssetAPI.PropertyTypes.Objects.ArrayPropertyData array:
-                ArrayElementEditor.AppendClone(array, source.Property);
-                return $"Appended clone of {sourcePath} -> {intoPath}[{array.Value!.Length - 1}]";
-
-            case UAssetAPI.PropertyTypes.Structs.StructPropertyData @struct:
-                StructFieldEditor.AppendClone(@struct, source.Property);
-                return $"Appended clone of {sourcePath} -> {intoPath}.{source.Property.Name}";
-
-            default:
-                throw new ArgException($"'{intoPath}' isn't an array or struct property.");
-        }
-    }
-
-    /// <summary>
-    /// Deep-clones a whole export (e.g. a PhysicsAsset's SkeletalBodySetup/PhysicsConstraintTemplate
-    /// body, which is its own top-level export, not an array element within one - see
-    /// <see cref="ExportDuplicator"/>). Optionally also appends an object reference to the new
-    /// export into an existing array-of-object-references property (--into-export/--into-path) -
-    /// the array must already hold at least one element of the same reference type to clone from,
-    /// matching how <see cref="ApplyAppendClone"/>'s array case works.
-    /// </summary>
-    internal static string ApplyDuplicateExport(UAsset asset, ArgReader args)
-    {
-        var sourceExportIndex = AssetIo.ResolveExportIndex(asset, args.RequireOption("export"));
-        var newIndex = ExportDuplicator.Duplicate(asset, sourceExportIndex);
-        var result = $"Duplicated export [{sourceExportIndex}] -> [{newIndex}]";
-
-        var intoExport = args.Option("into-export");
-        var intoPath = args.Option("into-path");
-        if (intoExport == null && intoPath == null)
-            return result;
-        if (intoExport == null || intoPath == null)
-            throw new ArgException("--into-export and --into-path must be given together.");
-
-        var containerExportIndex = AssetIo.ResolveExportIndex(asset, intoExport);
-        var target = PropertyLocator.Locate(asset, containerExportIndex, intoPath)?.Property
-            ?? throw new ArgException($"No property at path '{intoPath}'.");
-
-        if (target is not ArrayPropertyData array)
-            throw new ArgException($"'{intoPath}' isn't an array property.");
-        if (array.Value is not { Length: > 0 } || array.Value[0] is not ObjectPropertyData)
-            throw new ArgException($"'{intoPath}' has no existing object-reference element to use as a template.");
-
-        var reference = (ObjectPropertyData)ArrayElementEditor.AppendClone(array, array.Value[0]);
-        reference.Value = FPackageIndex.FromExport(newIndex);
-
-        return $"{result}, appended reference -> {intoPath}[{array.Value.Length - 1}]";
-    }
 
     /// <summary>
     /// Runs a whole <see cref="RuleSet"/> (the same JSON shape the app's batch-edit tab
