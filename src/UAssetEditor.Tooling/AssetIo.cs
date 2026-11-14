@@ -67,11 +67,16 @@ internal static class AssetIo
         return path == null ? null : LoadMappings(path, $"--{option}").CreateAssetScope();
     }
 
-    /// <summary>The usmap at <paramref name="path"/>, loaded once per process and shared: give each asset its own <c>CreateAssetScope()</c>.</summary>
+    /// <summary>
+    /// The usmap at <paramref name="path"/>, loaded once per process and shared: give each asset its own <c>CreateAssetScope()</c>.
+    /// A file replaced in place (<c>usmap add --force</c> in a long-running server) is loaded again.
+    /// </summary>
     public static Usmap LoadMappings(string path, string label)
     {
         if (!File.Exists(path)) throw new ArgException($"{label} file not found: {path}");
-        return LoadedMappings.GetOrAdd(Path.GetFullPath(path), full => new Lazy<Usmap>(() => new Usmap(full))).Value;
+        var full = Path.GetFullPath(path);
+        var info = new FileInfo(full);
+        return LoadedMappings.GetOrAdd($"{full}|{info.Length}|{info.LastWriteTimeUtc.Ticks}", _ => new Lazy<Usmap>(() => new Usmap(full))).Value;
     }
 
     /// <summary>--jobs, else one worker per CPU.</summary>

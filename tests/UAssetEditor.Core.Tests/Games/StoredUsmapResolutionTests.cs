@@ -50,4 +50,27 @@ public sealed class StoredUsmapResolutionTests : IDisposable
         Assert.Equal(Path.Combine(_dir, "store", "ff7r", "196-ff7r.usmap"), path);
         Assert.Equal($"Using stored usmap {path} (build 196).{Environment.NewLine}", diagnostics.ToString());
     }
+
+    [Fact]
+    public void LoadMappings_SharesOneInstanceForAnUnchangedFile()
+    {
+        var file = Path.Combine(_dir, "shared.usmap");
+        File.WriteAllBytes(file, EmptyUsmap);
+
+        Assert.Same(AssetIo.LoadMappings(file, "--usmap"), AssetIo.LoadMappings(file, "--usmap"));
+    }
+
+    [Fact]
+    public void LoadMappings_LoadsAgainAFileReplacedInPlace()
+    {
+        // A long-running server sees "usmap add --force" overwrite the stored file at the same path.
+        var file = Path.Combine(_dir, "replaced.usmap");
+        File.WriteAllBytes(file, EmptyUsmap);
+        var before = AssetIo.LoadMappings(file, "--usmap");
+
+        File.WriteAllBytes(file, EmptyUsmap);
+        File.SetLastWriteTimeUtc(file, File.GetLastWriteTimeUtc(file).AddMinutes(1));
+
+        Assert.NotSame(before, AssetIo.LoadMappings(file, "--usmap"));
+    }
 }
