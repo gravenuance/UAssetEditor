@@ -4,7 +4,7 @@ Non-obvious decisions that shape this codebase, recorded here so the reasoning s
 
 ## Pak reading/writing runs in a separate worker process
 
-All calls into UAssetAPI's embedded native `repak_bind.dll` go through `UAssetEditor.PakWorker`, a separate process talked to over a named pipe (`PakWorkerProcess`, `PakWorkerClient`, `PakReaderHandle`/`PakWriterHandle`). There's a confirmed real-world native crash in that library (`STATUS_STACK_BUFFER_OVERRUN`) on certain entries; running it out-of-process means a crash there kills only the worker, which is transparently respawned, instead of taking the whole editor down mid-edit. The worker is embedded as a resource in the single-file publish and extracted to LocalAppData on first use (see `EmbeddedToolLocator`).
+All calls into UAssetAPI's embedded native `repak_bind.dll` go through `UAssetEditor.PakWorker`, a separate process talked to over a named pipe (`PakWorkerProcess`, `PakWorkerClient`, `PakReaderHandle`/`PakWriterHandle`). There's a confirmed real-world native crash in that library (`STATUS_STACK_BUFFER_OVERRUN`) on certain entries; running it out-of-process means a crash there kills only the worker, which is transparently respawned, instead of taking the whole editor down mid-edit. The worker is embedded as a resource in the single-file publish and extracted to the cache folder (`AppPaths.ToolsDirectory`, under `UASSETEDITOR_CACHE_DIR` or LocalAppData) on first use (see `EmbeddedToolLocator`).
 
 ## retoc needs a project-name folder segment for older containers
 

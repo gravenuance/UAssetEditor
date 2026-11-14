@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using UAssetEditor.App.ViewModels;
+using UAssetEditor.Core;
 using UAssetEditor.Core.AssetSources.PakWorker;
 using UAssetEditor.Core.Logging;
 
@@ -47,7 +48,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// A rotating plain-text log under LocalAppData - the in-app StatusMessage text disappears
+    /// A rotating plain-text log under <see cref="AppPaths.LogsDirectory"/> - the in-app StatusMessage text disappears
     /// the moment the window closes, so this is what's actually left to hand over after a
     /// crash or a hard-to-reproduce bug. <see cref="AppLog"/> gives every ViewModel access to
     /// it without threading an ILoggerFactory through every constructor (see its own doc
@@ -55,12 +56,9 @@ public partial class App : Application
     /// </summary>
     private void InitializeLogging()
     {
-        var logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UAssetEditor", "Logs");
-
         _loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder.AddProvider(new FileLoggerProvider(logDirectory));
+            builder.AddProvider(new FileLoggerProvider(AppPaths.Current.LogsDirectory));
             builder.SetMinimumLevel(LogLevel.Information);
         });
         AppLog.Initialize(_loggerFactory);

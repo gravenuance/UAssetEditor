@@ -34,6 +34,16 @@ dotnet publish src/UAssetEditor.App/UAssetEditor.App.csproj -p:PublishProfile=Si
 
 The result is a single self-contained `UAssetEditor.App.exe` under `src/UAssetEditor.App/bin/Release/net10.0-windows/publish/win-x64/` - no separate .NET runtime install needed on the target machine.
 
+### Where files go
+
+| What | Default location | Override |
+|---|---|---|
+| Logs, and the retoc and pak worker executables the app extracts on first run (all rebuildable) | `%LOCALAPPDATA%\UAssetEditor\Logs` and `...\Tools` (`$XDG_CACHE_HOME/UAssetEditor` on Linux) | `UASSETEDITOR_CACHE_DIR` |
+| Stored usmaps | `%LOCALAPPDATA%\UAssetEditor\Mappings\<game>` | `UASSETEDITOR_MAPPINGS_DIR` |
+| The last session (source path, settings) | `%LOCALAPPDATA%\UAssetEditor\lastSession.json` | none |
+
+Pak extractions for editing and IoStore repacking use the system temp folder and are removed when the pak is closed or the repack ends. Nothing is written next to the executable.
+
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the non-obvious design decisions behind the pak worker process, retoc integration, and a few other things that aren't visible just from reading the code top to bottom.
 
 ## How this is different from UAssetGUI

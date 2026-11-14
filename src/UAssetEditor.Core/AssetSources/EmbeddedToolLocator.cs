@@ -7,7 +7,7 @@ namespace UAssetEditor.Core.AssetSources;
 /// Shared logic for locating a native tool this app bundles (the pak worker, retoc): check an
 /// env var override first, then an embedded resource (only present in a real single-file
 /// publish - see the relevant PublishSingleFile-conditioned ItemGroup in UAssetEditor.App.csproj),
-/// extracted once per build into a LocalAppData folder so repeat launches never pay the
+/// extracted once per build into the cache folder (<see cref="AppPaths.ToolsDirectory"/>) so repeat launches never pay the
 /// extraction cost again, or finally fall back to a caller-supplied dev-environment lookup for
 /// a plain `dotnet build`/`dotnet run`/`dotnet test`, which never has anything embedded.
 /// </summary>
@@ -76,6 +76,9 @@ public static class EmbeddedToolLocator
         return null;
     }
 
+    internal static string ExtractionDirectory(AppPaths paths, string embeddedResourceName, string buildId) =>
+        Path.Combine(paths.ToolsDirectory, embeddedResourceName, buildId);
+
     private static string? TryExtractEmbedded(string embeddedResourceName)
     {
         var entryAssembly = Assembly.GetEntryAssembly();
@@ -87,9 +90,7 @@ public static class EmbeddedToolLocator
         // same published build) skip touching the embedded resource at all, rather than having
         // to read and hash the ~7MB payload just to find out it was already extracted.
         var buildId = entryAssembly.ManifestModule.ModuleVersionId.ToString("N")[..16];
-        var targetDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "UAssetEditor", "Tools", embeddedResourceName, buildId);
+        var targetDir = ExtractionDirectory(AppPaths.Current, embeddedResourceName, buildId);
         var targetPath = Path.Combine(targetDir, embeddedResourceName);
 
         if (File.Exists(targetPath)) return targetPath;
