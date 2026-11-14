@@ -5,6 +5,9 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>UAssetEditor.Tooling</RootNamespace>
+    <!-- Both front ends reference this project; publishing the MCP server for win-x64 restores it with that runtime,
+         so its lock file lists it and a locked restore agrees however the solution is restored. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
