@@ -66,7 +66,11 @@ internal sealed class OpenSettings
         if (strict) arguments.Add("--strict");
 
         var diagnostics = new StringWriter(CultureInfo.InvariantCulture);
-        return new OpenSettings(new ArgReader(arguments) { Diagnostics = diagnostics }, diagnostics, profile, usmapPath, notes);
+        var args = new ArgReader(arguments) { Diagnostics = diagnostics, Mappings = store };
+        // The store was already read for this call (with its own note), so the open must not look again and warn twice.
+        if (profile != null && usmapPath == null) args.StoredUsmaps[profile.CliName] = new Lazy<string?>(() => null);
+
+        return new OpenSettings(args, diagnostics, profile, usmapPath, notes);
     }
 
     /// <summary>Everything worth telling the caller: what was picked for them, then the open's own warnings, each on one line.</summary>

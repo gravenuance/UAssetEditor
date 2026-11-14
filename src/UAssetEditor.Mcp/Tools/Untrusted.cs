@@ -37,6 +37,8 @@ internal static class Untrusted
         foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var cleaned = Clean(line.TrimEnd('\r'), maxLineLength);
+            if (cleaned.Length == 0) continue;
+
             if (builder.Length + cleaned.Length + 1 > maxTotal)
             {
                 builder.Append("...");

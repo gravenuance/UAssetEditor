@@ -24,8 +24,9 @@ internal static class ToolPaths
     public static string ExistingFile(string? value, string name, params string[] extensions)
     {
         var path = Absolute(value, name);
+        if (!File.Exists(path)) throw new McpException($"{name} not found: {path}");
         RequireExtension(path, name, extensions);
-        return File.Exists(path) ? path : throw new McpException($"{name} not found: {path}");
+        return path;
     }
 
     public static string ExistingFolder(string? value, string name)
@@ -39,8 +40,9 @@ internal static class ToolPaths
     {
         var path = Absolute(value, name);
         if (Directory.Exists(path)) return (path, true);
+        if (!File.Exists(path)) throw new McpException($"{name} not found: {path}");
         RequireExtension(path, name, fileExtensions);
-        return File.Exists(path) ? (path, false) : throw new McpException($"{name} not found: {path}");
+        return (path, false);
     }
 
     /// <summary>A file to create: its extension is checked, and an existing file is refused unless <paramref name="overwrite"/>.</summary>

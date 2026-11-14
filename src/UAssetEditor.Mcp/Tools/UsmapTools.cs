@@ -47,7 +47,8 @@ internal sealed class UsmapTools(MappingsStore store)
         }
         catch (MappingsStoreException ex)
         {
-            throw new McpException(ex.Message, ex);
+            // The store words its advice for uacli's options; here they are parameters.
+            throw new McpException(ex.Message.Replace("--force", "force=true", StringComparison.Ordinal).Replace("--build N", "build", StringComparison.Ordinal), ex);
         }
 
         var note = stored.Build == null && profile.Game == Game.MarvelRivals
