@@ -38,7 +38,7 @@ public sealed class ArchiveReadToolTests : IDisposable
     public async Task PakInfo_NeverEchoesTheKeyItWasGiven_InAResultOrAnError()
     {
         var pak = MakePak("a.pak", "Content/A.txt");
-        const string key = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF";
+        const string key = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"; // gitleaks:allow (a made-up test key)
         PakInfoResult? result = null;
 
         // The pak is not encrypted, so the worker may take the key or refuse it; either way nothing may repeat it.

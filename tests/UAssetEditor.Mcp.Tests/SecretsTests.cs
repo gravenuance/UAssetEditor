@@ -15,7 +15,7 @@ namespace UAssetEditor.Mcp.Tests;
 
 public sealed class SecretsTests
 {
-    private const string Key = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF";
+    private const string Key = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"; // gitleaks:allow (a made-up test key)
 
     [Theory]
     [InlineData("retoc to-legacy --aes-key 0x00112233 in out failed", "retoc to-legacy --aes-key [redacted] in out failed")]
