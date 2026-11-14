@@ -34,7 +34,7 @@ internal sealed class RulesetTools(MappingsStore store)
     }
 
     [McpServerTool(Name = "apply_ruleset", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]
-    [Description("Runs a rule set over one asset or every .uasset under a folder and overwrites each changed asset in place (its .uasset and .uexp), after copying both to .bak files unless backup is false. An asset that cannot be opened is skipped; one whose edit or save fails is left unsaved and reported. Run preview_ruleset first. Progress is reported; the list is capped." + Untrusted.Note)]
+    [Description("Runs a rule set over one asset or every .uasset under a folder and overwrites each changed asset in place (its .uasset and .uexp), after copying both to .bak files unless backup is false. An asset that cannot be opened is skipped; one whose edit or save fails is left unsaved and reported. Run preview_ruleset first. Progress is reported and the list is capped. Cancelling stops between assets: those already saved stay saved." + Untrusted.Note)]
     public async Task<RulesetResultDto> ApplyRulesetAsync(
         [Description("Absolute path of one .uasset, or of a folder searched recursively.")] string path,
         [Description(RulesetInput.Description)] string ruleset,
