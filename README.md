@@ -16,6 +16,8 @@ Run the test suite (Release matches what CI runs):
 
 ```
 dotnet test tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj -c Release
+dotnet test tests/UAssetEditor.App.Tests/UAssetEditor.App.Tests.csproj -c Release
+dotnet test tests/UAssetEditor.Mcp.Tests/UAssetEditor.Mcp.Tests.csproj -c Release
 ```
 
 ## Run
@@ -38,13 +40,55 @@ The result is a single self-contained `UAssetEditor.App.exe` under `src/UAssetEd
 
 | What | Default location | Override |
 |---|---|---|
-| Logs, and the retoc and pak worker executables the app extracts on first run (all rebuildable) | `%LOCALAPPDATA%\UAssetEditor\Logs` and `...\Tools` (`$XDG_CACHE_HOME/UAssetEditor` on Linux) | `UASSETEDITOR_CACHE_DIR` |
+| Logs (the MCP server's in `Logs\Mcp`), and the retoc and pak worker executables the app extracts on first run (all rebuildable) | `%LOCALAPPDATA%\UAssetEditor\Logs` and `...\Tools` (`$XDG_CACHE_HOME/UAssetEditor` on Linux) | `UASSETEDITOR_CACHE_DIR` |
 | Stored usmaps | `%LOCALAPPDATA%\UAssetEditor\Mappings\<game>` | `UASSETEDITOR_MAPPINGS_DIR` |
 | The last session (source path, settings) | `%LOCALAPPDATA%\UAssetEditor\lastSession.json` | none |
 
 Pak extractions for editing and IoStore repacking use the system temp folder and are removed when the pak is closed or the repack ends. Nothing is written next to the executable.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the non-obvious design decisions behind the pak worker process, retoc integration, and a few other things that aren't visible just from reading the code top to bottom.
+
+## MCP server
+
+`UAssetEditor.Mcp` is a local [MCP](https://modelcontextprotocol.io) server (stdio) that lets an agent read and edit assets and archives. It runs the same Core code as the app and `uacli` in one long-lived process, so an agent batches every op for an asset into one call instead of starting a process per edit. Logs go to `UASSETEDITOR_CACHE_DIR/Logs/Mcp` (14 days kept), never to standard output; `UASSETEDITOR_MCP_LOG_LEVEL` (`Information`, `Warning`, `Error`) sets the level.
+
+Install: publish the single-file executable, put it wherever the client can start it, and register that path as a stdio server with no arguments.
+
+```
+dotnet publish src/UAssetEditor.Mcp/UAssetEditor.Mcp.csproj -c Release -r win-x64 -o src/UAssetEditor.Mcp/publish
+```
+
+```json
+{ "mcpServers": { "uasseteditor": { "command": "D:/Tools/UAssetEditorMcp/UAssetEditor.Mcp.exe" } } }
+```
+
+The bundled pak worker and retoc are embedded in the executable and extracted into the cache folder on first use, as for the app. `UAssetEditor.Mcp --version` and `--help` print and exit.
+
+Tools that only read (marked read-only, so a client can pre-approve them):
+
+| Tool | What it does |
+|---|---|
+| `list_exports`, `list_imports` | An asset's exports (optionally their declared members) and imports. |
+| `get_tree` | Struct, array and map nodes under an export or property, to a depth. |
+| `dump_export` | Every leaf property as path and value, scoped by path or filter, capped. |
+| `search_assets` | Exports, properties, values or references in one asset or a folder, with progress. |
+| `preview_edit` | Dry run of script ops (`set`, `duplicate`, `splice-node`, ...); never writes. |
+| `preview_ruleset` | Dry run of a rule set over an asset or folder; never writes. |
+| `pak_info`, `pak_list`, `iostore_list` | A `.pak`'s header and entries, a `.utoc`'s chunk paths. Windows only. |
+| `usmap_list` | The stored usmaps, newest build first. |
+| `game_log_summary` | A decoded Marvel Rivals log reduced to engine build, mods, hero ids and crash block. |
+
+Tools that write (the client asks first). Every one that can replace something is marked destructive and refuses to unless told to:
+
+| Tool | What it writes |
+|---|---|
+| `edit_asset` | Runs script ops. A dry run unless `save=true`, which overwrites the `.uasset`/`.uexp` after copying both to `.bak` (`backup=false` skips that), and saves nothing when any op was skipped. |
+| `apply_ruleset` | Applies a rule set in place, with `.bak` copies; a failed asset is left unsaved and reported. |
+| `unpack_pak` | Extracts entries matching a required `filter` (real game paks are tens of GB); refuses more than `maxFiles` matches or an existing file unless `overwrite=true`. Windows only. |
+| `pack`, `to_legacy`, `repack` | Write a new `.pak`, `.utoc`/`.ucas` pair, legacy folder or `.pak`; refuse an existing output unless `overwrite=true`. `repack` never changes its source. Windows only. |
+| `usmap_add` | Copies a dumped `.usmap` into the store; `force=true` replaces a stored build. |
+
+Asset tools take `game` (`rivals`, `ff7r`, `stellarblade`), `engineVersion`, `usmap` and `strict` like the `uacli` global options; with a game and no `usmap` they use the newest stored one and say which. They run on any OS; the pak and IoStore tools need Windows and say so elsewhere. Paths must be absolute and local (network paths are refused). Names, values and log lines in results come from files that may be crafted, so they are cleaned, capped and described to the model as data; results carry a `truncated` flag when a cap applied. AES keys are accepted as input for non-game paks but never returned or logged.
 
 ## How this is different from UAssetGUI
 
