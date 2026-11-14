@@ -11,6 +11,12 @@ updates:
     groups:
       minor-patch:
         update-types: ["minor", "patch"]
+  # global.json pins the SDK exactly: each SDK patch moves the ILLink pack version, so a bump PR
+  # must also refresh the lock files (dotnet restore --force-evaluate) before CI's locked restore passes.
+  - package-ecosystem: "dotnet-sdk"
+    directory: "/"
+    schedule:
+      interval: "weekly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

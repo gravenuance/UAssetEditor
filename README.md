@@ -6,7 +6,7 @@ An editor for .pak and .uasset files.
 
 ## Build
 
-Requires the .NET 10 SDK (pinned in `global.json`).
+Requires the exact .NET SDK pinned in `global.json` (10.0.404; no roll-forward, because each SDK patch changes the trimmer package recorded in the lock files).
 
 ```
 dotnet build UAssetEditor.slnx
