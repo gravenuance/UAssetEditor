@@ -4,6 +4,9 @@ obj/
 *.user
 TestResults
 
+# Single-file output of the MCP server (dotnet publish ... -o src/UAssetEditor.Mcp/publish)
+src/UAssetEditor.Mcp/publish/
+
 # Scratch pak produced by manual pack/repack testing
 custom.pak
 

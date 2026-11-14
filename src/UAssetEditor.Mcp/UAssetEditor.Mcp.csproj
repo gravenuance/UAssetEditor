@@ -1,0 +1,86 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>UAssetEditor.Mcp</RootNamespace>
+    <AssemblyName>UAssetEditor.Mcp</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>MCP server that lets an agent read and edit Unreal assets through UAssetEditor.Core.</Description>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Published single-file for win-x64: the lock file needs that runtime, and the single-file analyzer on in
+         every build so restore always sees the ILLink pack it pulls in (same as UAssetEditor.App). -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <EnableSingleFileAnalyzer>true</EnableSingleFileAnalyzer>
+    <!-- Native dependencies ship .pdb / .xml sidecars we do not want in the publish folder. -->
+    <AllowedReferenceRelatedFileExtensions>.none</AllowedReferenceRelatedFileExtensions>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- CA1515 (make public types internal) does not fit an exe: nothing outside references it but its test project.
+         CA1848/CA1873 (LoggerMessage delegates) target hot-path logging; these calls run once per tool call. -->
+    <NoWarn>$(NoWarn);CA1515;CA1848;CA1873</NoWarn>
+  </PropertyGroup>
+
+  <!-- A publish names its platform with -r: self-contained single file, runtime bundled, no download. A plain
+       build (CI, tests) stays framework-dependent. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+    <ProjectReference Include="..\UAssetEditor.Tooling\UAssetEditor.Tooling.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="UAssetEditor.Mcp.Tests" />
+  </ItemGroup>
+
+  <!--
+    Pak reads and IoStore conversion run in two bundled helpers, found through EmbeddedToolLocator: the pak worker
+    (built from this repo) and retoc.exe (vendored). A single-file publish embeds both as resources of this exe, as
+    UAssetEditor.App does, and they are extracted into the cache folder on first use. A plain build embeds nothing:
+    the locator then finds the worker's build output and the vendored retoc.exe beside the sources.
+    The worker is published by an out-of-process `dotnet publish` so this project's own global properties
+    (RuntimeIdentifier, PublishDir) do not leak into its build. The publish is its own target and the resource a plain
+    item, so the file exists by the time the compiler embeds it.
+  -->
+  <PropertyGroup>
+    <_PakWorkerProject>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj</_PakWorkerProject>
+    <_PakWorkerPublishExe>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net10.0\publish\win-x64\UAssetEditor.PakWorker.exe</_PakWorkerPublishExe>
+  </PropertyGroup>
+
+  <Target Name="PublishPakWorker" BeforeTargets="CoreCompile" Condition="'$(PublishSingleFile)' == 'true'">
+    <Exec Command="dotnet publish &quot;$(_PakWorkerProject)&quot; -p:PublishProfile=SingleFileRelease -v:q" />
+    <Error Condition="!Exists('$(_PakWorkerPublishExe)')" Text="PakWorker publish did not produce the expected exe at $(_PakWorkerPublishExe)" />
+  </Target>
+
+  <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <EmbeddedResource Include="$(_PakWorkerPublishExe)">
+      <LogicalName>UAssetEditor.PakWorker.exe</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\UAssetEditor.App\vendor\retoc.exe">
+      <LogicalName>retoc.exe</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Native dependencies ship .pdb sidecars we do not want in the release folder. -->
+  <Target Name="StripStraySymbols" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+    <ItemGroup>
+      <_LeftoverSymbols Include="$(PublishDir)*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_LeftoverSymbols)" />
+  </Target>
+
+</Project>
