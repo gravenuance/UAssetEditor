@@ -27,6 +27,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="UAssetEditor.Core.Tests" />
+    <!-- Compiles the Core tests' shared fixture builders (TestAssets), which use internals. -->
+    <InternalsVisibleTo Include="UAssetEditor.Mcp.Tests" />
   </ItemGroup>
 
 </Project>

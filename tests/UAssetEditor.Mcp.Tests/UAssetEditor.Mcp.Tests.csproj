@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- The same dial-downs as UAssetEditor.Core.Tests, for the same reasons: CA1707 (underscored test names),
+         CA1861 (a literal array built once per assertion), CA2007 (xUnit drives the test methods), CA1515 (xUnit needs
+         public test types). CA1816 (call SuppressFinalize in Dispose) targets types with finalizers; the rigs here have none. -->
+    <NoWarn>$(NoWarn);CA1707;CA1861;CA2007;CA1515;CA1816</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="ModelContextProtocol" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\UAssetEditor.Mcp\UAssetEditor.Mcp.csproj" />
+    <ProjectReference Include="..\..\src\UAssetEditor.Core\UAssetEditor.Core.csproj" />
+    <ProjectReference Include="..\..\src\UAssetEditor.Tooling\UAssetEditor.Tooling.csproj" />
+    <!-- Not used directly by test code - referenced only so a test run always builds the worker executable
+         PakWorkerProcess's dev fallback path discovery expects to find in src\UAssetEditor.PakWorker\bin. -->
+    <ProjectReference Include="..\..\src\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj" />
+  </ItemGroup>
+
+  <!-- The fixtures the Core tests already build, compiled in rather than copied. -->
+  <ItemGroup>
+    <Compile Include="..\UAssetEditor.Core.Tests\TestAssets.cs" Link="Shared\TestAssets.cs" />
+    <Compile Include="..\UAssetEditor.Core.Tests\TestPaks.cs" Link="Shared\TestPaks.cs" />
+    <Compile Include="..\UAssetEditor.Core.Tests\Games\RivalsLogTestData.cs" Link="Shared\RivalsLogTestData.cs" />
+  </ItemGroup>
+
+</Project>

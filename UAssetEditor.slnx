@@ -13,5 +13,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/UAssetEditor.App.Tests/UAssetEditor.App.Tests.csproj" />
     <Project Path="tests/UAssetEditor.Core.Tests/UAssetEditor.Core.Tests.csproj" />
+    <Project Path="tests/UAssetEditor.Mcp.Tests/UAssetEditor.Mcp.Tests.csproj" />
   </Folder>
 </Solution>
