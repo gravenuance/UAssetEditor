@@ -249,16 +249,17 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var target = _rig.Folder.Combine("out", "mod.pak");
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var log = new RecordingLogger();
+        var tools = new ArchiveWriteTools(_rig.Store, log);
         FileStream? scanner = null;
 
         try
         {
-            var error = await Assert.ThrowsAsync<McpException>(() => ArchiveWriteTools.StagedAsync<int>(target, async staging =>
+            var error = await Assert.ThrowsAsync<McpException>(() => tools.StagedAsync<int>(target, async staging =>
             {
                 await File.WriteAllTextAsync(staging, "half", TestContext.Current.CancellationToken);
                 scanner = new FileStream(staging, FileMode.Open, FileAccess.Read, FileShare.None);
                 throw new McpException("Packing failed: the worker stopped");
-            }, log));
+            }));
 
             Assert.Equal("Packing failed: the worker stopped", error.Message);
             Assert.Contains(log.Warnings, line => line.Contains(".partial.pak", StringComparison.Ordinal));
@@ -270,7 +271,26 @@ public sealed class ArchiveWriteToolTests : IDisposable
         }
     }
 
-    private sealed class RecordingLogger : ILogger
+    [Fact]
+    public async Task StagedBuild_StagesUnderTheTargetsOwnExtension_AndMovesItIntoPlace()
+    {
+        var target = _rig.Folder.Combine("out", "mod.bin");
+        var stagedAs = "";
+
+        await _rig.ArchiveWrites.StagedAsync(target, async staging =>
+        {
+            stagedAs = Path.GetFileName(staging);
+            await File.WriteAllTextAsync(staging, "whole", _ct);
+            return 0;
+        });
+
+        Assert.EndsWith(".partial.bin", stagedAs, StringComparison.Ordinal);
+        Assert.StartsWith("mod.", stagedAs, StringComparison.Ordinal);
+        Assert.Equal("whole", await File.ReadAllTextAsync(target, _ct));
+        Assert.False(File.Exists(Path.Combine(Path.GetDirectoryName(target)!, stagedAs)));
+    }
+
+    private sealed class RecordingLogger : ILogger<ArchiveWriteTools>
     {
         public List<string> Warnings { get; } = [];
 

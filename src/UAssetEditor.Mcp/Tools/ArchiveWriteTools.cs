@@ -7,7 +7,6 @@ using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.Games;
-using UAssetEditor.Core.Versioning;
 using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tools;
@@ -116,7 +115,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
 
         return isIoStore
             ? await PackIoStoreAsync(source, target, settings, rivalsOnly, obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps, progress, cancellationToken).ConfigureAwait(false)
-            : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, logger, cancellationToken).ConfigureAwait(false);
+            : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The .ucas beside a .utoc is part of the container, and so is the companion .pak a Marvel Rivals pack writes.</summary>
@@ -130,9 +129,9 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         }
     }
 
-    private static async Task<PackResult> PackPakAsync(
+    private async Task<PackResult> PackPakAsync(
         string source, string target, OpenSettings settings, string? mount, string? pakVersion, string? compression,
-        bool rivalsOnly, IProgress<ProgressNotificationValue>? progress, ILogger log, CancellationToken cancellationToken)
+        bool rivalsOnly, IProgress<ProgressNotificationValue>? progress, CancellationToken cancellationToken)
     {
         if (rivalsOnly)
             throw new McpException($"{string.Join(", ", RivalsPackSwitches)} only apply to IoStore (.utoc) output.");
@@ -152,17 +151,17 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
                 cancellationToken).ConfigureAwait(false);
             if (result.HasFailures) throw new McpException($"Packing failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
             return result.SucceededCount;
-        }, log).ConfigureAwait(false);
+        }).ConfigureAwait(false);
         return new PackResult(target, "pak", succeeded, [$"mount point {mountPoint}, pak version {version}"], settings.Warnings());
     }
 
     /// <summary>Runs <paramref name="build"/> against a staging name beside <paramref name="target"/> and moves the file into
     /// place only once it returned, so a cancelled or failed build leaves no partial archive and keeps the file it was to replace.</summary>
-    internal static async Task<T> StagedAsync<T>(string target, Func<string, Task<T>> build, ILogger log)
+    internal async Task<T> StagedAsync<T>(string target, Func<string, Task<T>> build)
     {
         var folder = Path.GetDirectoryName(target)!;
         Directory.CreateDirectory(folder);
-        var staging = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(target)}.{Guid.NewGuid():N}.partial.pak");
+        var staging = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(target)}.{Guid.NewGuid():N}.partial{Path.GetExtension(target)}");
         try
         {
             var built = await build(staging).ConfigureAwait(false);
@@ -171,13 +170,13 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         }
         finally
         {
-            DeleteStaging(staging, log);
+            DeleteStaging(staging);
         }
     }
 
     /// <summary>A no-op once the archive was moved into place. A staging file that cannot go (a scanner holding it) stays
-    /// under its ".partial.pak" name, so the error the caller sees is the build's own, not the clean-up's.</summary>
-    private static void DeleteStaging(string staging, ILogger log)
+    /// under its staging name, so the error the caller sees is the build's own, not the clean-up's.</summary>
+    private void DeleteStaging(string staging)
     {
         try
         {
@@ -185,12 +184,12 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            LogStagingNotDeleted(log, ex, staging);
+            LogStagingNotDeleted(ex, staging);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete the partial archive {Staging}; it stays under that name")]
-    private static partial void LogStagingNotDeleted(ILogger logger, Exception exception, string staging);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete the staged archive {Staging}; it stays under that name")]
+    private partial void LogStagingNotDeleted(Exception exception, string staging);
 
     private static async Task<PackResult> PackIoStoreAsync(
         string source, string target, OpenSettings settings, bool rivalsOnly, bool obfuscate, bool kawaiiPhysics, bool patchDefaultHiddenMats,
