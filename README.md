@@ -59,7 +59,7 @@ dotnet publish src/UAssetEditor.Mcp/UAssetEditor.Mcp.csproj -c Release -r win-x6
 ```
 
 ```json
-{ "mcpServers": { "uasseteditor": { "command": "D:/Tools/UAssetEditorMcp/UAssetEditor.Mcp.exe" } } }
+{ "mcpServers": { "uasseteditor": { "command": "C:/path/to/UAssetEditor.Mcp.exe" } } }
 ```
 
 The bundled pak worker and retoc are embedded in the executable and extracted into the cache folder on first use, as for the app. `UAssetEditor.Mcp --version` and `--help` print and exit.

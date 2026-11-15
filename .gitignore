@@ -10,8 +10,11 @@ src/UAssetEditor.Mcp/publish/
 # Scratch pak produced by manual pack/repack testing
 custom.pak
 
-# Agent instructions: local to this machine, not published
+# Agent instructions and settings: local to this machine, not published
 CLAUDE.md
+CLAUDE.local.md
+.claude/
+.mcp.json
 
 # Cross-repo task notes: name local paths, not published
 TODO.md
