@@ -131,14 +131,23 @@ public class PakAssetSourceTests
     public void Constructor_WhenExtractionFails_LeavesNoTempDirectoryAndReleasesThePak()
     {
         // '*' is not a legal file name character, so extracting this entry throws after the pak was opened.
-        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/Bad*Name.uasset"] = [1] });
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]> { ["Content/Bad*Name.uasset"] = [1] });
         var tempRoot = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_PakTempRoot_" + Guid.NewGuid());
         Directory.CreateDirectory(tempRoot);
 
-        var constructorFailure = Record.Exception(() => new PakAssetSource(pakPath, tempRoot: tempRoot));
-        var leftoverFolders = Directory.GetDirectories(tempRoot);
-        var deleteFailure = Record.Exception(() => File.Delete(pakPath));
-        Directory.Delete(tempRoot, recursive: true);
+        Exception? constructorFailure;
+        string[] leftoverFolders;
+        Exception? deleteFailure;
+        try
+        {
+            constructorFailure = Record.Exception(() => new PakAssetSource(pak.Path, tempRoot: tempRoot));
+            leftoverFolders = Directory.GetDirectories(tempRoot);
+            deleteFailure = Record.Exception(() => File.Delete(pak.Path));
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
 
         Assert.NotNull(constructorFailure);
         Assert.Empty(leftoverFolders);

@@ -16,12 +16,12 @@ public class PakWorkerCrashRecoveryTests
     [Fact]
     public void ReadOriginalBytes_MagicCrashEntry_ThrowsInsteadOfKillingTheTestHost()
     {
-        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]>
         {
             ["Foo.uasset"] = Encoding.UTF8.GetBytes("foo"),
         });
 
-        using var source = new PakAssetSource(pakPath);
+        using var source = new PakAssetSource(pak.Path);
 
         // The magic entry fail-fasts the worker instead of returning bytes - proving the
         // exception type itself (not a specific exit code, which varies by runtime/OS for
@@ -34,13 +34,13 @@ public class PakWorkerCrashRecoveryTests
     [Fact]
     public void ReadOriginalBytes_AfterACrashedEntry_StillSucceedsForADifferentEntryInTheSamePak()
     {
-        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]>
         {
             ["Foo.uasset"] = Encoding.UTF8.GetBytes("foo-bytes"),
             ["Bar.uasset"] = Encoding.UTF8.GetBytes("bar-bytes"),
         });
 
-        using var source = new PakAssetSource(pakPath);
+        using var source = new PakAssetSource(pak.Path);
 
         Assert.Throws<PakWorkerCrashedException>(() => source.ReadOriginalBytes("__TEST_CRASH__"));
 
@@ -61,7 +61,7 @@ public class PakWorkerCrashRecoveryTests
         // handle in isolation, above): a bad entry mid-batch is recorded as a failure, and
         // every other entry - both before and after it in iteration order - still lands on
         // disk, rather than the whole Unpack aborting partway through.
-        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]>
         {
             ["Foo.uasset"] = Encoding.UTF8.GetBytes("foo-bytes"),
             ["__TEST_CRASH__"] = Encoding.UTF8.GetBytes("never seen"),
@@ -71,7 +71,7 @@ public class PakWorkerCrashRecoveryTests
 
         try
         {
-            using var source = new PakAssetSource(pakPath);
+            using var source = new PakAssetSource(pak.Path);
             var result = PakUnpacker.Unpack(source, destination, cancellationToken: TestContext.Current.CancellationToken);
 
             Assert.Equal(2, result.SucceededCount);
@@ -84,7 +84,6 @@ public class PakWorkerCrashRecoveryTests
         }
         finally
         {
-            File.Delete(pakPath);
             if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
         }
     }
