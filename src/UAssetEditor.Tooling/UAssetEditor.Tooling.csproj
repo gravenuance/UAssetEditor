@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <InternalsVisibleTo Include="UAssetEditor.Cli" />
     <InternalsVisibleTo Include="UAssetEditor.Mcp" />
     <InternalsVisibleTo Include="UAssetEditor.Core.Tests" />
