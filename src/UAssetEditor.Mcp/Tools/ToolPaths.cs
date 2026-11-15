@@ -84,10 +84,10 @@ internal static class ToolPaths
         if (Placed(() => FinalPaths.SameFile(first, second))) throw new McpException($"{firstName} and {secondName} are the same file.");
     }
 
-    /// <summary><see cref="FinalPaths.ResolveAll"/> for a tool.</summary>
-    public static IReadOnlyList<string> ResolveAll(IEnumerable<string> paths) => Placed(() => FinalPaths.ResolveAll(paths));
+    /// <summary><see cref="FinalPaths.Resolve"/> for a tool.</summary>
+    public static string Resolve(string path) => Placed(() => FinalPaths.Resolve(path));
 
-    // An unplaceable path is reported by ToolErrorFilter as it is; any other I/O failure of the resolution (a path too long) becomes a tool error here.
+    // Wraps only the call itself. An unplaceable path is reported by ToolErrorFilter as it is; any other I/O failure of the resolution (a path too long) becomes a tool error here.
     private static T Placed<T>(Func<T> resolve)
     {
         try

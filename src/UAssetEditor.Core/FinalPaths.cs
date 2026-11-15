@@ -19,104 +19,55 @@ public static class FinalPaths
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        return Placer.ForThisSystem().Resolve(Path.GetFullPath(path));
-    }
-
-    /// <summary><see cref="Resolve"/> for many paths at once: the links above a folder are looked up once, however many paths share it.</summary>
-    public static IReadOnlyList<string> ResolveAll(IEnumerable<string> paths)
-    {
-        ArgumentNullException.ThrowIfNull(paths);
-
-        var placer = Placer.ForThisSystem();
-        return [.. paths.Select(path =>
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(path);
-            return placer.Resolve(Path.GetFullPath(path));
-        })];
+        return ResolveFull(Path.GetFullPath(path), OperatingSystem.IsWindows() ? FinalPathOfHandle : null, LongPathOf, 0);
     }
 
     /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying.</summary>
     internal readonly record struct HandleLookup(string? FinalPath, int Error);
 
-    /// <summary>Places paths. A null <paramref name="lookup"/> follows the links part by part (other systems); the Windows
-    /// lookup asks the file system instead. The other functions are seams for the tests.</summary>
-    internal sealed class Placer(Func<string, HandleLookup>? lookup, Func<string, string?>? linkTargetOf = null, Func<string, string?>? longPathOf = null)
+    // A null lookup follows the links part by part (other systems); the Windows lookup asks the file system instead.
+    private static string ResolveFull(string full, Func<string, HandleLookup>? lookup, Func<string, string?> longPathOf, int depth)
     {
-        private readonly Func<string, string?> _linkTargetOf = linkTargetOf ?? LinkTargetOf;
-        private readonly Func<string, string?> _longPathOf = longPathOf ?? LongPathOf;
-        private readonly Dictionary<string, bool> _linkInChain = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
-
-        public static Placer ForThisSystem() => new(OperatingSystem.IsWindows() ? FinalPathOfHandle : null);
-
-        public string Resolve(string full, int depth = 0)
+        var existing = full;
+        var tail = new Stack<string>();
+        while (!Path.Exists(existing))
         {
-            var existing = full;
-            var tail = new Stack<string>();
-            while (!Path.Exists(existing))
-            {
-                var parent = Path.GetDirectoryName(existing);
-                if (parent == null) return full; // not even the root exists (a drive that is not there): nothing to resolve
-                tail.Push(Path.GetFileName(existing));
-                existing = parent;
-            }
-
-            var resolved = lookup == null ? ResolveLinks(existing, _linkTargetOf) : ResolveExisting(existing, depth);
-            while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
-            return resolved;
+            var parent = Path.GetDirectoryName(existing);
+            if (parent == null) return full; // not even the root exists (a drive that is not there): nothing to resolve
+            tail.Push(Path.GetFileName(existing));
+            existing = parent;
         }
 
-        /// <summary>Where an existing path lands according to the lookup. When the file system cannot say and a link is in the
-        /// path, the path is refused rather than judged by its name: a link to an offline share or a loop would pass for a
-        /// path inside any folder its own name sits in.</summary>
-        public string ResolveExisting(string existing, int depth = 0)
+        var resolved = lookup == null ? ResolveLinks(existing, LinkTargetOf) : ResolveExisting(existing, lookup, longPathOf, depth);
+        while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
+        return resolved;
+    }
+
+    /// <summary>Where an existing path lands according to <paramref name="lookup"/>. A path the file system cannot place is
+    /// refused with the reason, never judged by its name: a link to an offline share or a loop would pass for a path inside
+    /// any folder its own name sits in. The two exceptions are a link whose target is missing and a volume that cannot report final paths.</summary>
+    internal static string ResolveExisting(string existing, Func<string, HandleLookup> lookup, Func<string, string?>? longPathOf = null, int depth = 0)
+    {
+        longPathOf ??= LongPathOf;
+        var found = lookup(existing);
+        if (found.FinalPath is { } final) return final;
+
+        // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
+        // where a write through it would. The target's own existing part is placed in turn, so its case and short names match.
+        if (found.Error is ErrorFileNotFound or ErrorPathNotFound)
         {
-            var found = (lookup ?? throw new InvalidOperationException("This system has no handle lookup."))(existing);
-            if (found.FinalPath is { } final) return final;
-
-            // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
-            // where a write through it would. The target's own existing part is placed in turn, so its case and short names match.
-            if (found.Error is ErrorFileNotFound or ErrorPathNotFound)
-            {
-                var followed = ResolveLinks(existing, _linkTargetOf);
-                if (string.Equals(followed, existing, PathComparison)) return followed;
-                return depth >= MaxLinkHops ? throw PathNotPlaceableException.LinkLoop(existing) : Resolve(followed, depth + 1);
-            }
-
-            // No link, so the path cannot lead anywhere but where it reads (a RAM disk, a locked file): the real write reports its own error.
-            if (!HasLinkInChain(existing)) return WithLongNames(existing);
-
-            throw found.Error == ErrorCantResolveFilename
-                ? PathNotPlaceableException.LinkLoop(existing) // what a link loop reports
-                : PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
+            var followed = ResolveLinks(existing, LinkTargetOf);
+            if (string.Equals(followed, existing, PathComparison)) throw PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
+            return depth >= MaxLinkHops ? throw PathNotPlaceableException.LinkLoop(existing) : ResolveFull(followed, lookup, longPathOf, depth + 1);
         }
 
-        // Without a handle an 8.3 name cannot be told from a long one by its spelling, so one that stays unexpanded is refused.
-        private string WithLongNames(string existing)
-        {
-            var full = Path.GetFullPath(existing);
-            if (_longPathOf(full) is { } expanded) return expanded;
-            return full.Contains('~', StringComparison.Ordinal) ? throw PathNotPlaceableException.Unplaceable(existing, "its short (8.3) names cannot be expanded") : full;
-        }
+        // A RAM disk, a VM shared folder or WebDAV share keeps no final paths, so the path stays as written, with its short names written out.
+        if (found.Error is ErrorInvalidFunction or ErrorNotSupported)
+            return longPathOf(Path.GetFullPath(existing)) ?? throw PathNotPlaceableException.Unplaceable(existing, "its long name cannot be read");
 
-        /// <summary>True when <paramref name="path"/> or a folder above it is a symbolic link or junction (a mark that is not
-        /// one, such as a OneDrive placeholder, does not count); one that cannot be read counts as one. Remembered per folder.</summary>
-        private bool HasLinkInChain(string path)
-        {
-            if (Path.GetDirectoryName(path) is not { } parent) return false; // the root
-            if (_linkInChain.TryGetValue(path, out var known)) return known;
-
-            bool isLink;
-            try
-            {
-                isLink = _linkTargetOf(path) != null || HasLinkInChain(parent);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                isLink = true;
-            }
-            _linkInChain[path] = isLink;
-            return isLink;
-        }
+        throw found.Error == ErrorCantResolveFilename
+            ? PathNotPlaceableException.LinkLoop(existing) // what a link loop reports
+            : PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
     }
 
     /// <summary>True when both names reach the same file: they resolve to one path, or both exist and share a volume and file id (hard links).</summary>
@@ -213,6 +164,8 @@ public static class FinalPaths
 
     private const int ErrorFileNotFound = 2;
     private const int ErrorPathNotFound = 3;
+    private const int ErrorInvalidFunction = 1;
+    private const int ErrorNotSupported = 50;
     private const int ErrorCantResolveFilename = 1921;
 
     private static HandleLookup FinalPathOfHandle(string path)

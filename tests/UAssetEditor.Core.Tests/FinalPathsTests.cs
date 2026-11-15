@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 namespace UAssetEditor.Core.Tests;
 
 /// <summary>Real links on a real volume: the checks are about what Windows resolves, which no fake reproduces. The link
@@ -139,130 +141,57 @@ public sealed class FinalPathsTests : IDisposable
 
     [Theory]
     [InlineData(5)] // ERROR_ACCESS_DENIED
+    [InlineData(32)] // ERROR_SHARING_VIOLATION
     [InlineData(53)] // ERROR_BAD_NETPATH: a link to a share whose host is offline
     [InlineData(67)] // ERROR_BAD_NET_NAME: a link to a share that is gone
     [InlineData(1921)] // ERROR_CANT_RESOLVE_FILENAME
-    public void ResolveExisting_RefusesALinkedPathTheFileSystemCouldNotPlace_InsteadOfTrustingItsName(int error)
+    public void ResolveExisting_RefusesAPathTheFileSystemCouldNotPlace_NamingTheCause(int error)
     {
-        var real = Path.Combine(_dir, "real");
-        Directory.CreateDirectory(Path.Combine(real, "sub"));
-        var link = Path.Combine(_dir, "link");
-        _links.MakeFolderLink(link, real);
-        var viaLink = Path.Combine(link, "sub");
+        var plain = Path.Combine(_dir, "plain");
+        Directory.CreateDirectory(plain);
 
-        var refused = Assert.Throws<PathNotPlaceableException>(() => Failing(error).ResolveExisting(viaLink));
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(plain, Failing(error)));
 
-        Assert.Contains(viaLink, refused.Message, StringComparison.Ordinal);
+        Assert.Contains(plain, refused.Message, StringComparison.Ordinal);
+        if (error != 1921) Assert.Contains(Marshal.GetPInvokeErrorMessage(error), refused.Message, StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData(1)] // ERROR_INVALID_FUNCTION: a RAM disk
-    [InlineData(5)] // ERROR_ACCESS_DENIED
-    [InlineData(32)] // ERROR_SHARING_VIOLATION
     [InlineData(50)] // ERROR_NOT_SUPPORTED: a VM shared folder or WebDAV
-    [InlineData(53)]
-    [InlineData(1921)]
-    public void ResolveExisting_KeepsAPathWithNoLinkInItAsWritten_SoTheRealWriteReportsItsOwnError(int error)
-    {
-        var plain = Path.Combine(_dir, "plain", "sub");
-        Directory.CreateDirectory(plain);
-
-        Assert.Equal(plain, Failing(error, linkTargetOf: NoLinks, longPathOf: AsWritten).ResolveExisting(plain));
-    }
-
-    [Fact]
-    public void ResolveExisting_WritesOutTheShortNamesOfALinkFreePath_WhenTheLookupFails()
+    public void ResolveExisting_KeepsThePathAsWrittenWithItsShortNamesWrittenOut_WhenTheVolumeReportsNoFinalPaths(int error)
     {
         // The long name stands in for what GetLongPathName returns for the short one.
         var shortSpelling = Path.Combine(_dir, "MODSOU~1", "out.pak");
 
-        var resolved = Failing(5, linkTargetOf: NoLinks, longPathOf: path => path.Replace("MODSOU~1", "Mod Source", StringComparison.Ordinal)).ResolveExisting(shortSpelling);
+        var resolved = FinalPaths.ResolveExisting(shortSpelling, Failing(error), path => path.Replace("MODSOU~1", "Mod Source", StringComparison.Ordinal));
 
         Assert.Equal(Path.Combine(_dir, "Mod Source", "out.pak"), resolved);
     }
 
     [Fact]
-    public void ResolveExisting_RefusesAShortNameItCannotWriteOut_ButNotALongOne()
+    public void ResolveExisting_RefusesAPathWhoseLongNameCannotBeRead_OnAVolumeThatReportsNoFinalPaths()
     {
-        var shortSpelling = Path.Combine(_dir, "MODSOU~1");
-        var placer = Failing(5, linkTargetOf: NoLinks, longPathOf: _ => null);
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(_dir, Failing(1), _ => null));
 
-        var refused = Assert.Throws<PathNotPlaceableException>(() => placer.ResolveExisting(shortSpelling));
-
-        Assert.Contains(shortSpelling, refused.Message, StringComparison.Ordinal);
-        Assert.Equal(_dir, placer.ResolveExisting(_dir));
+        Assert.Contains(_dir, refused.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ResolveExisting_GivesAShortNameItsLongForm_WhenTheLookupFailsOnTheRealVolume()
+    public void ResolveExisting_GivesAShortNameItsLongForm_WhenTheVolumeReportsNoFinalPaths_OnTheRealVolume()
     {
         if (!OperatingSystem.IsWindows()) return;
         var longFolder = Path.Combine(_dir, "A Folder With A Long Name");
         Directory.CreateDirectory(longFolder);
-        var shortFolder = TestLinks.ShortName(longFolder);
 
-        Assert.Equal(FinalPaths.Resolve(longFolder), Failing(5, linkTargetOf: NoLinks).ResolveExisting(shortFolder));
+        Assert.Equal(FinalPaths.Resolve(longFolder), FinalPaths.ResolveExisting(TestLinks.ShortName(longFolder), Failing(1)));
     }
 
-    [Fact]
-    public void ResolveExisting_DoesNotCountAMarkThatIsNotALink_AsALink()
-    {
-        // A OneDrive placeholder or a deduplicated file carries a reparse tag but has no link target.
-        var real = Path.Combine(_dir, "real");
-        Directory.CreateDirectory(real);
-        var marked = Path.Combine(_dir, "marked");
-        _links.MakeFolderLink(marked, real);
+    private static Func<string, FinalPaths.HandleLookup> Failing(int error) => _ => new FinalPaths.HandleLookup(null, error);
 
-        Assert.Equal(marked, Failing(5, linkTargetOf: NoLinks, longPathOf: AsWritten).ResolveExisting(marked));
-    }
-
-    [Fact]
-    public void ResolveExisting_RefusesWhenItCannotTellWhetherAFolderIsALink()
-    {
-        var plain = Path.Combine(_dir, "plain");
-        Directory.CreateDirectory(plain);
-
-        Assert.Throws<PathNotPlaceableException>(() => Failing(5, linkTargetOf: _ => throw new UnauthorizedAccessException("denied"), longPathOf: AsWritten).ResolveExisting(plain));
-    }
-
-    [Fact]
-    public void ResolveExisting_RefusesAsALoop_WhenFollowingAMissingTargetKeepsMovingThePath()
-    {
-        var link = Path.Combine(_dir, "link");
-        _links.MakeFolderLink(link, Path.Combine(_dir, "outside", "missing"));
-        var placer = Failing(2);
-
-        Assert.Equal(Path.Combine(_dir, "outside", "missing"), placer.ResolveExisting(link));
-        Assert.Throws<PathNotPlaceableException>(() => placer.ResolveExisting(link, depth: 40));
-    }
-
-    [Fact]
-    public void Resolve_ChecksTheLinksAboveAFolderOnce_HoweverManyPathsShareIt()
-    {
-        var folder = Path.Combine(_dir, "plain", "sub");
-        Directory.CreateDirectory(folder);
-        var checks = 0;
-        string? Counted(string path)
-        {
-            checks++;
-            return null;
-        }
-        var placer = Failing(5, linkTargetOf: Counted, longPathOf: AsWritten);
-
-        placer.Resolve(Path.Combine(folder, "file0.uasset"));
-        var afterFirst = checks;
-        for (var i = 1; i < 50; i++) placer.Resolve(Path.Combine(folder, $"file{i}.uasset"));
-
-        Assert.True(afterFirst > 0);
-        Assert.Equal(afterFirst, checks);
-    }
-
-    private static FinalPaths.Placer Failing(int error, Func<string, string?>? linkTargetOf = null, Func<string, string?>? longPathOf = null) =>
-        new(_ => new FinalPaths.HandleLookup(null, error), linkTargetOf, longPathOf);
-
-    private static string? NoLinks(string path) => null;
-
-    private static string? AsWritten(string path) => path;
+    // Fails only for one path, as the file system does for a link whose target is missing.
+    private static Func<string, FinalPaths.HandleLookup> FailingAt(string failing, int error) =>
+        path => path == failing ? new FinalPaths.HandleLookup(null, error) : new FinalPaths.HandleLookup(path, 0);
 
     [Theory]
     [InlineData(true)]
@@ -299,13 +228,34 @@ public sealed class FinalPathsTests : IDisposable
         var link = Path.Combine(_dir, "link");
         _links.MakeFolderLink(link, target);
 
-        Assert.Equal(target, Failing(error).ResolveExisting(link));
+        Assert.Equal(target, FinalPaths.ResolveExisting(link, FailingAt(link, error)));
+    }
+
+    [Fact]
+    public void ResolveExisting_RefusesWhenThePartItFollowedToStillCannotBePlaced()
+    {
+        var link = Path.Combine(_dir, "link");
+        _links.MakeFolderLink(link, Path.Combine(_dir, "outside", "missing"));
+        var plain = Path.Combine(_dir, "plain");
+        Directory.CreateDirectory(plain);
+
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(link, Failing(2)));
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(plain, Failing(2)));
+    }
+
+    [Fact]
+    public void ResolveExisting_RefusesAsALoop_WhenFollowingAMissingTargetKeepsMovingThePath()
+    {
+        var link = Path.Combine(_dir, "link");
+        _links.MakeFolderLink(link, Path.Combine(_dir, "outside", "missing"));
+
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(link, FailingAt(link, 2), depth: 40));
     }
 
     [Fact]
     public void ResolveExisting_GivesWhatTheFileSystemSaid_WhenItCouldPlaceThePath()
     {
-        Assert.Equal(@"D:\Real\Place", new FinalPaths.Placer(_ => new FinalPaths.HandleLookup(@"D:\Real\Place", 0)).ResolveExisting(_dir));
+        Assert.Equal(@"D:\Real\Place", FinalPaths.ResolveExisting(_dir, _ => new FinalPaths.HandleLookup(@"D:\Real\Place", 0)));
     }
 
     [Fact]

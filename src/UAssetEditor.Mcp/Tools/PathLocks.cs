@@ -28,7 +28,7 @@ internal static class PathLocks
         ArgumentNullException.ThrowIfNull(work);
 
         // Resolved, so two names for one file (through a junction or an 8.3 name) share one lock.
-        var keys = ToolPaths.ResolveAll(paths).Distinct(KeyComparison).Order(KeyComparison).ToList();
+        var keys = paths.Select(ToolPaths.Resolve).Distinct(KeyComparison).Order(KeyComparison).ToList();
         var interested = new List<(string Key, Gate Gate)>();
         var acquired = new List<Gate>();
         try
