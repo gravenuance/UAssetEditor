@@ -217,8 +217,8 @@ public sealed class ProtocolTests : IAsyncLifetime
     [Fact]
     public async Task ASearchOverAFolder_ReportsProgressToTheClient()
     {
-        AssetFixtures.WriteSample(_folder, "A.uasset");
-        AssetFixtures.WriteSample(_folder, "B.uasset");
+        const int files = 40;
+        for (var i = 0; i < files; i++) AssetFixtures.WriteSample(_folder, $"A{i}.uasset");
         var progress = new CollectedProgress();
 
         var result = await Client.CallToolAsync(
@@ -229,12 +229,14 @@ public sealed class ProtocolTests : IAsyncLifetime
 
         Assert.NotEqual(true, result.IsError);
         using var json = JsonDocument.Parse(Text(result));
-        Assert.Equal(2, json.RootElement.GetProperty("total").GetInt32());
-        // Notifications travel on their own path: give the last ones a moment to land.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!progress.Values.Any(p => p.Progress == 2 && p.Total == 2) && DateTime.UtcNow < deadline)
-            await Task.Delay(20, TestContext.Current.CancellationToken);
-        Assert.Contains(progress.Values, p => p.Progress == 2 && p.Total == 2);
+        Assert.Equal(files, json.RootElement.GetProperty("total").GetInt32());
+        // Notifications are sent without waiting, and the client drops any that arrive after the call's result, so the
+        // last ones are not guaranteed (CI run 43761359040 lost them all with 2 files). They can also arrive out of the
+        // order the server sent them in (see TODO.md). With 40 files the early ones land before the result: check that
+        // some arrived, each within the total.
+        var values = progress.Values;
+        Assert.NotEmpty(values);
+        Assert.All(values, p => Assert.True(p.Total == files && p.Progress >= 1 && p.Progress <= files));
     }
 
     [Fact]
