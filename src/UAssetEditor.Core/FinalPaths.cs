@@ -14,6 +14,7 @@ public static class FinalPaths
     /// The full path with every link, junction, 8.3 short name and letter case in the part that exists resolved to what is on
     /// disk; a tail that does not exist yet (a file about to be created) is appended as given.
     /// </summary>
+    /// <exception cref="IOException">A link in the existing part loops or leads somewhere the file system cannot place (an offline share): the path is refused rather than judged by its name.</exception>
     public static string Resolve(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -29,13 +30,29 @@ public static class FinalPaths
             existing = parent;
         }
 
-        // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
-        // where a write through it would, rather than trusting the link's own name. Any other failure (a link cycle, no
-        // access) leaves the path as written, and the write through it fails the same way.
-        var resolved = !OperatingSystem.IsWindows() ? ResolveLinks(existing)
-            : FinalPathOfHandle(existing, out var targetMissing) ?? (targetMissing ? ResolveLinks(existing) : existing);
+        var resolved = OperatingSystem.IsWindows() ? ResolveExisting(existing, FinalPathOfHandle) : ResolveLinks(existing);
         while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
         return resolved;
+    }
+
+    /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying.</summary>
+    internal readonly record struct HandleLookup(string? FinalPath, int Error);
+
+    /// <summary>Where an existing path lands according to <paramref name="lookup"/>. A path the file system cannot place is
+    /// refused, never returned as written: a link in it that points somewhere unreachable (an offline share, a link loop)
+    /// would pass for a path inside any folder its own name sits in.</summary>
+    internal static string ResolveExisting(string existing, Func<string, HandleLookup> lookup)
+    {
+        var found = lookup(existing);
+        if (found.FinalPath is { } final) return final;
+
+        // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
+        // where a write through it would, rather than trusting the link's own name.
+        if (found.Error is ErrorFileNotFound or ErrorPathNotFound) return ResolveLinks(existing);
+
+        throw found.Error == ErrorCantResolveFilename
+            ? new IOException($"Too many levels of links resolving {existing}.") // what a link loop reports
+            : new IOException($"Cannot tell where {existing} lands, so it is refused: {Marshal.GetPInvokeErrorMessage(found.Error)}");
     }
 
     /// <summary>True when both names reach the same file: they resolve to one path, or both exist and share a volume and file id (hard links).</summary>
@@ -102,19 +119,19 @@ public static class FinalPaths
 
     private const int ErrorFileNotFound = 2;
     private const int ErrorPathNotFound = 3;
+    private const int ErrorCantResolveFilename = 1921;
 
-    private static string? FinalPathOfHandle(string path, out bool targetMissing)
+    private static HandleLookup FinalPathOfHandle(string path)
     {
         using var handle = OpenForQuery(path);
-        targetMissing = handle.IsInvalid && Marshal.GetLastPInvokeError() is ErrorFileNotFound or ErrorPathNotFound;
-        if (handle.IsInvalid) return null;
+        if (handle.IsInvalid) return new HandleLookup(null, Marshal.GetLastPInvokeError());
 
         var buffer = new char[1024];
         while (true)
         {
             var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, 0);
-            if (length == 0) return null;
-            if (length < buffer.Length) return StripExtendedPrefix(new string(buffer, 0, (int)length));
+            if (length == 0) return new HandleLookup(null, Marshal.GetLastPInvokeError());
+            if (length < buffer.Length) return new HandleLookup(StripExtendedPrefix(new string(buffer, 0, (int)length)), 0);
             buffer = new char[length + 1];
         }
     }

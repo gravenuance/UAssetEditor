@@ -137,18 +137,47 @@ public sealed class FinalPathsTests : IDisposable
         Assert.False(FinalPaths.IsInside(Path.Combine(link, "a.uasset"), destination));
     }
 
-    [Fact]
-    public void Resolve_OfALinkCycle_GivesThePathAsWritten_RatherThanThrowing()
+    [Theory]
+    [InlineData(5)] // ERROR_ACCESS_DENIED
+    [InlineData(53)] // ERROR_BAD_NETPATH: a link to a share whose host is offline
+    [InlineData(67)] // ERROR_BAD_NET_NAME: a link to a share that is gone
+    [InlineData(1921)] // ERROR_CANT_RESOLVE_FILENAME
+    public void ResolveExisting_RefusesAPathTheFileSystemCouldNotPlace_InsteadOfTrustingItsName(int error)
     {
-        if (!OperatingSystem.IsWindows()) return;
+        var refused = Assert.Throws<IOException>(() => FinalPaths.ResolveExisting(_dir, _ => new FinalPaths.HandleLookup(null, error)));
+
+        Assert.Contains(_dir, refused.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(2)] // ERROR_FILE_NOT_FOUND
+    [InlineData(3)] // ERROR_PATH_NOT_FOUND
+    public void ResolveExisting_FollowsTheLinksByName_WhenTheTargetIsMissing(int error)
+    {
+        var target = Path.Combine(_dir, "outside", "missing");
+        var link = Path.Combine(_dir, "link");
+        _links.MakeFolderLink(link, target);
+
+        Assert.Equal(target, FinalPaths.ResolveExisting(link, _ => new FinalPaths.HandleLookup(null, error)));
+    }
+
+    [Fact]
+    public void ResolveExisting_GivesWhatTheFileSystemSaid_WhenItCouldPlaceThePath()
+    {
+        Assert.Equal(@"D:\Real\Place", FinalPaths.ResolveExisting(_dir, _ => new FinalPaths.HandleLookup(@"D:\Real\Place", 0)));
+    }
+
+    [Fact]
+    public void Resolve_OfALinkCycle_RefusesWithAClearError_OnEveryPlatform()
+    {
         var first = Path.Combine(_dir, "first");
         var second = Path.Combine(_dir, "second");
-        _links.MakeJunction(first, second);
-        _links.MakeJunction(second, first);
+        _links.MakeFolderLink(first, second);
+        _links.MakeFolderLink(second, first);
 
-        var resolved = FinalPaths.Resolve(Path.Combine(first, "a.pak"));
+        var error = Assert.ThrowsAny<IOException>(() => FinalPaths.Resolve(Path.Combine(first, "a.pak")));
 
-        Assert.Equal(Path.Combine(FinalPaths.Resolve(_dir), "first", "a.pak"), resolved);
+        Assert.Contains("Too many levels of links", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

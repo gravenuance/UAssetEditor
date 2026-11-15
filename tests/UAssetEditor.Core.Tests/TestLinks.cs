@@ -15,6 +15,13 @@ public sealed class TestLinks : IDisposable
         _junctions.Add(link);
     }
 
+    /// <summary>A link to a folder that needs no privilege: a junction on Windows, a symbolic link elsewhere.</summary>
+    public void MakeFolderLink(string link, string target)
+    {
+        if (OperatingSystem.IsWindows()) MakeJunction(link, target);
+        else Directory.CreateSymbolicLink(link, target);
+    }
+
     public static void MakeHardLink(string link, string target) => RunMklink("/H", link, target);
 
     /// <summary>The 8.3 name of an existing path, or the path unchanged when the volume keeps no short names.</summary>
