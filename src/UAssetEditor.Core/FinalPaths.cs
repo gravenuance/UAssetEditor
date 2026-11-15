@@ -14,7 +14,8 @@ public static class FinalPaths
     /// The full path with every link, junction, 8.3 short name and letter case in the part that exists resolved to what is on
     /// disk; a tail that does not exist yet (a file about to be created) is appended as given.
     /// </summary>
-    /// <exception cref="PathNotPlaceableException">The file system could not say where the existing part lands (a link loop, an offline share, no access, a file in use): the path is refused with that reason rather than judged by its name. Only a link whose target is missing and a volume that reports no final paths are placed another way.</exception>
+    /// <remarks>Only DOS (<c>C:\...</c>) and UNC (<c>\\server\share\...</c>) forms come back, so two paths compare by their text.</remarks>
+    /// <exception cref="PathNotPlaceableException">The path is refused, with the reason, rather than judged by its name, when the file system could not say where its existing part lands: a link loop or too many links, an offline share, no access, a file in use, a volume with no drive letter. Only a link whose target is missing and a volume that reports no final paths are placed another way.</exception>
     public static string Resolve(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -22,9 +23,13 @@ public static class FinalPaths
         return ResolveFull(Path.GetFullPath(path), OperatingSystem.IsWindows() ? FinalPathOfHandle : null, LongPathOf, new LinkBudget());
     }
 
-    /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying and
-    /// whether a handle to the path did open before it failed.</summary>
-    internal readonly record struct HandleLookup(string? FinalPath, int Error, bool Opened = false);
+    /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying.</summary>
+    internal readonly record struct HandleLookup(string? FinalPath, int Error);
+
+    /// <summary>The error a lookup reports for a path whose handle opened but whose volume has no drive letter, so no DOS name (a made-up code, not a Win32 one).</summary>
+    internal const int VolumeHasNoDriveLetter = -1;
+
+    private const string VolumeGuidPrefix = @"\\?\Volume{";
 
     /// <summary>The links one resolution may follow in all. Every link-following pass and the re-placing of its result share
     /// one budget, so a chain that runs across them is bounded too.</summary>
@@ -39,7 +44,7 @@ public static class FinalPaths
     }
 
     // A null lookup follows the links part by part (other systems); the Windows lookup asks the file system instead.
-    private static string ResolveFull(string full, Func<string, bool, HandleLookup>? lookup, Func<string, string?> longPathOf, LinkBudget budget)
+    internal static string ResolveFull(string full, Func<string, HandleLookup>? lookup, Func<string, string?> longPathOf, LinkBudget budget)
     {
         var existing = full;
         var tail = new Stack<string>();
@@ -52,25 +57,24 @@ public static class FinalPaths
         }
 
         var resolved = lookup == null ? ResolveLinks(existing, LinkTargetOf, budget) : ResolveExisting(existing, lookup, longPathOf, budget);
+        if (resolved.StartsWith(VolumeGuidPrefix, StringComparison.OrdinalIgnoreCase)) throw PathNotPlaceableException.Unplaceable(existing, NoDriveLetter);
         while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
         return resolved;
     }
 
-    /// <summary>Where an existing path lands according to <paramref name="lookup"/>, which is asked for the DOS form of the path
-    /// or, when <c>guidForm</c> is set, the volume-GUID form. A path the file system cannot place is refused with the reason,
-    /// never judged by its name: a link to an offline share or a loop would pass for a path inside any folder its own name
-    /// sits in. The exceptions are a link whose target is missing, a volume that cannot report final paths and a volume
-    /// mounted only at a folder.</summary>
-    internal static string ResolveExisting(string existing, Func<string, bool, HandleLookup> lookup, Func<string, string?>? longPathOf = null, LinkBudget? budget = null)
+    private const string NoDriveLetter = "it is on a volume with no drive letter";
+
+    /// <summary>Where an existing path lands according to <paramref name="lookup"/>. A path the file system cannot place is
+    /// refused with the reason, never judged by its name: a link to an offline share or a loop would pass for a path inside
+    /// any folder its own name sits in. The exceptions are a link whose target is missing and a volume that cannot report
+    /// final paths; a volume with no drive letter has no DOS name and is refused. Every re-entry spends a hop.</summary>
+    internal static string ResolveExisting(string existing, Func<string, HandleLookup> lookup, Func<string, string?>? longPathOf = null, LinkBudget? budget = null)
     {
         longPathOf ??= LongPathOf;
         budget ??= new LinkBudget();
-        var found = lookup(existing, false);
-
-        // A volume with no drive letter has no DOS form (path not found, though the handle opened); its GUID form is
-        // the same for every path on that volume, so paths on it still compare.
-        if (found.FinalPath == null && found.Opened && found.Error == ErrorPathNotFound) found = lookup(existing, true);
+        var found = lookup(existing);
         if (found.FinalPath is { } final) return final;
+        if (found.Error == VolumeHasNoDriveLetter) throw PathNotPlaceableException.Unplaceable(existing, NoDriveLetter);
 
         // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
         // where a write through it would. The target's own existing part is placed in turn, so its case and short names match.
@@ -78,12 +82,20 @@ public static class FinalPaths
         {
             var followed = ResolveLinks(existing, LinkTargetOf, budget);
             if (string.Equals(followed, existing, PathComparison)) throw PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
+            budget.Spend(existing);
             return ResolveFull(followed, lookup, longPathOf, budget);
         }
 
-        // A RAM disk, a VM shared folder or WebDAV share keeps no final paths: the links are followed by name, then the short names written out.
+        // A RAM disk, a VM shared folder or WebDAV share keeps no final paths: the links are followed by name, a target
+        // that leads elsewhere is placed in turn, and the short names of what stays are written out.
         if (found.Error is ErrorInvalidFunction or ErrorNotSupported)
-            return longPathOf(ResolveLinks(existing, LinkTargetOf, budget)) ?? throw PathNotPlaceableException.Unplaceable(existing, "its long name cannot be read");
+        {
+            var followed = ResolveLinks(existing, LinkTargetOf, budget);
+            if (string.Equals(followed, existing, PathComparison))
+                return longPathOf(followed) ?? throw PathNotPlaceableException.Unplaceable(existing, "its long name cannot be read");
+            budget.Spend(existing);
+            return ResolveFull(followed, lookup, longPathOf, budget);
+        }
 
         throw found.Error == ErrorCantResolveFilename
             ? PathNotPlaceableException.LinkLoop(existing) // what a link loop reports
@@ -145,16 +157,7 @@ public static class FinalPaths
     /// <summary>The path with its 8.3 names written out, or null when the file system cannot say; other systems have none, so the path itself.</summary>
     private static string? LongPathOf(string path)
     {
-        if (!OperatingSystem.IsWindows()) return path;
-
-        var buffer = new char[1024];
-        while (true)
-        {
-            var length = GetLongPathNameW(path, buffer, (uint)buffer.Length);
-            if (length == 0) return null;
-            if (length < buffer.Length) return new string(buffer, 0, (int)length);
-            buffer = new char[length + 1];
-        }
+        return OperatingSystem.IsWindows() ? ReadChars(buffer => GetLongPathNameW(path, buffer, (uint)buffer.Length)) : path;
     }
 
     // Reading a link can fail for want of access (Unix) or on a damaged one; either way the path is refused, as a tool error.
@@ -187,34 +190,35 @@ public static class FinalPaths
     private const int ErrorNotSupported = 50;
     private const int ErrorCantResolveFilename = 1921;
 
-    private const uint VolumeNameDos = 0;
-    private const uint VolumeNameGuid = 1;
-
-    private static HandleLookup FinalPathOfHandle(string path, bool guidForm)
+    private static HandleLookup FinalPathOfHandle(string path)
     {
         using var handle = OpenForQuery(path);
         if (handle.IsInvalid) return new HandleLookup(null, Marshal.GetLastPInvokeError());
 
+        if (ReadChars(buffer => GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, 0)) is { } final)
+            return new HandleLookup(StripExtendedPrefix(final), 0);
+
+        // A handle that opened but has no DOS name: the volume has no drive letter.
+        var error = Marshal.GetLastPInvokeError();
+        return new HandleLookup(null, error == ErrorPathNotFound ? VolumeHasNoDriveLetter : error);
+    }
+
+    // The Windows string calls return the length they need when the buffer is too small, and 0 on failure.
+    private static string? ReadChars(Func<char[], uint> call)
+    {
         var buffer = new char[1024];
         while (true)
         {
-            var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, guidForm ? VolumeNameGuid : VolumeNameDos);
-            if (length == 0) return new HandleLookup(null, Marshal.GetLastPInvokeError(), Opened: true);
-
-            if (length >= buffer.Length)
-            {
-                buffer = new char[length + 1];
-                continue;
-            }
-
-            // The GUID form keeps its \\?\Volume{...} prefix: without a drive letter it is the only name the volume has.
-            var found = new string(buffer, 0, (int)length);
-            return new HandleLookup(guidForm ? found : StripExtendedPrefix(found), 0);
+            var length = call(buffer);
+            if (length == 0) return null;
+            if (length < buffer.Length) return new string(buffer, 0, (int)length);
+            buffer = new char[length + 1];
         }
     }
 
     private static string StripExtendedPrefix(string path) =>
-        path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + path[8..]
+        path.StartsWith(VolumeGuidPrefix, StringComparison.OrdinalIgnoreCase) ? path // no DOS form to strip down to: Resolve refuses it
+        : path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + path[8..]
         : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..]
         : path;
 

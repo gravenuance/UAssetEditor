@@ -200,20 +200,44 @@ public sealed class FinalPathsTests : IDisposable
     }
 
     [Fact]
-    public void ResolveExisting_UsesTheVolumeGuidForm_WhenAVolumeMountedAtAFolderHasNoDosForm()
+    public void ResolveExisting_RefusesAVolumeWithNoDriveLetter_NamingIt_InsteadOfCallingItMissing()
     {
-        // Path not found on a handle that did open: the volume has no drive letter.
-        static FinalPaths.HandleLookup Lookup(string path, bool guidForm) =>
-            guidForm ? new FinalPaths.HandleLookup(@"\\?\Volume{0f1e2d3c}\Mods\out", 0) : new FinalPaths.HandleLookup(null, 3, Opened: true);
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(_dir, Failing(FinalPaths.VolumeHasNoDriveLetter)));
 
-        Assert.Equal(@"\\?\Volume{0f1e2d3c}\Mods\out", FinalPaths.ResolveExisting(_dir, Lookup));
+        Assert.Contains("no drive letter", refused.Message, StringComparison.Ordinal);
     }
 
-    private static Func<string, bool, FinalPaths.HandleLookup> Failing(int error) => (_, _) => new FinalPaths.HandleLookup(null, error);
+    [Fact]
+    public void ResolveFull_RefusesAResultInVolumeGuidForm_WhereverItCameFrom()
+    {
+        // Two spellings of one folder would break every comparison of resolved paths, so only DOS and UNC forms leave.
+        var guidForm = new FinalPaths.HandleLookup(@"\\?\Volume{0f1e2d3c}\Mods", 0);
+
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveFull(Path.Combine(_dir, "out.pak"), _ => guidForm, path => path, new FinalPaths.LinkBudget()));
+
+        Assert.Contains("no drive letter", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResolveExisting_PlacesTheTargetOfALinkOnAVolumeThatReportsNoFinalPaths_ThroughTheLookup()
+    {
+        // The target is on a normal volume, so it gets the handle check: here the lookup refuses it.
+        var real = Path.Combine(_dir, "real");
+        Directory.CreateDirectory(real);
+        var link = Path.Combine(_dir, "link");
+        _links.MakeFolderLink(link, real);
+        FinalPaths.HandleLookup Lookup(string path) => string.Equals(path, link, StringComparison.OrdinalIgnoreCase) ? new(null, 1) : new(null, 5);
+
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(link, Lookup, longPathOf: path => path));
+
+        Assert.Contains(real, refused.Message, StringComparison.Ordinal);
+    }
+
+    private static Func<string, FinalPaths.HandleLookup> Failing(int error) => _ => new FinalPaths.HandleLookup(null, error);
 
     // Fails only for one path, as the file system does for a link whose target is missing.
-    private static Func<string, bool, FinalPaths.HandleLookup> FailingAt(string failing, int error) =>
-        (path, _) => string.Equals(path, failing, StringComparison.OrdinalIgnoreCase) ? new FinalPaths.HandleLookup(null, error) : new FinalPaths.HandleLookup(path, 0);
+    private static Func<string, FinalPaths.HandleLookup> FailingAt(string failing, int error) =>
+        path => string.Equals(path, failing, StringComparison.OrdinalIgnoreCase) ? new FinalPaths.HandleLookup(null, error) : new FinalPaths.HandleLookup(path, 0);
 
     [Theory]
     [InlineData(true)]
@@ -273,15 +297,15 @@ public sealed class FinalPathsTests : IDisposable
         var first = Path.Combine(_dir, "first");
         _links.MakeFolderLink(first, second);
 
-        // Two links to follow: the budget has room for them at 38 spent and not at 39.
-        Assert.Equal(Path.Combine(_dir, "outside", "missing"), FinalPaths.ResolveExisting(first, FailingAt(first, 2), budget: new FinalPaths.LinkBudget(spent: 38)));
-        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(first, FailingAt(first, 2), budget: new FinalPaths.LinkBudget(spent: 39)));
+        // Two links to follow and one re-entry to place the result: three hops, which fit at 37 spent and not at 38.
+        Assert.Equal(Path.Combine(_dir, "outside", "missing"), FinalPaths.ResolveExisting(first, FailingAt(first, 2), budget: new FinalPaths.LinkBudget(spent: 37)));
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(first, FailingAt(first, 2), budget: new FinalPaths.LinkBudget(spent: 38)));
     }
 
     [Fact]
     public void ResolveExisting_GivesWhatTheFileSystemSaid_WhenItCouldPlaceThePath()
     {
-        Assert.Equal(@"D:\Real\Place", FinalPaths.ResolveExisting(_dir, (_, _) => new FinalPaths.HandleLookup(@"D:\Real\Place", 0)));
+        Assert.Equal(@"D:\Real\Place", FinalPaths.ResolveExisting(_dir, _ => new FinalPaths.HandleLookup(@"D:\Real\Place", 0)));
     }
 
     [Fact]
