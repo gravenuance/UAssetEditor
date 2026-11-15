@@ -15,10 +15,15 @@ internal static class ToolPaths
     {
         var text = ToolInput.Required(value, name, MaxLength);
         if (text.Any(char.IsControl)) throw new McpException($"{name} contains control characters.");
-        if (OperatingSystem.IsWindows() && IsSeparator(text[0]) && text.Length > 1 && IsSeparator(text[1]))
-            throw new McpException($"{name} must be a local path, not a network share or device path.");
+        if (OperatingSystem.IsWindows() && IsSeparator(text[0]))
+            throw new McpException($"{name} must be a local path on a drive (C:\\...), not a network share or device path.");
         if (!Path.IsPathFullyQualified(text)) throw new McpException($"{name} must be an absolute path.");
-        return Path.GetFullPath(text);
+
+        var full = Path.GetFullPath(text);
+        // Past the drive's colon, a colon names an alternate data stream, which hides a write beside an existing file.
+        if (OperatingSystem.IsWindows() && full.IndexOf(':', 2) >= 0)
+            throw new McpException($"{name} must not contain ':' after the drive letter.");
+        return full;
     }
 
     /// <summary>An existing file; <paramref name="extensions"/> (with the dot) restricts what it may be called.</summary>

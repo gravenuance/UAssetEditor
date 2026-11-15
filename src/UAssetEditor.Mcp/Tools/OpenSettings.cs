@@ -91,7 +91,7 @@ internal sealed class OpenSettings
     }
 
     private static EngineVersion ParseEngineVersion(string text) =>
-        !char.IsDigit(text[0]) && Enum.TryParse<EngineVersion>(text, ignoreCase: true, out var version) && Enum.IsDefined(version)
+        ToolInput.TryOneName<EngineVersion>(text, out var version)
             ? version
             : throw new McpException($"Unknown engineVersion '{Untrusted.Clean(text, 60)}': expected a UAssetAPI EngineVersion name such as VER_UE5_3.");
 

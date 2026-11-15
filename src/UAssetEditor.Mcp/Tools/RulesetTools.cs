@@ -4,7 +4,6 @@ using ModelContextProtocol.Server;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.Games;
-using UAssetEditor.Core.Versioning;
 using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tools;

@@ -9,9 +9,13 @@ internal sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
 }
 
 /// <summary>Forwards a long operation's progress to the client's progress token. About a hundred updates are sent per
-/// run however many items it has, and the last item always is. Reports run on the calling thread, in order.</summary>
+/// run however many items it has, and the last item always is. Parallel workers report from several threads and in any
+/// order, so a step that is not past the last one sent is dropped: MCP progress must only increase.</summary>
 internal sealed class ProgressSink(IProgress<ProgressNotificationValue>? target, string what) : IProgress<(int Done, int Total)>
 {
+    private readonly Lock _lock = new();
+    private int _sent;
+
     public void Report((int Done, int Total) value)
     {
         if (target == null || value.Total <= 0) return;
@@ -19,11 +23,16 @@ internal sealed class ProgressSink(IProgress<ProgressNotificationValue>? target,
         var step = Math.Max(1, value.Total / 100);
         if (value.Done != value.Total && value.Done % step != 0) return;
 
-        target.Report(new ProgressNotificationValue
+        lock (_lock)
         {
-            Progress = value.Done,
-            Total = value.Total,
-            Message = $"{what}: {value.Done} of {value.Total}",
-        });
+            if (value.Done <= _sent) return;
+            _sent = value.Done;
+            target.Report(new ProgressNotificationValue
+            {
+                Progress = value.Done,
+                Total = value.Total,
+                Message = $"{what}: {value.Done} of {value.Total}",
+            });
+        }
     }
 }

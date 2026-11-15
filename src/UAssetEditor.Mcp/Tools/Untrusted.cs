@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+
 namespace UAssetEditor.Mcp.Tools;
 
 /// <summary>Names, property values and log lines in tool output come from asset files, paks and game logs that anyone
@@ -10,21 +13,37 @@ internal static class Untrusted
 
     public const int DefaultMaxLength = 300;
 
-    /// <summary>The text with control characters (newlines, escapes) turned into spaces, so one value stays on one line, and
-    /// anything past <paramref name="maxLength"/> cut with an ellipsis. Ordinary spacing is kept.</summary>
+    /// <summary>The text with control characters (newlines, escapes) and invisible ones (bidi overrides, zero-width and tag
+    /// characters, private-use and lone surrogates) turned into spaces, so one value stays on one line and hides nothing
+    /// from the user, and anything past <paramref name="maxLength"/> cut with an ellipsis. Ordinary spacing is kept.</summary>
     public static string Clean(string? text, int maxLength = DefaultMaxLength)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLength);
         if (string.IsNullOrEmpty(text)) return "";
 
-        var length = Math.Min(text.Length, maxLength);
-        var chars = string.Create(length, text, static (span, source) =>
+        var builder = new StringBuilder(Math.Min(text.Length, maxLength));
+        Span<char> units = stackalloc char[2];
+        var cut = false;
+        // Lone surrogates come out of EnumerateRunes as U+FFFD, and a pair is kept or cut whole.
+        foreach (var rune in text.EnumerateRunes())
         {
-            for (var i = 0; i < span.Length; i++)
-                span[i] = char.IsControl(source[i]) ? ' ' : source[i];
-        });
-        return text.Length > maxLength ? chars.TrimEnd() + "..." : chars.TrimEnd();
+            if (builder.Length + rune.Utf16SequenceLength > maxLength)
+            {
+                cut = true;
+                break;
+            }
+
+            if (IsHidden(rune) || rune == Rune.ReplacementChar) builder.Append(' ');
+            else builder.Append(units[..rune.EncodeToUtf16(units)]);
+        }
+
+        var cleaned = builder.ToString().TrimEnd();
+        return cut ? cleaned + "..." : cleaned;
     }
+
+    private static bool IsHidden(Rune rune) => Rune.GetUnicodeCategory(rune) is
+        UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.PrivateUse
+        or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
 
     /// <summary>Multi-line text with each line cleaned and cut to <paramref name="maxLineLength"/>, and the whole cut to
     /// <paramref name="maxTotal"/> characters.</summary>
@@ -33,7 +52,7 @@ internal static class Untrusted
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxTotal);
         if (string.IsNullOrEmpty(text)) return "";
 
-        var builder = new System.Text.StringBuilder();
+        var builder = new StringBuilder();
         foreach (var line in text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
         {
             var cleaned = Clean(line.TrimEnd('\r'), maxLineLength);

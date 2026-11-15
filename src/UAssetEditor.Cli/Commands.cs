@@ -8,7 +8,6 @@ using UAssetEditor.Core.Editing;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
-using UAssetEditor.Core.Versioning;
 using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Cli;

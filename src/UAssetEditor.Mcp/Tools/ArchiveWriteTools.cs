@@ -144,13 +144,25 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         var sink = new ProgressSink(progress, "Packed files");
         var key = settings.AesKey;
 
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        var result = await ToolRuntime.UsePakWorkerBlockingAsync(
-            () => PakPacker.Build(source, target, mountPoint, version, codecs, key, sink, cancellationToken),
-            cancellationToken).ConfigureAwait(false);
-        if (result.HasFailures) throw new McpException($"Packing failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
+        // Built under a staging name and moved into place only once whole, so a cancelled or failed build leaves no partial
+        // archive and keeps the file it was to replace.
+        var folder = Path.GetDirectoryName(target)!;
+        Directory.CreateDirectory(folder);
+        var staging = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(target)}.{Guid.NewGuid():N}.partial.pak");
+        try
+        {
+            var result = await ToolRuntime.UsePakWorkerBlockingAsync(
+                () => PakPacker.Build(source, staging, mountPoint, version, codecs, key, sink, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
+            if (result.HasFailures) throw new McpException($"Packing failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
 
-        return new PackResult(target, "pak", result.SucceededCount, [$"mount point {mountPoint}, pak version {version}"], settings.Warnings());
+            File.Move(staging, target, overwrite: true);
+            return new PackResult(target, "pak", result.SucceededCount, [$"mount point {mountPoint}, pak version {version}"], settings.Warnings());
+        }
+        finally
+        {
+            File.Delete(staging); // no-op once moved
+        }
     }
 
     private static async Task<PackResult> PackIoStoreAsync(
@@ -171,10 +183,12 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         var log = new LogLines(MaxLogLines);
         var warnings = new LogLines(MaxLogLines);
         var lines = 0;
+        var gate = new Lock();
+        // retoc's stdout and stderr call this from two threads; counting and reporting under one lock keeps progress rising.
         void Info(string line)
         {
             log.Add(line);
-            progress?.Report(new ProgressNotificationValue { Progress = Interlocked.Increment(ref lines), Message = Untrusted.Clean(line, 200) });
+            lock (gate) progress?.Report(new ProgressNotificationValue { Progress = ++lines, Message = Untrusted.Clean(line, 200) });
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
@@ -208,6 +222,8 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
         var retocLayer = ToolInput.OneOf(layer ?? "modded", nameof(layer), "modded", "original") == "modded" ? RetocLayer.Modded : RetocLayer.Original;
         var paksFolder = ToolInput.Optional(paks, nameof(paks)) is { } folder ? ToolPaths.ExistingFolder(folder, nameof(paks)) : null;
+        if (noPaksResolve && (layer != null || paksFolder != null))
+            throw new McpException("layer and paks choose how imports resolve through a Paks folder, so they cannot be combined with noPaksResolve.");
         var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
         var key = settings.AesKey;
 

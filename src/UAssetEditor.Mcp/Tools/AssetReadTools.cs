@@ -8,7 +8,6 @@ using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Core.PropertyAccess;
 using UAssetEditor.Core.Search;
-using UAssetEditor.Core.Versioning;
 using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tools;
@@ -226,7 +225,7 @@ internal sealed class AssetReadTools(MappingsStore store)
     }
 
     [McpServerTool(Name = "search_assets", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Searches one asset, or every .uasset under a folder, for exports, properties, values or references that match. Terms are case-insensitive substrings unless regex is true. A folder search can take minutes (progress is reported); an asset that cannot be opened or searched is skipped, counted in assetsSkipped and named in warnings, and one whose regular expression runs over its 3 s limit is counted in regexTimeouts, so a missing hit may mean the asset was not searched. Only the first maxResults hits are returned but total counts every match: narrow the terms when truncated is true." + Untrusted.Note)]
+    [Description("Searches one asset, or every .uasset under a folder, for exports, properties, values or references that match. Terms are case-insensitive substrings unless regex is true. A folder search can take minutes (progress is reported); an asset in it that cannot be opened or searched is skipped, counted in assetsSkipped and named in warnings (a single asset that cannot be opened is an error), and an asset whose regular expression runs over its 3 s limit is counted in regexTimeouts, so a missing hit may mean the asset was not searched. Only the first maxResults hits are returned but total counts every match: narrow the terms when truncated is true." + Untrusted.Note)]
     public async Task<SearchResultDto> SearchAssetsAsync(
         [Description("Absolute path of one .uasset, or of a folder searched recursively.")] string path,
         [Description("Match export names.")] string? exportName = null,
@@ -287,7 +286,7 @@ internal sealed class AssetReadTools(MappingsStore store)
         }
         else
         {
-            outcome = await Task.Run(() => SearchOneAsset(AssetIo.Open(target, settings.Args), target, query, maxResults), cancellationToken).ConfigureAwait(false);
+            outcome = await Task.Run(() => SearchService.SearchOne(AssetIo.Open(target, settings.Args), target, query, maxResults), cancellationToken).ConfigureAwait(false);
         }
 
         var hits = outcome.Results
@@ -299,12 +298,6 @@ internal sealed class AssetReadTools(MappingsStore store)
 
         return new SearchResultDto(
             target, outcome.TotalMatches, hits, outcome.TotalMatches > hits.Count, outcome.AssetsSearched, outcome.AssetsSkipped, outcome.RegexTimeouts, warnings);
-    }
-
-    private static SearchOutcome SearchOneAsset(UAsset asset, string path, SearchQuery query, int maxResults)
-    {
-        var found = SearchService.SearchAsset(asset, path, query).Order(SearchResultOrder.Instance).ToList();
-        return new SearchOutcome([.. found.Take(maxResults)], found.Count, 1, 0, 0, []);
     }
 
     private static IReadOnlyList<ConditionTerm> ToTerms(string? text) => text == null ? [] : [new ConditionTerm(text)];

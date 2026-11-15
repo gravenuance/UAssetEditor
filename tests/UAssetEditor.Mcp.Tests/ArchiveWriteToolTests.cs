@@ -208,6 +208,43 @@ public sealed class ArchiveWriteToolTests : IDisposable
     }
 
     [Fact]
+    public async Task Pack_CancelledPartWay_KeepsTheOutputItWasToReplace_AndLeavesNoPartialArchive()
+    {
+        var source = SourceFolder("Content/A.txt", "Content/B.txt", "Content/C.txt");
+        var output = _rig.Folder.Combine("out", "mod.pak");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        await File.WriteAllTextAsync(output, "precious", _ct);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_ct);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _rig.ArchiveWrites.PackAsync(
+            source, output, overwrite: true, progress: new CancelOnFirstReport(cancellation), cancellationToken: cancellation.Token));
+
+        Assert.Equal("precious", await File.ReadAllTextAsync(output, _ct));
+        Assert.Equal(["mod.pak"], Directory.GetFiles(Path.GetDirectoryName(output)!).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task ToLegacy_RefusesLayerOrPaks_WithNoPaksResolve_RatherThanIgnoringThem()
+    {
+        var utoc = _rig.Folder.Combine("mod.utoc");
+        await File.WriteAllTextAsync(utoc, "not read: the arguments are refused first", _ct);
+
+        var layer = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(
+            utoc, _rig.Folder.Combine("out"), layer: "original", noPaksResolve: true, cancellationToken: _ct));
+        var paks = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(
+            utoc, _rig.Folder.Combine("out"), paks: _rig.Folder.Path, noPaksResolve: true, cancellationToken: _ct));
+
+        Assert.Contains("noPaksResolve", layer.Message, StringComparison.Ordinal);
+        Assert.Contains("noPaksResolve", paks.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(_rig.Folder.Combine("out")));
+    }
+
+    private sealed class CancelOnFirstReport(CancellationTokenSource cancellation) : IProgress<ProgressNotificationValue>
+    {
+        public void Report(ProgressNotificationValue value) => cancellation.Cancel();
+    }
+
+    [Fact]
     public async Task Pack_ToIoStore_WritesTheContainerPair_AndRefusesToReplaceItUnlessOverwriteIsSet()
     {
         var source = SourceFolder("Content/Foo.txt");

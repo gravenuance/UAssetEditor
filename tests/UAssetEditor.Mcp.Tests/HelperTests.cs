@@ -37,6 +37,10 @@ public sealed class HelperTests : IDisposable
     [InlineData("\\\\server\\share\\a.uasset")]
     [InlineData("\\\\?\\C:\\a.uasset")]
     [InlineData("//server/share/a.uasset")]
+    [InlineData("\\??\\UNC\\server\\share\\a.uasset")]
+    [InlineData("\\??\\C:\\a.uasset")]
+    [InlineData("/??/UNC/server/share/a.uasset")]
+    [InlineData("C:\\mods\\a.pak:hidden.pak")]
     public void Absolute_RefusesBlankRelativeAndNetworkPaths(string path)
     {
         Assert.Throws<McpException>(() => ToolPaths.Absolute(path, "file"));
@@ -157,6 +161,20 @@ public sealed class HelperTests : IDisposable
     }
 
     [Fact]
+    public void Clean_TurnsInvisibleFormatCharactersIntoSpaces_SoNoHiddenTextReachesTheModel()
+    {
+        // A right-to-left override, a zero-width space, a Unicode tag letter (a surrogate pair) and a lone surrogate.
+        Assert.Equal("a b c d e", Untrusted.Clean("a\u202Eb\u200Bc\U000E0041d\uD800e"));
+    }
+
+    [Fact]
+    public void Clean_NeverCutsASurrogatePairInHalf()
+    {
+        Assert.Equal("ab...", Untrusted.Clean("ab\U0001F600", 3));
+        Assert.Equal("ab\U0001F600", Untrusted.Clean("ab\U0001F600", 4));
+    }
+
+    [Fact]
     public void Clean_CutsAtTheLimitWithAnEllipsis_AndLeavesTextAtTheLimitAlone()
     {
         Assert.Equal("abcde", Untrusted.Clean("abcde", 5));
@@ -186,6 +204,13 @@ public sealed class HelperTests : IDisposable
         Assert.Equal(UAssetAPI.PakVersion.V9, ToolInput.Name<UAssetAPI.PakVersion>("v9", "pakVersion"));
         Assert.Throws<McpException>(() => ToolInput.Name<UAssetAPI.PakVersion>("9", "pakVersion"));
         Assert.Throws<McpException>(() => ToolInput.Name<UAssetAPI.PakVersion>("", "pakVersion"));
+    }
+
+    [Fact]
+    public void ToolInput_Name_RefusesSeveralCommaSeparatedNames()
+    {
+        // Enum.TryParse ORs these into Initial|NoTimestamps = 1|2 = 3, which is the defined member V3 that nobody named.
+        Assert.Throws<McpException>(() => ToolInput.Name<UAssetAPI.PakVersion>("V1,V2", "pakVersion"));
     }
 
     // LogLines / ProgressSink
@@ -229,6 +254,20 @@ public sealed class HelperTests : IDisposable
         new ProgressSink(null, "Items").Report((1, 1));
 
         Assert.Equal([1f, 2f, 3f], collected.Values.Select(v => v.Progress));
+    }
+
+    [Fact]
+    public void ProgressSink_DropsAStepThatArrivesAfterALaterOne_SoProgressNeverGoesBack()
+    {
+        var collected = new CollectedProgress();
+        var sink = new ProgressSink(collected, "Items");
+
+        // Parallel workers can report in any order.
+        sink.Report((2, 3));
+        sink.Report((1, 3));
+        sink.Report((3, 3));
+
+        Assert.Equal([2f, 3f], collected.Values.Select(v => v.Progress));
     }
 
     // Logging
