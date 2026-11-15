@@ -161,7 +161,21 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         }
         finally
         {
-            File.Delete(staging); // no-op once moved
+            DeleteStaging(staging);
+        }
+    }
+
+    /// <summary>A no-op once the archive was moved into place. A staging file that cannot go (a scanner holding it) stays
+    /// under its ".partial.pak" name, so the error the caller sees is the build's own, not the clean-up's.</summary>
+    private static void DeleteStaging(string staging)
+    {
+        try
+        {
+            File.Delete(staging);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"Could not delete the partial archive {staging}: {ex.Message}");
         }
     }
 

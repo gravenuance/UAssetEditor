@@ -138,6 +138,20 @@ public sealed class FinalPathsTests : IDisposable
     }
 
     [Fact]
+    public void Resolve_OfALinkCycle_GivesThePathAsWritten_RatherThanThrowing()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var first = Path.Combine(_dir, "first");
+        var second = Path.Combine(_dir, "second");
+        _links.MakeJunction(first, second);
+        _links.MakeJunction(second, first);
+
+        var resolved = FinalPaths.Resolve(Path.Combine(first, "a.pak"));
+
+        Assert.Equal(Path.Combine(FinalPaths.Resolve(_dir), "first", "a.pak"), resolved);
+    }
+
+    [Fact]
     public void FileInformation_MatchesTheNativeLayout()
     {
         // BY_HANDLE_FILE_INFORMATION: one DWORD, three FILETIMEs of two DWORDs each, then six DWORDs, all 4-byte aligned.

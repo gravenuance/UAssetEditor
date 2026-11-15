@@ -30,8 +30,10 @@ public static class FinalPaths
         }
 
         // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
-        // where a write through it would, rather than trusting the link's own name.
-        var resolved = OperatingSystem.IsWindows() ? FinalPathOfHandle(existing) ?? ResolveLinks(existing) : ResolveLinks(existing);
+        // where a write through it would, rather than trusting the link's own name. Any other failure (a link cycle, no
+        // access) leaves the path as written, and the write through it fails the same way.
+        var resolved = !OperatingSystem.IsWindows() ? ResolveLinks(existing)
+            : FinalPathOfHandle(existing, out var targetMissing) ?? (targetMissing ? ResolveLinks(existing) : existing);
         while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
         return resolved;
     }
@@ -98,9 +100,13 @@ public static class FinalPaths
     private static SafeFileHandle OpenForQuery(string path) =>
         CreateFileW(path, NoAccessNeeded, ShareAll, IntPtr.Zero, OpenExisting, FileFlagBackupSemantics, IntPtr.Zero);
 
-    private static string? FinalPathOfHandle(string path)
+    private const int ErrorFileNotFound = 2;
+    private const int ErrorPathNotFound = 3;
+
+    private static string? FinalPathOfHandle(string path, out bool targetMissing)
     {
         using var handle = OpenForQuery(path);
+        targetMissing = handle.IsInvalid && Marshal.GetLastPInvokeError() is ErrorFileNotFound or ErrorPathNotFound;
         if (handle.IsInvalid) return null;
 
         var buffer = new char[1024];
