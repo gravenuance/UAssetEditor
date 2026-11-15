@@ -55,10 +55,13 @@ internal static class AssetIo
     }
 
     // Loading a usmap is most of a small run's cost, so each is loaded once per process and every asset gets its own scope of it.
-    private static readonly ConcurrentDictionary<string, Lazy<Usmap>> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
+    // One entry per file: the file's size and write time say which version of it the entry holds.
+    private sealed record LoadedUsmap(long Length, long WriteTicks, Lazy<Usmap> Usmap);
 
-    // One stale check per process, however many assets a --plan run opens.
-    private static readonly ConcurrentDictionary<string, byte> StaleChecked = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, LoadedUsmap> LoadedMappings = new(StringComparer.OrdinalIgnoreCase);
+
+    // The state of the game's logs each usmap was last checked against: one check per state, however many assets a --plan run opens.
+    private static readonly ConcurrentDictionary<string, string> StaleChecked = new(StringComparer.OrdinalIgnoreCase);
 
     public static Usmap? ResolveMappings(ArgReader args, string option = "usmap")
     {
@@ -75,7 +78,24 @@ internal static class AssetIo
         if (!File.Exists(path)) throw new ArgException($"{label} file not found: {path}");
         var full = Path.GetFullPath(path);
         var info = new FileInfo(full);
-        return LoadedMappings.GetOrAdd($"{full}|{info.Length}|{info.LastWriteTimeUtc.Ticks}", _ => new Lazy<Usmap>(() => new Usmap(full))).Value;
+        var length = info.Length;
+        var ticks = info.LastWriteTimeUtc.Ticks;
+
+        // A changed file replaces its entry, so the old usmap can be collected once nothing scopes it any more.
+        var entry = LoadedMappings.AddOrUpdate(
+            full,
+            _ => new LoadedUsmap(length, ticks, new Lazy<Usmap>(() => new Usmap(full))),
+            (_, existing) => existing.Length == length && existing.WriteTicks == ticks
+                ? existing
+                : new LoadedUsmap(length, ticks, new Lazy<Usmap>(() => new Usmap(full))));
+        return entry.Usmap.Value;
+    }
+
+    /// <summary>How many loaded usmaps the cache holds for <paramref name="path"/>: one while the file is unchanged, and still one after it is replaced.</summary>
+    internal static int CachedMappingsFor(string path)
+    {
+        var full = Path.GetFullPath(path);
+        return LoadedMappings.Keys.Count(key => key.StartsWith(full, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>--jobs, else one worker per CPU.</summary>
@@ -94,12 +114,12 @@ internal static class AssetIo
         var explicitPath = args.Option(option);
         if (explicitPath != null)
         {
-            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath, args.Diagnostics);
+            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath, args.Diagnostics, args.GameLogs);
             return explicitPath;
         }
 
         if (option != "usmap" || ResolveProfile(args) is not { } profile) return null;
-        return args.StoredUsmaps.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, args.Mappings, args.Diagnostics))).Value;
+        return args.StoredUsmaps.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, args.Mappings, args.Diagnostics, args.GameLogs))).Value;
     }
 
     /// <summary>"build N", or "no build" for a usmap stored without one.</summary>
@@ -110,7 +130,7 @@ internal static class AssetIo
     /// The newest usmap stored for <paramref name="profile"/>, announced on <paramref name="diagnostics"/>. When there is none,
     /// says so: assets of these games open without one and quietly parse to nothing.
     /// </summary>
-    internal static string? UseStoredUsmap(GameProfile profile, MappingsStore store, TextWriter diagnostics)
+    internal static string? UseStoredUsmap(GameProfile profile, MappingsStore store, TextWriter diagnostics, string? gameLogs = null)
     {
         if (store.Latest(profile) is not { } stored)
         {
@@ -121,18 +141,55 @@ internal static class AssetIo
             return null;
         }
         diagnostics.WriteLine($"Using stored usmap {stored.Path} ({DescribeBuild(stored)}).");
-        WarnIfStale(profile, stored.Path, diagnostics);
+        WarnIfStale(profile, stored.Path, diagnostics, gameLogs ?? RivalsLogs.DefaultDirectory);
         return stored.Path;
     }
 
-    private static void WarnIfStale(GameProfile? profile, string usmapPath, TextWriter diagnostics)
+    private static void WarnIfStale(GameProfile? profile, string usmapPath, TextWriter diagnostics, string gameLogs)
     {
         if (profile?.Game != Game.MarvelRivals) return;
         if (MappingsStore.ParseBuild(Path.GetFileName(usmapPath)) is not { } usmapBuild) return;
-        if (!StaleChecked.TryAdd(Path.GetFullPath(usmapPath), 0)) return;
-        if (RivalsLogs.InstalledBuild(RivalsLogs.DefaultDirectory) is not { } installed || installed == usmapBuild) return;
+        if (!NeedsStaleCheck(Path.GetFullPath(usmapPath), gameLogs)) return;
+        if (RivalsLogs.InstalledBuild(gameLogs) is not { } installed || installed == usmapBuild) return;
         diagnostics.WriteLine(
             $"Warning: usmap is build {usmapBuild} but Marvel Rivals last ran build {installed}; dump a new usmap (Dumper-7) and add it with 'uacli usmap add'.");
+    }
+
+    /// <summary>
+    /// True when <paramref name="usmapPath"/> has not been checked against the game's newest log in its present state, and notes that
+    /// it now has been: a long-running host sees the game patched and run again, and must warn then, not only the first time.
+    /// </summary>
+    private static bool NeedsStaleCheck(string usmapPath, string gameLogs)
+    {
+        var stamp = GameLogStamp(gameLogs);
+        while (true)
+        {
+            if (!StaleChecked.TryGetValue(usmapPath, out var seen))
+            {
+                if (StaleChecked.TryAdd(usmapPath, stamp)) return true;
+            }
+            else if (seen == stamp)
+            {
+                return false;
+            }
+            else if (StaleChecked.TryUpdate(usmapPath, stamp, seen))
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>Which log is newest and when it was last written; empty when there is none, so a first log appearing counts as a change.</summary>
+    private static string GameLogStamp(string gameLogs)
+    {
+        try
+        {
+            return RivalsLogs.Newest(gameLogs) is { } log ? $"{log}|{File.GetLastWriteTimeUtc(log).Ticks}" : "";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "";
+        }
     }
 
     /// <summary>--aes if given, else the --game profile's key, else none.</summary>
