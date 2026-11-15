@@ -14,12 +14,17 @@ public static class FinalPaths
     /// The full path with every link, junction, 8.3 short name and letter case in the part that exists resolved to what is on
     /// disk; a tail that does not exist yet (a file about to be created) is appended as given.
     /// </summary>
-    /// <exception cref="IOException">A link in the existing part loops or leads somewhere the file system cannot place (an offline share): the path is refused rather than judged by its name.</exception>
+    /// <exception cref="PathNotPlaceableException">A link in the existing part loops or leads somewhere the file system cannot place (an offline share): the path is refused rather than judged by its name.</exception>
     public static string Resolve(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        var full = Path.GetFullPath(path);
+        return ResolveFull(Path.GetFullPath(path), OperatingSystem.IsWindows() ? FinalPathOfHandle : null);
+    }
+
+    // A null lookup follows the links part by part (other systems); the Windows lookup asks the file system instead.
+    private static string ResolveFull(string full, Func<string, HandleLookup>? lookup)
+    {
         var existing = full;
         var tail = new Stack<string>();
         while (!Path.Exists(existing))
@@ -30,7 +35,7 @@ public static class FinalPaths
             existing = parent;
         }
 
-        var resolved = OperatingSystem.IsWindows() ? ResolveExisting(existing, FinalPathOfHandle) : ResolveLinks(existing);
+        var resolved = lookup == null ? ResolveLinks(existing, LinkTargetOf) : ResolveExisting(existing, lookup);
         while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
         return resolved;
     }
@@ -38,21 +43,45 @@ public static class FinalPaths
     /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying.</summary>
     internal readonly record struct HandleLookup(string? FinalPath, int Error);
 
-    /// <summary>Where an existing path lands according to <paramref name="lookup"/>. A path the file system cannot place is
-    /// refused, never returned as written: a link in it that points somewhere unreachable (an offline share, a link loop)
-    /// would pass for a path inside any folder its own name sits in.</summary>
+    /// <summary>Where an existing path lands according to <paramref name="lookup"/>. When the file system cannot say and a
+    /// link is in the path, the path is refused rather than judged by its name: a link to an offline share or a loop would
+    /// pass for a path inside any folder its own name sits in.</summary>
     internal static string ResolveExisting(string existing, Func<string, HandleLookup> lookup)
     {
         var found = lookup(existing);
         if (found.FinalPath is { } final) return final;
 
         // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
-        // where a write through it would, rather than trusting the link's own name.
-        if (found.Error is ErrorFileNotFound or ErrorPathNotFound) return ResolveLinks(existing);
+        // where a write through it would. The target's own existing part is placed in turn, so its case and short names match.
+        if (found.Error is ErrorFileNotFound or ErrorPathNotFound)
+        {
+            var followed = ResolveLinks(existing, LinkTargetOf);
+            return string.Equals(followed, existing, PathComparison) ? followed : ResolveFull(followed, lookup);
+        }
+
+        // No link, so the path cannot lead anywhere but where it reads (a RAM disk, a locked file): the real write reports its own error.
+        if (!HasLinkInChain(existing)) return Path.GetFullPath(existing);
 
         throw found.Error == ErrorCantResolveFilename
-            ? new IOException($"Too many levels of links resolving {existing}.") // what a link loop reports
-            : new IOException($"Cannot tell where {existing} lands, so it is refused: {Marshal.GetPInvokeErrorMessage(found.Error)}");
+            ? PathNotPlaceableException.LinkLoop(existing) // what a link loop reports
+            : PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
+    }
+
+    /// <summary>True when <paramref name="existing"/> or a folder above it is a link, junction or other reparse point; one whose attributes cannot be read counts as one.</summary>
+    private static bool HasLinkInChain(string existing)
+    {
+        for (var current = existing; Path.GetDirectoryName(current) is { } parent; current = parent)
+        {
+            try
+            {
+                if (File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>True when both names reach the same file: they resolve to one path, or both exist and share a volume and file id (hard links).</summary>
@@ -83,7 +112,7 @@ public static class FinalPaths
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     // Other systems: follow each link part by part, as realpath does. The Windows path above asks the file system instead.
-    private static string ResolveLinks(string existing)
+    internal static string ResolveLinks(string existing, Func<string, string?> linkTargetOf)
     {
         var current = Path.GetPathRoot(existing)!;
         var pending = SplitParts(existing, current);
@@ -92,18 +121,33 @@ public static class FinalPaths
         {
             var next = Path.Combine(current, pending[0]);
             pending.RemoveAt(0);
-            if (new FileInfo(next).LinkTarget is not { } target)
+            if (LinkTargetIn(existing, next, linkTargetOf) is not { } target)
             {
                 current = next;
                 continue;
             }
 
-            if (++hops > MaxLinkHops) throw new IOException($"Too many levels of links resolving {existing}.");
+            if (++hops > MaxLinkHops) throw PathNotPlaceableException.LinkLoop(existing);
             var absolute = Path.GetFullPath(target, current);
             current = Path.GetPathRoot(absolute)!;
             pending.InsertRange(0, SplitParts(absolute, current));
         }
         return current;
+    }
+
+    private static string? LinkTargetOf(string path) => new FileInfo(path).LinkTarget;
+
+    // Reading a link can fail for want of access (Unix) or on a damaged one; either way the path is refused, as a tool error.
+    private static string? LinkTargetIn(string existing, string part, Func<string, string?> linkTargetOf)
+    {
+        try
+        {
+            return linkTargetOf(part);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw PathNotPlaceableException.Unplaceable(existing, $"the link {part} cannot be read: {ex.Message}", ex);
+        }
     }
 
     private static List<string> SplitParts(string path, string root) =>

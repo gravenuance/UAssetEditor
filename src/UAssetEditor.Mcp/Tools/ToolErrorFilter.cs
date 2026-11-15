@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using UAssetEditor.Core;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Tooling;
 
@@ -33,7 +34,7 @@ internal static class ToolErrorFilter
                 var log = request.Services?.GetService<ILoggerFactory>()?.CreateLogger("UAssetEditor.Mcp.Tools");
                 var tool = request.Params?.Name ?? "?";
                 var secrets = Secrets.InArguments(request.Params?.Arguments);
-                if (ex is McpException or ArgException)
+                if (ex is McpException or ArgException or PathNotPlaceableException)
                 {
                     log?.LogInformation("Tool {Tool} returned an error: {Reason}", tool, Secrets.Redact(ex.Message, secrets));
                     return Error(ex.Message, secrets);

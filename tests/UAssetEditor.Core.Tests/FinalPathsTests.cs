@@ -142,11 +142,58 @@ public sealed class FinalPathsTests : IDisposable
     [InlineData(53)] // ERROR_BAD_NETPATH: a link to a share whose host is offline
     [InlineData(67)] // ERROR_BAD_NET_NAME: a link to a share that is gone
     [InlineData(1921)] // ERROR_CANT_RESOLVE_FILENAME
-    public void ResolveExisting_RefusesAPathTheFileSystemCouldNotPlace_InsteadOfTrustingItsName(int error)
+    public void ResolveExisting_RefusesALinkedPathTheFileSystemCouldNotPlace_InsteadOfTrustingItsName(int error)
     {
-        var refused = Assert.Throws<IOException>(() => FinalPaths.ResolveExisting(_dir, _ => new FinalPaths.HandleLookup(null, error)));
+        var real = Path.Combine(_dir, "real");
+        Directory.CreateDirectory(Path.Combine(real, "sub"));
+        var link = Path.Combine(_dir, "link");
+        _links.MakeFolderLink(link, real);
+        var viaLink = Path.Combine(link, "sub");
 
-        Assert.Contains(_dir, refused.Message, StringComparison.Ordinal);
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveExisting(viaLink, _ => new FinalPaths.HandleLookup(null, error)));
+
+        Assert.Contains(viaLink, refused.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(1)] // ERROR_INVALID_FUNCTION: a RAM disk
+    [InlineData(5)] // ERROR_ACCESS_DENIED
+    [InlineData(32)] // ERROR_SHARING_VIOLATION
+    [InlineData(50)] // ERROR_NOT_SUPPORTED: a VM shared folder or WebDAV
+    [InlineData(53)]
+    [InlineData(1921)]
+    public void ResolveExisting_KeepsAPathWithNoLinkInItAsWritten_SoTheRealWriteReportsItsOwnError(int error)
+    {
+        var plain = Path.Combine(_dir, "plain", "sub");
+        Directory.CreateDirectory(plain);
+
+        Assert.Equal(plain, FinalPaths.ResolveExisting(plain, _ => new FinalPaths.HandleLookup(null, error)));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ResolveLinks_RefusesALinkItCannotRead_RatherThanLettingTheRawErrorOut(bool unauthorized)
+    {
+        var path = Path.Combine(_dir, "unreadable", "a.pak");
+        string? Unreadable(string next) => throw (unauthorized ? new UnauthorizedAccessException("denied") : new IOException("broken"));
+
+        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveLinks(path, Unreadable));
+
+        Assert.Contains("unreadable", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Resolve_OfALinkWhoseMissingTargetIsSpelledInAnotherCase_GivesTheOnDiskCaseOfWhatExists()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Directory.CreateDirectory(Path.Combine(_dir, "outside"));
+        var link = Path.Combine(_dir, "link");
+        _links.MakeJunction(link, Path.Combine(_dir.ToUpperInvariant(), "OUTSIDE", "missing"));
+
+        var resolved = FinalPaths.Resolve(Path.Combine(link, "a.uasset"));
+
+        Assert.Equal(Path.Combine(FinalPaths.Resolve(_dir), "outside", "missing", "a.uasset"), resolved);
     }
 
     [Theory]
@@ -175,7 +222,7 @@ public sealed class FinalPathsTests : IDisposable
         _links.MakeFolderLink(first, second);
         _links.MakeFolderLink(second, first);
 
-        var error = Assert.ThrowsAny<IOException>(() => FinalPaths.Resolve(Path.Combine(first, "a.pak")));
+        var error = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.Resolve(Path.Combine(first, "a.pak")));
 
         Assert.Contains("Too many levels of links", error.Message, StringComparison.Ordinal);
     }

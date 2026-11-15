@@ -10,6 +10,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using UAssetEditor.Core.Games;
+using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Hosting;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Mcp.Tools;
@@ -30,6 +31,7 @@ public sealed class ProtocolTests : IAsyncLifetime
     private static readonly string[] WriteTools = ["edit_asset", "apply_ruleset", "unpack_pak", "pack", "to_legacy", "repack", "usmap_add"];
 
     private readonly TempFolder _folder = new();
+    private readonly TestLinks _links = new();
     private IHost? _host;
     private McpClient? _client;
 
@@ -61,6 +63,7 @@ public sealed class ProtocolTests : IAsyncLifetime
             await _host.StopAsync();
             _host.Dispose();
         }
+        _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
         _folder.Dispose();
     }
 
@@ -161,6 +164,28 @@ public sealed class ProtocolTests : IAsyncLifetime
 
         Assert.True(result.IsError);
         Assert.Contains("absolute path", Text(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task APathWhoseLinksLoop_ComesBackAsAnErrorResultWithTheReason_NotAnUnexpectedFailure()
+    {
+        // The pak worker that builds the pak is a Windows build.
+        if (!OperatingSystem.IsWindows()) return;
+        var pak = _folder.Combine("a.pak");
+        File.Move(TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/A.txt"] = [1] }), pak);
+        var first = _folder.Combine("first");
+        var second = _folder.Combine("second");
+        _links.MakeFolderLink(first, second);
+        _links.MakeFolderLink(second, first);
+
+        var result = await Client.CallToolAsync(
+            "unpack_pak",
+            new Dictionary<string, object?> { ["pak"] = pak, ["destination"] = Path.Combine(first, "out"), ["filter"] = "Content/" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Contains("Too many levels of links", Text(result), StringComparison.Ordinal);
+        Assert.DoesNotContain("failed", Text(result), StringComparison.Ordinal);
     }
 
     [Fact]

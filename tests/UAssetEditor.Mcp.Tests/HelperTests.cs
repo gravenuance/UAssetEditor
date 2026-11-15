@@ -151,7 +151,7 @@ public sealed class HelperTests : IDisposable
     }
 
     [Fact]
-    public async Task ALinkCycle_IsAToolError_InThePathChecksAndThePathLocks()
+    public async Task ALinkCycle_IsRefusedWithAClearError_InThePathChecksAndThePathLocks()
     {
         var first = _folder.Combine("first");
         var second = _folder.Combine("second");
@@ -159,9 +159,9 @@ public sealed class HelperTests : IDisposable
         _links.MakeFolderLink(second, first);
         var looped = Path.Combine(first, "a.uasset");
 
-        var inside = Assert.Throws<McpException>(() => ToolPaths.RefuseInside(looped, _folder.Combine("mod"), "output", "source"));
-        var same = Assert.Throws<McpException>(() => ToolPaths.RefuseSame(looped, _folder.Combine("b.pak"), "pak", "output"));
-        var locked = await Assert.ThrowsAsync<McpException>(() => PathLocks.RunAsync([looped], () => Task.FromResult(0), TestContext.Current.CancellationToken));
+        var inside = Assert.Throws<PathNotPlaceableException>(() => ToolPaths.RefuseInside(looped, _folder.Combine("mod"), "output", "source"));
+        var same = Assert.Throws<PathNotPlaceableException>(() => ToolPaths.RefuseSame(looped, _folder.Combine("b.pak"), "pak", "output"));
+        var locked = await Assert.ThrowsAsync<PathNotPlaceableException>(() => PathLocks.RunAsync([looped], () => Task.FromResult(0), TestContext.Current.CancellationToken));
 
         Assert.All([inside, same, locked], error => Assert.Contains("Too many levels of links", error.Message, StringComparison.Ordinal));
     }
