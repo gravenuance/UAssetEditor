@@ -207,15 +207,85 @@ public sealed class FinalPathsTests : IDisposable
         Assert.Contains("no drive letter", refused.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void ResolveFull_RefusesAResultInVolumeGuidForm_WhereverItCameFrom()
+    [Theory]
+    [InlineData(@"\\?\Volume{0f1e2d3c}\Mods")] // a volume GUID
+    [InlineData(@"\\.\Volume{0f1e2d3c}\Mods")]
+    [InlineData(@"\\?\GLOBALROOT\Device\HarddiskVolume1\Mods")] // stripped to a relative form by the lookup
+    [InlineData(@"C:\Allowed\nope\..\..\Windows")] // a dot segment survives
+    [InlineData(@"C:\Allowed\.\Mods")]
+    [InlineData(@"relative\Mods")]
+    public void ResolveFull_LetsOnlyAPlainDriveOrNetworkPathLeave_WhateverBranchProducedIt(string produced)
     {
-        // Two spellings of one folder would break every comparison of resolved paths, so only DOS and UNC forms leave.
-        var guidForm = new FinalPaths.HandleLookup(@"\\?\Volume{0f1e2d3c}\Mods", 0);
+        // Two spellings of one folder would break every comparison of resolved paths.
+        if (!OperatingSystem.IsWindows()) return;
 
-        var refused = Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveFull(Path.Combine(_dir, "out.pak"), _ => guidForm, path => path, new FinalPaths.LinkBudget()));
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveFull(Path.Combine(_dir, "out.pak"), _ => new FinalPaths.HandleLookup(produced, 0), path => path, new FinalPaths.LinkBudget()));
+    }
 
-        Assert.Contains("no drive letter", refused.Message, StringComparison.Ordinal);
+    [Fact]
+    public void ResolveFull_RefusesAPathWhoseRootDoesNotExist_WhenItIsNotInPlainForm()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveFull(@"\\?\Z:\Game\a.uasset", null, path => path, new FinalPaths.LinkBudget()));
+    }
+
+    [Theory]
+    [InlineData(@"\\?\Volume{00000000-0000-0000-0000-000000000000}\x")] // a volume that is not mounted
+    [InlineData(@"\\.\Volume{00000000-0000-0000-0000-000000000000}\x")]
+    [InlineData(@"\\?\GLOBALROOT\Device\HarddiskVolume1\x")]
+    [InlineData(@"\\.\PhysicalDrive0")]
+    [InlineData(@"\\?\C:")]
+    [InlineData(@"\??\Volume{00000000-0000-0000-0000-000000000000}\x")]
+    public void Resolve_RefusesADeviceOrVolumeSpelling(string path)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.Resolve(path));
+    }
+
+    [Fact]
+    public void Resolve_ReadsAnExtendedDriveSpellingAsThePlainOne_AndCollapsesItsDotDotSegments()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var plain = FinalPaths.Resolve(Path.Combine(_dir, "x.pak"));
+
+        Assert.Equal(plain, FinalPaths.Resolve(@"\\?\" + Path.Combine(_dir, "x.pak")));
+        Assert.Equal(plain, FinalPaths.Resolve(@"\\.\" + Path.Combine(_dir, "x.pak")));
+        Assert.Equal(Path.Combine(FinalPaths.Resolve(Path.GetDirectoryName(_dir)!), "Windows", "x"), FinalPaths.Resolve(@"\\?\" + Path.Combine(_dir, "nope", "..", "..", "Windows", "x")));
+    }
+
+    [Fact]
+    public void IsInside_DoesNotBeFooledByDotDotBehindAnExtendedPrefix()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var allowed = Path.Combine(_dir, "Allowed");
+        Directory.CreateDirectory(allowed);
+
+        Assert.False(FinalPaths.IsInside(@"\\?\" + Path.Combine(allowed, "nope", "..", "..", "Windows", "x"), allowed));
+        Assert.True(FinalPaths.IsInside(@"\\?\" + Path.Combine(allowed, "sub", "x"), allowed));
+    }
+
+    [Fact]
+    public void ResolveFull_GivesTheDosFormOfAnExtendedSpelling_OnAVolumeThatReportsNoFinalPaths()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var spelled = FinalPaths.Normalise(@"\\?\" + Path.Combine(_dir, "a.uasset"));
+
+        Assert.Equal(Path.Combine(_dir, "a.uasset"), FinalPaths.ResolveFull(spelled, Failing(1), path => path, new FinalPaths.LinkBudget()));
+    }
+
+    [Fact]
+    public void ResolveLinks_ReadsAPrefixedLinkTargetAsThePlainOne_AndRefusesADeviceTarget()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var link = Path.Combine(_dir, "link");
+        string? Target(string path, string target) => string.Equals(path, link, StringComparison.OrdinalIgnoreCase) ? target : null;
+
+        Assert.Equal(@"R:\Game", FinalPaths.ResolveLinks(link, path => Target(path, @"\\?\R:\Game"), new FinalPaths.LinkBudget()));
+        Assert.Equal(@"\\srv\share\Game", FinalPaths.ResolveLinks(link, path => Target(path, @"\\?\UNC\srv\share\Game"), new FinalPaths.LinkBudget()));
+        Assert.Equal(@"R:\Windows", FinalPaths.ResolveLinks(link, path => Target(path, @"\\?\R:\Game\..\Windows"), new FinalPaths.LinkBudget()));
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveLinks(link, path => Target(path, @"\\?\Volume{0f1e2d3c}\Game"), new FinalPaths.LinkBudget()));
     }
 
     [Fact]

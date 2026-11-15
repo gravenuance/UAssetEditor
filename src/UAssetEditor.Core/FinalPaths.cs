@@ -14,13 +14,40 @@ public static class FinalPaths
     /// The full path with every link, junction, 8.3 short name and letter case in the part that exists resolved to what is on
     /// disk; a tail that does not exist yet (a file about to be created) is appended as given.
     /// </summary>
-    /// <remarks>Only DOS (<c>C:\...</c>) and UNC (<c>\\server\share\...</c>) forms come back, so two paths compare by their text.</remarks>
-    /// <exception cref="PathNotPlaceableException">The path is refused, with the reason, rather than judged by its name, when the file system could not say where its existing part lands: a link loop or too many links, an offline share, no access, a file in use, a volume with no drive letter. Only a link whose target is missing and a volume that reports no final paths are placed another way.</exception>
+    /// <remarks>Only DOS (<c>C:\...</c>) and UNC (<c>\\server\share\...</c>) forms come back, with no <c>.</c> or <c>..</c> segment, so two paths compare by their text. A <c>\\?\C:\...</c> input is read as <c>C:\...</c>; any other <c>\\?\</c> or <c>\\.\</c> form is refused.</remarks>
+    /// <exception cref="PathNotPlaceableException">The path is refused, with the reason, rather than judged by its name, when the file system could not say where its existing part lands: a link loop or too many links, an offline share, no access, a file in use, a volume with no drive letter, a device or volume name. Only a link whose target is missing and a volume that reports no final paths are placed another way.</exception>
     public static string Resolve(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        return ResolveFull(Path.GetFullPath(path), OperatingSystem.IsWindows() ? FinalPathOfHandle : null, LongPathOf, new LinkBudget());
+        return ResolveFull(Normalise(path), OperatingSystem.IsWindows() ? FinalPathOfHandle : null, LongPathOf, new LinkBudget());
+    }
+
+    // The entry choke point: a device-prefixed spelling is read as the plain one (so '..' collapses) or refused.
+    internal static string Normalise(string path) => Path.GetFullPath(WithoutDevicePrefix(path));
+
+    /// <summary>The path with a <c>\\?\C:\</c>, <c>\\.\C:\</c> or <c>\\?\UNC\</c> prefix turned into the drive or network form;
+    /// any other <c>\\?\</c>, <c>\\.\</c> or <c>\??\</c> form (a volume GUID, GLOBALROOT, a device) names no plain path and is refused.</summary>
+    private static string WithoutDevicePrefix(string path)
+    {
+        if (!(path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal) || path.StartsWith(@"\??\", StringComparison.Ordinal)))
+            return path;
+
+        var rest = path[4..];
+        if (path[2] == '?' && rest.StartsWith(@"UNC\", StringComparison.OrdinalIgnoreCase)) return @"\\" + rest[4..];
+        if (rest.Length >= 3 && char.IsAsciiLetter(rest[0]) && rest[1] == ':' && rest[2] == '\\') return rest;
+        throw PathNotPlaceableException.Unplaceable(path, "it names a device or volume, not a drive or network path");
+    }
+
+    // The exit choke point: whatever a branch produced, only a plain drive or network path leaves.
+    private static string Gate(string resolved, string source)
+    {
+        if (!OperatingSystem.IsWindows()) return resolved;
+
+        var drive = resolved.Length >= 3 && char.IsAsciiLetter(resolved[0]) && resolved[1] == ':' && resolved[2] == '\\';
+        var network = resolved.Length > 2 && resolved.StartsWith(@"\\", StringComparison.Ordinal) && resolved[2] is not ('?' or '.' or '\\');
+        if ((drive || network) && !resolved.Split('\\').Any(segment => segment is "." or "..")) return resolved;
+        throw PathNotPlaceableException.Unplaceable(source, $"its final form {resolved} is not a plain drive or network path");
     }
 
     /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying.</summary>
@@ -28,8 +55,6 @@ public static class FinalPaths
 
     /// <summary>The error a lookup reports for a path whose handle opened but whose volume has no drive letter, so no DOS name (a made-up code, not a Win32 one).</summary>
     internal const int VolumeHasNoDriveLetter = -1;
-
-    private const string VolumeGuidPrefix = @"\\?\Volume{";
 
     /// <summary>The links one resolution may follow in all. Every link-following pass and the re-placing of its result share
     /// one budget, so a chain that runs across them is bounded too.</summary>
@@ -51,15 +76,14 @@ public static class FinalPaths
         while (!Path.Exists(existing))
         {
             var parent = Path.GetDirectoryName(existing);
-            if (parent == null) return full; // not even the root exists (a drive that is not there): nothing to resolve
+            if (parent == null) return Gate(full, full); // not even the root exists (a drive that is not there): nothing to resolve
             tail.Push(Path.GetFileName(existing));
             existing = parent;
         }
 
         var resolved = lookup == null ? ResolveLinks(existing, LinkTargetOf, budget) : ResolveExisting(existing, lookup, longPathOf, budget);
-        if (resolved.StartsWith(VolumeGuidPrefix, StringComparison.OrdinalIgnoreCase)) throw PathNotPlaceableException.Unplaceable(existing, NoDriveLetter);
         while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
-        return resolved;
+        return Gate(resolved, full);
     }
 
     private const string NoDriveLetter = "it is on a volume with no drive letter";
@@ -145,7 +169,7 @@ public static class FinalPaths
             }
 
             budget.Spend(existing);
-            var absolute = Path.GetFullPath(target, current);
+            var absolute = Path.GetFullPath(WithoutDevicePrefix(target), current);
             current = Path.GetPathRoot(absolute)!;
             pending.InsertRange(0, SplitParts(absolute, current));
         }
@@ -217,8 +241,7 @@ public static class FinalPaths
     }
 
     private static string StripExtendedPrefix(string path) =>
-        path.StartsWith(VolumeGuidPrefix, StringComparison.OrdinalIgnoreCase) ? path // no DOS form to strip down to: Resolve refuses it
-        : path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + path[8..]
+        path.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + path[8..]
         : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..]
         : path;
 
