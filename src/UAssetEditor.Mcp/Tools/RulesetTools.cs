@@ -59,7 +59,7 @@ internal sealed class RulesetTools(MappingsStore store)
         var rules = RulesetInput.Load(ruleset);
 
         var versions = await Task.Run(
-            () => new EngineVersionResolver { DefaultVersion = settings.EngineVersion, Mappings = AssetIo.ResolveMappings(settings.Args), Game = settings.Game },
+            () => AssetIo.ResolveVersions(settings.Args),
             cancellationToken).ConfigureAwait(false);
         IAssetSource source = isFolder ? new LooseFolderAssetSource(target) : new SingleFileAssetSource(target);
         var assetFiles = isFolder ? Directory.EnumerateFiles(target, "*.uasset", SearchOption.AllDirectories) : [target];

@@ -113,7 +113,7 @@ internal static class Commands
         if (Directory.Exists(path))
         {
             var source = new LooseFolderAssetSource(path);
-            var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
+            var versions = AssetIo.ResolveVersions(args);
             outcome = SearchService.SearchAllAsync(source, versions, query).GetAwaiter().GetResult();
         }
         else
@@ -340,7 +340,7 @@ internal static class Commands
         var ruleSet = JsonSerializer.Deserialize<RuleSet>(File.ReadAllText(rulesetPath), AssetIo.RuleSetJsonOptions)
             ?? throw new ArgException($"'{rulesetPath}' did not contain a valid rule set.");
 
-        var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
+        var versions = AssetIo.ResolveVersions(args);
         IAssetSource source = Directory.Exists(path) ? new LooseFolderAssetSource(path) : new SingleFileAssetSource(path);
 
         var apply = args.Flag("apply");

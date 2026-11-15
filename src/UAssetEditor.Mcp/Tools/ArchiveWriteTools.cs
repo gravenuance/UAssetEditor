@@ -51,10 +51,11 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
             using var source = new PakAssetSource(path, key, largePakThresholdBytes: 0);
             bool Matches(string entry) => entry.Contains(contains, StringComparison.OrdinalIgnoreCase);
 
-            var matched = source.ListAllEntries().Count(Matches);
+            var entries = source.ListAllEntries().Where(Matches).ToList();
+            var matched = entries.Count;
             if (matched > maxFiles)
                 throw new McpException($"filter matches {matched} entries, more than maxFiles ({maxFiles}). Narrow the filter; pak_list shows what it matches.");
-            if (!overwrite && source.ListAllEntries().Where(Matches).FirstOrDefault(entry => ExistsIn(folder, entry)) is { } existing)
+            if (!overwrite && entries.Find(entry => ExistsIn(folder, entry)) is { } existing)
                 throw new McpException($"{Untrusted.Clean(existing, 300)} already exists in the destination. Pass overwrite=true to replace existing files.");
 
             var result = PakUnpacker.Unpack(source, folder, Matches, sink, cancellationToken);
@@ -110,11 +111,11 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         var bitmaps = ToolInput.Optional(defaultHiddenMaterialBitmaps, nameof(defaultHiddenMaterialBitmaps), 200);
         var settings = OpenSettings.Create(store, game, engineVersion, usmap, aesKey: aesKey);
         if (isIoStore) RefuseExistingCompanions(target, settings.Game == Game.MarvelRivals, overwrite);
-        var key = settings.AesKey;
+        var rivalsOnly = obfuscate || kawaiiPhysics || patchDefaultHiddenMats || bitmaps != null;
 
         return isIoStore
-            ? await PackIoStoreAsync(source, target, settings, key, obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps, progress, cancellationToken).ConfigureAwait(false)
-            : await PackPakAsync(source, target, settings, key, mount, pakVersion, compression, [obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps != null], progress, cancellationToken).ConfigureAwait(false);
+            ? await PackIoStoreAsync(source, target, settings, rivalsOnly, obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps, progress, cancellationToken).ConfigureAwait(false)
+            : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The .ucas beside a .utoc is part of the container, and so is the companion .pak a Marvel Rivals pack writes.</summary>
@@ -129,10 +130,10 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
     }
 
     private static async Task<PackResult> PackPakAsync(
-        string source, string target, OpenSettings settings, byte[]? key, string? mount, string? pakVersion, string? compression,
-        bool[] rivalsSwitches, IProgress<ProgressNotificationValue>? progress, CancellationToken cancellationToken)
+        string source, string target, OpenSettings settings, string? mount, string? pakVersion, string? compression,
+        bool rivalsOnly, IProgress<ProgressNotificationValue>? progress, CancellationToken cancellationToken)
     {
-        if (rivalsSwitches.Contains(true))
+        if (rivalsOnly)
             throw new McpException($"{string.Join(", ", RivalsPackSwitches)} only apply to IoStore (.utoc) output.");
 
         var mountPoint = ToolInput.Optional(mount, nameof(mount), 300) ?? $"../../../{new DirectoryInfo(source.TrimEnd('\\', '/')).Name}/";
@@ -141,6 +142,7 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
             ? new[] { ToolInput.Name<PakCompression>(codec, nameof(compression)) }
             : null;
         var sink = new ProgressSink(progress, "Packed files");
+        var key = settings.AesKey;
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var result = await ToolRuntime.UsePakWorkerBlockingAsync(
@@ -152,10 +154,9 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
     }
 
     private static async Task<PackResult> PackIoStoreAsync(
-        string source, string target, OpenSettings settings, byte[]? key, bool obfuscate, bool kawaiiPhysics, bool patchDefaultHiddenMats,
+        string source, string target, OpenSettings settings, bool rivalsOnly, bool obfuscate, bool kawaiiPhysics, bool patchDefaultHiddenMats,
         string? bitmaps, IProgress<ProgressNotificationValue>? progress, CancellationToken cancellationToken)
     {
-        var rivalsOnly = obfuscate || kawaiiPhysics || patchDefaultHiddenMats || bitmaps != null;
         if (rivalsOnly && settings.Game != Game.MarvelRivals)
             throw new McpException($"{string.Join(", ", RivalsPackSwitches)} are only supported with game rivals.");
 
@@ -177,7 +178,7 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        var request = new IoStorePackRequest(source, target, retocVersion, key, new RetocZenOptions(settings.Game, obfuscate), patches, settings.UsmapPath);
+        var request = new IoStorePackRequest(source, target, retocVersion, settings.AesKey, new RetocZenOptions(settings.Game, obfuscate), patches, settings.UsmapPath);
         await IoStorePacker.PackAsync(request, Info, warnings.Add, cancellationToken).ConfigureAwait(false);
 
         return new PackResult(target, $"iostore ({retocVersion})", null, log.ToList(), [.. settings.Warnings(), .. warnings.ToList()]);
@@ -267,7 +268,7 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
             if (rules != null)
             {
                 var versions = await Task.Run(
-                    () => new EngineVersionResolver { DefaultVersion = settings.EngineVersion, Mappings = AssetIo.ResolveMappings(settings.Args), Game = settings.Game },
+                    () => AssetIo.ResolveVersions(settings.Args),
                     cancellationToken).ConfigureAwait(false);
                 var sink = new ProgressSink(progress, "Edited assets");
                 var sets = await EditExecutor.ApplyAsync(

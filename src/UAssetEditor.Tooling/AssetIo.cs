@@ -9,6 +9,7 @@ using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Core.Games.Rivals;
 using UAssetEditor.Core.PropertyAccess;
+using UAssetEditor.Core.Versioning;
 
 namespace UAssetEditor.Tooling;
 
@@ -68,6 +69,10 @@ internal static class AssetIo
         var path = ResolveUsmapPath(args, option);
         return path == null ? null : LoadMappings(path, $"--{option}").CreateAssetScope();
     }
+
+    /// <summary>The engine version, usmap and game every asset of a run opens with.</summary>
+    public static EngineVersionResolver ResolveVersions(ArgReader args) =>
+        new() { DefaultVersion = ResolveVersion(args), Mappings = ResolveMappings(args), Game = ResolveGame(args) };
 
     /// <summary>
     /// The usmap at <paramref name="path"/>, loaded once per process and shared: give each asset its own <c>CreateAssetScope()</c>.

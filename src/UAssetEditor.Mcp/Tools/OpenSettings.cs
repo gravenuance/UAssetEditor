@@ -81,7 +81,8 @@ internal sealed class OpenSettings
         return [.. _notes.Concat(lines).Select(line => Untrusted.Clean(line, 500)).Distinct(StringComparer.Ordinal).Take(MaxWarnings)];
     }
 
-    private static GameProfile? ParseGame(string? game)
+    /// <summary>The profile a tool's game argument names, or null when it is omitted.</summary>
+    public static GameProfile? ParseGame(string? game)
     {
         var text = ToolInput.Optional(game, nameof(game), 40);
         if (text == null) return null;

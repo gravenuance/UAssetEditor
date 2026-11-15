@@ -53,18 +53,12 @@ internal sealed class ArchiveReadTools(MappingsStore store)
             return reader.Entries;
         }, cancellationToken).ConfigureAwait(false);
 
-        var matched = entries
-            .Where(e => contains == null || e.Contains(contains, StringComparison.OrdinalIgnoreCase))
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var shown = matched
-            .Take(maxResults)
+        var page = EntryPage.Of(entries, contains, maxResults);
+        var shown = page.Shown
             .Select(e => new EntryDto(Untrusted.Clean(e, 500), e.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
-        return new PakListResult(
-            path, entries.Count, matched.Count, shown, matched.Count > shown.Count,
-            matched.Count > shown.Count ? $"Showing the first {shown.Count} of {matched.Count} matches: narrow the filter." : "");
+        return new PakListResult(path, entries.Count, page.Matched, shown, page.Truncated, page.Note);
     }
 
     [McpServerTool(Name = "iostore_list", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
@@ -84,14 +78,24 @@ internal sealed class ArchiveReadTools(MappingsStore store)
         var key = OpenSettings.Create(store, game, null, null, aesKey: aesKey).AesKey;
 
         var entries = await RetocProcess.ListAsync(path, key, cancellationToken).ConfigureAwait(false);
-        var matched = entries
-            .Where(e => contains == null || e.Contains(contains, StringComparison.OrdinalIgnoreCase))
-            .Order(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var shown = matched.Take(maxResults).Select(e => Untrusted.Clean(e, 500)).ToList();
+        var page = EntryPage.Of(entries, contains, maxResults);
+        var shown = page.Shown.Select(e => Untrusted.Clean(e, 500)).ToList();
 
-        return new IoStoreListResult(
-            path, matched.Count, shown, matched.Count > shown.Count,
-            matched.Count > shown.Count ? $"Showing the first {shown.Count} of {matched.Count} matches: narrow the filter." : "");
+        return new IoStoreListResult(path, page.Matched, shown, page.Truncated, page.Note);
+    }
+
+    /// <summary>The first <c>max</c> entries containing a filter, in case-insensitive order, and how many matched in all.</summary>
+    private sealed record EntryPage(int Matched, IReadOnlyList<string> Shown)
+    {
+        public bool Truncated => Matched > Shown.Count;
+
+        public string Note => Truncated ? $"Showing the first {Shown.Count} of {Matched} matches: narrow the filter." : "";
+
+        public static EntryPage Of(IEnumerable<string> entries, string? contains, int max)
+        {
+            var matched = entries.Where(e => contains == null || e.Contains(contains, StringComparison.OrdinalIgnoreCase)).ToList();
+            // Order then Take sorts only the kept entries, not a game pak's hundreds of thousands.
+            return new EntryPage(matched.Count, [.. matched.Order(StringComparer.OrdinalIgnoreCase).Take(max)]);
+        }
     }
 }

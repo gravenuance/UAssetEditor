@@ -266,7 +266,7 @@ internal static class PakCommands
             if (!File.Exists(rulesetPath)) throw new ArgException($"Ruleset file not found: {rulesetPath}");
             var ruleSet = JsonSerializer.Deserialize<RuleSet>(File.ReadAllText(rulesetPath), AssetIo.RuleSetJsonOptions)
                 ?? throw new ArgException($"'{rulesetPath}' did not contain a valid rule set.");
-            var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
+            var versions = AssetIo.ResolveVersions(args);
 
             var changeSets = EditExecutor.ApplyAsync(source, versions, ruleSet, createBackup: false, backupFolder: null).GetAwaiter().GetResult();
             foreach (var changeSet in changeSets.Where(c => c.Skipped))

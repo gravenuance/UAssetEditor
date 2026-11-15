@@ -274,7 +274,7 @@ internal sealed class AssetReadTools(MappingsStore store)
         if (isFolder)
         {
             var versions = await Task.Run(
-                () => new EngineVersionResolver { DefaultVersion = settings.EngineVersion, Mappings = AssetIo.ResolveMappings(settings.Args), Game = settings.Game },
+                () => AssetIo.ResolveVersions(settings.Args),
                 cancellationToken).ConfigureAwait(false);
             var sink = new ProgressSink(progress, "Searched assets");
             outcome = await SearchService.SearchAllAsync(

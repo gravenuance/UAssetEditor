@@ -16,7 +16,7 @@ internal sealed class UsmapTools(MappingsStore store)
         [Description("Only this game: rivals, ff7r or stellarblade. Omit for all.")] string? game = null,
         CancellationToken cancellationToken = default)
     {
-        var profiles = ParseGame(game) is { } one ? [one] : GameProfile.All;
+        var profiles = OpenSettings.ParseGame(game) is { } one ? [one] : GameProfile.All;
         var usmaps = new List<UsmapDto>();
         foreach (var profile in profiles)
         {
@@ -37,7 +37,7 @@ internal sealed class UsmapTools(MappingsStore store)
         CancellationToken cancellationToken = default)
     {
         var path = ToolPaths.ExistingFile(file, nameof(file), ".usmap");
-        var profile = ParseGame(game) ?? throw new McpException("game is required.");
+        var profile = OpenSettings.ParseGame(game) ?? throw new McpException("game is required.");
         cancellationToken.ThrowIfCancellationRequested();
 
         StoredMappings stored;
@@ -55,13 +55,5 @@ internal sealed class UsmapTools(MappingsStore store)
             ? "Stored without a build, so it cannot be told when it is out of date with the game: add Dumper-7's file as named, or pass build."
             : "";
         return Task.FromResult(new UsmapAddResult(new UsmapDto(profile.CliName, stored.Build, stored.Path), note));
-    }
-
-    private static GameProfile? ParseGame(string? game)
-    {
-        var text = ToolInput.Optional(game, nameof(game), 40);
-        if (text == null) return null;
-        return GameProfile.FindByCliName(text)
-            ?? throw new McpException($"Unknown game '{Untrusted.Clean(text, 40)}': expected one of {GameProfile.ValidNames}.");
     }
 }
