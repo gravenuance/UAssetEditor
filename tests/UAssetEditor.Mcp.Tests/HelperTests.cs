@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using UAssetEditor.Core;
+using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Hosting;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Mcp.Tools;
@@ -10,8 +11,13 @@ namespace UAssetEditor.Mcp.Tests;
 public sealed class HelperTests : IDisposable
 {
     private readonly TempFolder _folder = new();
+    private readonly TestLinks _links = new();
 
-    public void Dispose() => _folder.Dispose();
+    public void Dispose()
+    {
+        _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
+        _folder.Dispose();
+    }
 
     // ToolPaths
 
@@ -87,6 +93,57 @@ public sealed class HelperTests : IDisposable
     {
         Assert.Throws<McpException>(() => ToolPaths.RefuseSame(_folder.Combine("a.pak"), _folder.Combine("a.pak"), "pak", "output"));
         ToolPaths.RefuseSame(_folder.Combine("a.pak"), _folder.Combine("b.pak"), "pak", "output");
+    }
+
+    [Fact]
+    public void RefuseSame_SeesThroughAJunction_EvenForAnOutputThatDoesNotExistYet()
+    {
+        var real = _folder.Combine("real");
+        Directory.CreateDirectory(real);
+        File.WriteAllText(Path.Combine(real, "a.pak"), "x");
+        var link = _folder.Combine("link");
+        _links.MakeJunction(link, real);
+
+        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(Path.Combine(real, "a.pak"), Path.Combine(link, "a.pak"), "pak", "output"));
+        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(Path.Combine(link, "a.pak"), Path.Combine(real, "A.PAK"), "pak", "output"));
+        ToolPaths.RefuseSame(Path.Combine(real, "a.pak"), Path.Combine(link, "b.pak"), "pak", "output");
+    }
+
+    [Fact]
+    public void RefuseSame_SeesAHardLinkToTheSameFile_ButNotACopy()
+    {
+        var pak = _folder.Combine("a.pak");
+        File.WriteAllText(pak, "x");
+        var hardLink = _folder.Combine("b.pak");
+        TestLinks.MakeHardLink(hardLink, pak);
+        var copy = _folder.Combine("c.pak");
+        File.Copy(pak, copy);
+
+        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(pak, hardLink, "pak", "output"));
+        ToolPaths.RefuseSame(pak, copy, "pak", "output");
+    }
+
+    [Fact]
+    public void RefuseSame_SeesThroughAnEightDotThreeName()
+    {
+        var folder = _folder.Combine("A Folder With A Long Name");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "a.pak"), "x");
+
+        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(Path.Combine(folder, "a.pak"), Path.Combine(TestLinks.ShortName(folder), "a.pak"), "pak", "output"));
+    }
+
+    [Fact]
+    public void RefuseInside_SeesAnOutputReachedThroughAJunctionIntoTheFolder()
+    {
+        var folder = _folder.Combine("mod");
+        var elsewhere = _folder.Combine("elsewhere");
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(elsewhere);
+        _links.MakeJunction(Path.Combine(elsewhere, "into"), folder);
+
+        Assert.Throws<McpException>(() => ToolPaths.RefuseInside(Path.Combine(elsewhere, "into", "out.pak"), folder, "output", "source"));
+        ToolPaths.RefuseInside(Path.Combine(elsewhere, "out.pak"), folder, "output", "source");
     }
 
     // Untrusted / ToolInput

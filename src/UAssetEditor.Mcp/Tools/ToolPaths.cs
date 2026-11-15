@@ -1,4 +1,5 @@
 using ModelContextProtocol;
+using UAssetEditor.Core;
 
 namespace UAssetEditor.Mcp.Tools;
 
@@ -63,22 +64,20 @@ internal static class ToolPaths
         return RefuseExisting(path, name, overwrite, holdsFiles);
     }
 
-    /// <summary>Refuses <paramref name="candidate"/> when it lies inside <paramref name="folder"/>, so an output cannot end up in what it is built from.</summary>
+    /// <summary>Refuses <paramref name="candidate"/> when it lies inside <paramref name="folder"/>, so an output cannot end up in what it is built from.
+    /// Both are resolved first, so a link, junction or 8.3 name into the folder does not get round it.</summary>
     public static void RefuseInside(string candidate, string folder, string candidateName, string folderName)
     {
-        var root = Path.TrimEndingDirectorySeparator(folder) + Path.DirectorySeparatorChar;
-        if (candidate.StartsWith(root, PathComparison))
+        if (FinalPaths.IsInside(candidate, folder))
             throw new McpException($"{candidateName} must not be inside {folderName}.");
     }
 
-    /// <summary>Refuses two paths that name the same file.</summary>
+    /// <summary>Refuses two paths that name the same file, however they are spelled: through a link or junction, by an 8.3
+    /// name, in another letter case, or as a hard link.</summary>
     public static void RefuseSame(string first, string second, string firstName, string secondName)
     {
-        if (string.Equals(first, second, PathComparison)) throw new McpException($"{firstName} and {secondName} are the same path.");
+        if (FinalPaths.SameFile(first, second)) throw new McpException($"{firstName} and {secondName} are the same file.");
     }
-
-    private static StringComparison PathComparison =>
-        OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private static string RefuseExisting(string path, string name, bool overwrite, bool exists) =>
         exists && !overwrite

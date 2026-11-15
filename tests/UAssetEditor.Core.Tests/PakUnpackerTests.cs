@@ -134,4 +134,72 @@ public class PakUnpackerTests
             if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
         }
     }
+
+    [Fact]
+    public void Unpack_WhenAFolderInsideTheDestinationIsAJunction_FailsThoseEntriesInsteadOfWritingThroughIt()
+    {
+        // A junction already inside the destination (planted, or left by an earlier extraction) would send the entry's
+        // folder, and the file in it, to wherever the junction points. A lexical prefix check cannot see that.
+        if (!OperatingSystem.IsWindows()) return;
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        {
+            ["Content/Foo.uasset"] = Encoding.UTF8.GetBytes("foo"),
+            ["Content/Deeper/Bar.uasset"] = Encoding.UTF8.GetBytes("bar"),
+            ["Other/Baz.uasset"] = Encoding.UTF8.GetBytes("baz"),
+        });
+        var root = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_UnpackLinks_" + Guid.NewGuid().ToString("N"));
+        var destination = Path.Combine(root, "dest");
+        var outside = Path.Combine(root, "outside");
+        Directory.CreateDirectory(destination);
+        Directory.CreateDirectory(outside);
+        using var links = new TestLinks();
+        links.MakeJunction(Path.Combine(destination, "Content"), outside);
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+            var result = PakUnpacker.Unpack(source, destination, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.SucceededCount);
+            Assert.Equal(["Content/Deeper/Bar.uasset", "Content/Foo.uasset"], result.FailedEntries.Select(f => f.Entry).Order(StringComparer.Ordinal));
+            Assert.All(result.FailedEntries, f => Assert.Contains("link inside the destination folder", f.Reason, StringComparison.Ordinal));
+            Assert.Empty(Directory.GetFileSystemEntries(outside));
+            Assert.True(File.Exists(Path.Combine(destination, "Other", "Baz.uasset")));
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            links.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Unpack_WhenTheDestinationItselfIsReachedThroughAJunction_StillWritesThere()
+    {
+        // The caller chose that folder, links and all; only a link met below it is suspect.
+        if (!OperatingSystem.IsWindows()) return;
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/Foo.uasset"] = Encoding.UTF8.GetBytes("foo") });
+        var root = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_UnpackLinks_" + Guid.NewGuid().ToString("N"));
+        var real = Path.Combine(root, "real");
+        Directory.CreateDirectory(real);
+        using var links = new TestLinks();
+        links.MakeJunction(Path.Combine(root, "alias"), real);
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+            var result = PakUnpacker.Unpack(source, Path.Combine(root, "alias", "dest"), cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.SucceededCount);
+            Assert.Empty(result.FailedEntries);
+            Assert.True(File.Exists(Path.Combine(real, "dest", "Content", "Foo.uasset")));
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            links.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

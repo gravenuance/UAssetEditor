@@ -1,9 +1,20 @@
+using UAssetEditor.Core.Tests;
+using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Mcp.Tools;
 
 namespace UAssetEditor.Mcp.Tests;
 
-public sealed class PathLocksTests
+public sealed class PathLocksTests : IDisposable
 {
+    private readonly TestLinks _links = new();
+    private readonly TempFolder _folder = new();
+
+    public void Dispose()
+    {
+        _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
+        _folder.Dispose();
+    }
+
     private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
 
     private readonly CancellationToken _ct = TestContext.Current.CancellationToken;
@@ -47,6 +58,19 @@ public sealed class PathLocksTests
         var most = await MostInsideAtOnce(20, i => [i % 2 == 0 ? "D:/x/A.uasset" : "d:/X/a.UASSET"]);
 
         if (OperatingSystem.IsWindows()) Assert.Equal(1, most);
+    }
+
+    [Fact]
+    public async Task CallsOnTwoNamesForOneFile_ThroughAJunction_RunOneAtATime()
+    {
+        var real = _folder.Combine("real");
+        Directory.CreateDirectory(real);
+        var alias = _folder.Combine("alias");
+        _links.MakeJunction(alias, real);
+
+        var most = await MostInsideAtOnce(20, i => [Path.Combine(i % 2 == 0 ? real : alias, "A.uasset")]);
+
+        Assert.Equal(1, most);
     }
 
     [Fact]

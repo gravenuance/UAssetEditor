@@ -1,3 +1,5 @@
+using UAssetEditor.Core;
+
 namespace UAssetEditor.Mcp.Tools;
 
 /// <summary>One asynchronous lock per file path for the whole process, so two calls never open, edit and save the same
@@ -27,7 +29,8 @@ internal static class PathLocks
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(work);
 
-        var keys = paths.Select(Path.GetFullPath).Distinct(KeyComparison).Order(KeyComparison).ToList();
+        // Resolved, so two names for one file (through a junction or an 8.3 name) share one lock.
+        var keys = paths.Select(FinalPaths.Resolve).Distinct(KeyComparison).Order(KeyComparison).ToList();
         var interested = new List<(string Key, Gate Gate)>();
         var acquired = new List<Gate>();
         try

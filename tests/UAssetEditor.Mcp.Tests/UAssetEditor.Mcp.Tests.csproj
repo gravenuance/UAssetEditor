@@ -37,6 +37,7 @@
   <ItemGroup>
     <Compile Include="..\UAssetEditor.Core.Tests\TestAssets.cs" Link="Shared\TestAssets.cs" />
     <Compile Include="..\UAssetEditor.Core.Tests\TestPaks.cs" Link="Shared\TestPaks.cs" />
+    <Compile Include="..\UAssetEditor.Core.Tests\TestLinks.cs" Link="Shared\TestLinks.cs" />
     <Compile Include="..\UAssetEditor.Core.Tests\Games\RivalsLogTestData.cs" Link="Shared\RivalsLogTestData.cs" />
   </ItemGroup>
 

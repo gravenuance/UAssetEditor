@@ -10,9 +10,14 @@ namespace UAssetEditor.Mcp.Tests;
 public sealed class ArchiveWriteToolTests : IDisposable
 {
     private readonly McpRig _rig = new();
+    private readonly TestLinks _links = new();
     private readonly CancellationToken _ct = TestContext.Current.CancellationToken;
 
-    public void Dispose() => _rig.Dispose();
+    public void Dispose()
+    {
+        _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
+        _rig.Dispose();
+    }
 
     private string MakePak(string name, IReadOnlyDictionary<string, byte[]> files)
     {
@@ -347,8 +352,26 @@ public sealed class ArchiveWriteToolTests : IDisposable
         await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, _rig.Folder.Combine("out.pak"), "{ not json", cancellationToken: _ct));
 
         Assert.Contains("already exists", replaced.Message, StringComparison.Ordinal);
-        Assert.Contains("same path", same.Message, StringComparison.Ordinal);
+        Assert.Contains("same file", same.Message, StringComparison.Ordinal);
         Assert.False(File.Exists(_rig.Folder.Combine("out.pak")));
+    }
+
+    [Fact]
+    public async Task Repack_RefusesAnOutputThatIsTheSourceReachedThroughAJunctionOrAHardLink()
+    {
+        var pak = MakePak("a.pak", "Content/A.txt");
+        var before = await File.ReadAllBytesAsync(pak, _ct);
+        var folderLink = _rig.Folder.Combine("alias");
+        _links.MakeJunction(folderLink, _rig.Folder.Path);
+        var hardLink = _rig.Folder.Combine("hard.pak");
+        TestLinks.MakeHardLink(hardLink, pak);
+
+        var viaJunction = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, Path.Combine(folderLink, "a.pak"), overwrite: true, cancellationToken: _ct));
+        var viaHardLink = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, hardLink, overwrite: true, cancellationToken: _ct));
+
+        Assert.Contains("same file", viaJunction.Message, StringComparison.Ordinal);
+        Assert.Contains("same file", viaHardLink.Message, StringComparison.Ordinal);
+        Assert.Equal(before, await File.ReadAllBytesAsync(pak, _ct));
     }
 
     [Fact]

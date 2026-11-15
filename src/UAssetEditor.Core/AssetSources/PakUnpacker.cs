@@ -35,6 +35,10 @@ public static class PakUnpacker
             ? destinationRoot
             : destinationRoot + Path.DirectorySeparatorChar;
 
+        // The prefix check is lexical, so it cannot see a junction or symbolic link already inside the destination that leads
+        // elsewhere. Each entry's folder is also resolved and must land where its own path says, below the destination as the caller named it.
+        var destinationFinal = FinalPaths.Resolve(destinationRoot);
+
         var entries = source.ListAllEntries().Where(e => entryFilter?.Invoke(e) ?? true).ToList();
         var failures = new List<(string Entry, string Reason)>();
         var succeeded = 0;
@@ -50,7 +54,10 @@ public static class PakUnpacker
                 if (!outputPath.StartsWith(destinationRootWithSeparator, StringComparison.Ordinal))
                     throw new InvalidOperationException($"Entry path '{entry}' escapes the destination folder.");
 
-                Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+                var folder = Path.GetDirectoryName(outputPath)!;
+                RefuseLinkBelowDestination(destinationRoot, destinationFinal, folder, entry);
+                Directory.CreateDirectory(folder);
+                RefuseLinkBelowDestination(destinationRoot, destinationFinal, outputPath, entry); // the file itself may be a link
                 using (var rented = source.ReadOriginalBytes(entry))
                     File.WriteAllBytes(outputPath, rented.Span);
                 succeeded++;
@@ -64,5 +71,20 @@ public static class PakUnpacker
         }
 
         return new PakBulkResult { SucceededCount = succeeded, FailedEntries = failures };
+    }
+
+    /// <summary>Throws when the deepest part of <paramref name="path"/> that exists resolves anywhere but where its name below the destination puts it.</summary>
+    private static void RefuseLinkBelowDestination(string destinationRoot, string destinationFinal, string path, string entry)
+    {
+        var existing = path;
+        while (!Path.Exists(existing))
+        {
+            if (Path.GetDirectoryName(existing) is not { } parent) return;
+            existing = parent;
+        }
+
+        var expected = Path.GetFullPath(Path.Combine(destinationFinal, Path.GetRelativePath(destinationRoot, existing)));
+        if (!string.Equals(FinalPaths.Resolve(existing), expected, FinalPaths.PathComparison))
+            throw new InvalidOperationException($"Entry path '{entry}' passes through a link inside the destination folder.");
     }
 }
