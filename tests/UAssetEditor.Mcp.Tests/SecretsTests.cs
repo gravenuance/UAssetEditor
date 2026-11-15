@@ -38,8 +38,8 @@ public sealed class SecretsTests
 
     [Theory]
     [InlineData("failed with key Zm9vYmFyLXNlY3JldA==", "Zm9vYmFyLXNlY3JldA==", "failed with key [redacted]")]
-    [InlineData("failed with key 0xAbCdEf0123456789", "abcdef0123456789", "failed with key 0x[redacted]")]
-    [InlineData("key=ABCDEF0123456789;again abcdef0123456789", "0xABCDEF0123456789", "key=[redacted];again [redacted]")]
+    [InlineData("failed with key 0xAbCdEf0123456789", "abcdef0123456789", "failed with key 0x[redacted]")] // gitleaks:allow (made-up test keys)
+    [InlineData("key=ABCDEF0123456789;again abcdef0123456789", "0xABCDEF0123456789", "key=[redacted];again [redacted]")] // gitleaks:allow
     public void Redact_GivenTheKeyTheCallReceived_ReplacesItWhateverShapeItAppearsIn(string text, string secret, string expected)
     {
         Assert.Equal(expected, Secrets.Redact(text, [secret]));
@@ -162,9 +162,9 @@ public sealed class SecretsTests
     }
 
     [Theory]
-    [InlineData("key_echo", "Zm9vYmFyLXNlY3JldC1rZXk=")]
+    [InlineData("key_echo", "Zm9vYmFyLXNlY3JldC1rZXk=")] // gitleaks:allow (made-up test keys)
     [InlineData("key_echo", "hunter2-not-hex-at-all")]
-    [InlineData("key_echo_input", "Zm9vYmFyLXNlY3JldC1rZXk=")]
+    [InlineData("key_echo_input", "Zm9vYmFyLXNlY3JldC1rZXk=")] // gitleaks:allow
     [InlineData("key_echo_input", "0xDEADBEEFCAFE")]
     public async Task AFailureThatEchoesTheKeyTheCallReceived_NeverReachesTheCallerOrTheLog_WithIt(string tool, string givenKey)
     {
