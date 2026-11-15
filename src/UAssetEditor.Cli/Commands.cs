@@ -106,27 +106,47 @@ internal static class Commands
             ValueCompare = compare,
             ReferenceTerms = ToTerms(args.Option("reference")),
             ReferenceCompare = compare,
+            RegexTimeout = TimeSpan.FromSeconds(3),
         };
 
-        IReadOnlyList<SearchResult> results;
+        SearchOutcome outcome;
         if (Directory.Exists(path))
         {
             var source = new LooseFolderAssetSource(path);
             var versions = new EngineVersionResolver { DefaultVersion = AssetIo.ResolveVersion(args), Mappings = AssetIo.ResolveMappings(args), Game = AssetIo.ResolveGame(args) };
-            results = SearchService.SearchAllAsync(source, versions, query).GetAwaiter().GetResult();
+            outcome = SearchService.SearchAllAsync(source, versions, query).GetAwaiter().GetResult();
         }
         else
         {
             var asset = AssetIo.Open(path, args);
-            results = SearchService.SearchAsset(asset, path, query).ToList();
+            var found = SearchService.SearchAsset(asset, path, query).ToList();
+            outcome = new SearchOutcome(found, found.Count, 1, 0, 0, []);
         }
 
-        foreach (var r in results)
+        foreach (var r in outcome.Results)
             Console.WriteLine($"{r.AssetPath} | [{r.ExportIndex}] {r.ExportName} | {r.PropertyPath} = {r.MatchedText}");
 
-        Console.WriteLine($"-- {results.Count} match(es)");
+        foreach (var line in SearchSummary(outcome)) Console.WriteLine(line);
+        foreach (var line in SearchWarnings(outcome)) args.Diagnostics.WriteLine(line);
         return 0;
     }
+
+    /// <summary>The lines closing a search: the match count, then (only when some assets were not searched) how many and why.</summary>
+    internal static IReadOnlyList<string> SearchSummary(SearchOutcome outcome)
+    {
+        var lines = new List<string> { $"-- {outcome.TotalMatches} match(es)" };
+        if (outcome.AssetsSkipped == 0 && outcome.RegexTimeouts == 0) return lines;
+
+        var parts = new List<string>();
+        if (outcome.AssetsSkipped > 0) parts.Add($"{outcome.AssetsSkipped} of {outcome.AssetsSearched} asset(s) could not be read or searched");
+        if (outcome.RegexTimeouts > 0) parts.Add($"{outcome.RegexTimeouts} hit the regular-expression time limit");
+        lines.Add("-- not searched: " + string.Join(", ", parts));
+        return lines;
+    }
+
+    /// <summary>One warning per asset that was not searched, with the reason (the first few only).</summary>
+    internal static IReadOnlyList<string> SearchWarnings(SearchOutcome outcome) =>
+        [.. outcome.Skips.Select(skip => $"Warning: {skip.AssetPath}: {skip.Reason}")];
 
     private static IReadOnlyList<ConditionTerm> ToTerms(string? text) =>
         text == null ? [] : [new ConditionTerm(text)];

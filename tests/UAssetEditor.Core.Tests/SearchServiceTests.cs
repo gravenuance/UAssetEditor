@@ -223,10 +223,10 @@ public class SearchServiceTests
         var source = new ThrowingThenGoodAssetSource("bad.uasset", "good.uasset", goodAsset);
         var versions = new EngineVersionResolver();
 
-        var results = await SearchService.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
+        var outcome = await SearchService.SearchAllAsync(source, versions, new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Single(results);
-        Assert.Equal("good.uasset", results[0].AssetPath);
+        var result = Assert.Single(outcome.Results);
+        Assert.Equal("good.uasset", result.AssetPath);
     }
 
     [Fact]
@@ -243,6 +243,112 @@ public class SearchServiceTests
         var exception = await Record.ExceptionAsync(() => SearchService.SearchAllAsync(source, new EngineVersionResolver(), query, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Null(exception);
+    }
+
+    private static InMemoryAssetSource ThreeAssets(string exportName = "TestExport")
+    {
+        var assets = new Dictionary<string, UAssetAPI.UAsset>();
+        foreach (var name in new[] { "c.uasset", "a.uasset", "b.uasset" })
+        {
+            var asset = TestAssets.CreateAsset();
+            TestAssets.CreateSampleExport(asset, exportName);
+            assets[name] = asset;
+        }
+        return new InMemoryAssetSource(assets);
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_StopsCollectingAtTheHitCap_ButCountsEveryMatch()
+    {
+        var query = new SearchQuery { PropertyNameTerms = ["Count"] }; // one match per asset
+
+        var outcome = await SearchService.SearchAllAsync(ThreeAssets(), new EngineVersionResolver(), query, maxResults: 2, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["a.uasset", "b.uasset"], outcome.Results.Select(r => r.AssetPath));
+        Assert.Equal(3, outcome.TotalMatches);
+        Assert.Equal(3, outcome.AssetsSearched);
+        Assert.Equal(0, outcome.AssetsSkipped);
+        Assert.Empty(outcome.Warnings());
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_WithoutACap_KeepsEveryMatch_InAssetOrder()
+    {
+        var query = new SearchQuery { PropertyNameTerms = ["Count"] };
+
+        var outcome = await SearchService.SearchAllAsync(ThreeAssets(), new EngineVersionResolver(), query, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["a.uasset", "b.uasset", "c.uasset"], outcome.Results.Select(r => r.AssetPath));
+        Assert.Equal(3, outcome.TotalMatches);
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_ReportsTheAssetsItCouldNotSearch_AndWhy()
+    {
+        var goodAsset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(goodAsset);
+        var source = new ThrowingThenGoodAssetSource("bad.uasset", "good.uasset", goodAsset);
+
+        var outcome = await SearchService.SearchAllAsync(source, new EngineVersionResolver(), new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, outcome.AssetsSkipped);
+        Assert.Equal(2, outcome.AssetsSearched);
+        Assert.Equal(0, outcome.RegexTimeouts);
+        var skip = Assert.Single(outcome.Skips);
+        Assert.Equal("bad.uasset", skip.AssetPath);
+        Assert.Contains("simulated parse failure", skip.Reason, StringComparison.Ordinal);
+        Assert.Contains("1 of 2 asset(s) could not be searched.", outcome.Warnings());
+        Assert.Contains("bad.uasset: InvalidOperationException: simulated parse failure", outcome.Warnings());
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_WithAnInvalidRegex_CountsEveryAssetAsSkipped()
+    {
+        var query = new SearchQuery { PropertyNameTerms = ["["], PropertyNameCompare = TextCompare.Regex };
+
+        var outcome = await SearchService.SearchAllAsync(ThreeAssets(), new EngineVersionResolver(), query, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, outcome.AssetsSkipped);
+        Assert.Equal(0, outcome.TotalMatches);
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_ReportsTheAssetsWhoseRegexTimedOut_SeparatelyFromThoseItCouldNotOpen()
+    {
+        // 40 letters then a letter that fails the pattern: the nested quantifier backtracks for far longer than the limit.
+        var query = new SearchQuery
+        {
+            ExportNameTerms = ["^(a+)+$"],
+            ExportNameCompare = TextCompare.Regex,
+            RegexTimeout = TimeSpan.FromMilliseconds(1),
+        };
+        var source = ThreeAssets(new string('a', 40) + "b");
+
+        var outcome = await SearchService.SearchAllAsync(source, new EngineVersionResolver(), query, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, outcome.RegexTimeouts);
+        Assert.Equal(0, outcome.AssetsSkipped);
+        Assert.Equal(0, outcome.TotalMatches);
+        Assert.Contains("3 of 3 asset(s) hit the regular-expression time limit; their matches may be incomplete.", outcome.Warnings());
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_KeepsOnlyTheFirstFewSkipReasons_ButCountsAll()
+    {
+        var outcome = await SearchService.SearchAllAsync(new ManyBadAssetsSource(100), new EngineVersionResolver(), new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(100, outcome.AssetsSkipped);
+        Assert.Equal(20, outcome.Skips.Count);
+    }
+
+    private sealed class ManyBadAssetsSource(int count) : Core.AssetSources.IAssetSource
+    {
+        public IEnumerable<string> EnumerateAssetPaths() => Enumerable.Range(0, count).Select(i => $"bad{i}.uasset");
+
+        public UAssetAPI.UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game) =>
+            throw new InvalidOperationException("cannot open");
+
+        public void SaveAsset(UAssetAPI.UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }
     }
 
     private sealed class ThrowingThenGoodAssetSource(string badPath, string goodPath, UAssetAPI.UAsset goodAsset) : Core.AssetSources.IAssetSource

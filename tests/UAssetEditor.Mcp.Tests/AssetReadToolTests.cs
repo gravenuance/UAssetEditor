@@ -296,6 +296,44 @@ public sealed class AssetReadToolTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchAssets_InAFolder_ReportsTheAssetsItCouldNotSearch_SoNoHitIsNotMistakenForNoMatch()
+    {
+        Sample(name: "A.uasset");
+        await File.WriteAllTextAsync(_rig.Folder.Combine("Broken.uasset"), "not a package", _ct);
+
+        var result = await _rig.Assets.SearchAssetsAsync(_rig.Folder.Path, value: "Hello", cancellationToken: _ct);
+
+        Assert.Equal(1, result.Total);
+        Assert.Equal(2, result.AssetsSearched);
+        Assert.Equal(1, result.AssetsSkipped);
+        Assert.Equal(0, result.RegexTimeouts);
+        Assert.Contains("1 of 2 asset(s) could not be searched.", result.Warnings);
+        Assert.Contains(result.Warnings, w => w.StartsWith("Broken.uasset: ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task SearchAssets_InOneAsset_CountsItAsTheOneAssetSearched()
+    {
+        var result = await _rig.Assets.SearchAssetsAsync(Sample(), value: "Hello", cancellationToken: _ct);
+
+        Assert.Equal(1, result.AssetsSearched);
+        Assert.Equal(0, result.AssetsSkipped);
+        Assert.Equal(0, result.RegexTimeouts);
+    }
+
+    [Fact]
+    public async Task SearchAssets_InAFolder_StillCountsEveryMatchWhenTheHitCapIsLow()
+    {
+        foreach (var name in new[] { "A", "B", "C", "D" }) Sample(name: name + ".uasset");
+
+        var result = await _rig.Assets.SearchAssetsAsync(_rig.Folder.Path, value: "Hello", maxResults: 2, cancellationToken: _ct);
+
+        Assert.Equal(4, result.Total);
+        Assert.Equal(["A.uasset", "B.uasset"], result.Hits.Select(h => Path.GetFileName(h.Asset)));
+        Assert.True(result.Truncated);
+    }
+
+    [Fact]
     public async Task SearchAssets_WithoutAnyTerm_AsksForOne()
     {
         var error = await Assert.ThrowsAsync<McpException>(() => _rig.Assets.SearchAssetsAsync(Sample(), cancellationToken: _ct));

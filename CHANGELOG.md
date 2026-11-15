@@ -25,6 +25,7 @@ All notable changes to this project are documented here.
 ### Fixed
 - `to-legacy` no longer fails on some mods (e.g. a Hela skin whose lobby mesh was not written): the bundled retoc (`96c2cc4`) panicked when several import slots pointed at the same import. It also keeps the real path of an import whose package ships in no container, instead of writing `/Engine/UnknownPackage.UnknownExport`. `.utoc` output is unchanged, for `--game rivals` and without a game.
 - `to-legacy` on a container with no entries of its own under a Paks folder converted with no filter against the whole merged Paks view; it now converts the container alone.
+- A folder search (`uacli search`, `search_assets`) dropped assets it could not open or whose regular expression failed, without a word, so a missing hit looked like no match. It now counts them, names the first few with the reason, and gives a regular expression 3 s per match instead of running without limit. `search_assets` also stops collecting hits at `maxResults` while still counting every match.
 
 ## [1.11.0] - 2026-10-30
 

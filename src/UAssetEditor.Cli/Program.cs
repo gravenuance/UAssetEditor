@@ -105,6 +105,8 @@ static void PrintUsage()
 
           uacli search <file-or-folder> [--export-name <t>] [--property-name <t>] [--value <t>] [--reference <t>] [--regex]
               Search one asset or every .uasset under a folder. Terms are substring matches unless --regex is given.
+              In a folder, assets that cannot be read or searched, or whose regex runs past 3 s, are skipped: the closing line counts
+              them and each is named on stderr.
 
           uacli set <file> --export <e> --path <p> --value <v> [--save] [--backup]
               Set a scalar/string/name/text/enum/vector property's value (vectors as "x,y,z", rotators as "pitch,yaw,roll").

@@ -24,8 +24,17 @@ internal sealed record DumpResult(
 
 internal sealed record SearchHitDto(string Asset, int Export, string ExportName, string Kind, string? Path, string Value);
 
+/// <summary>The hits are capped but <paramref name="Total"/> counts every match; assets that were listed but could not be searched are
+/// counted in <paramref name="AssetsSkipped"/> and <paramref name="RegexTimeouts"/>, so an absent hit is not mistaken for no match.</summary>
 internal sealed record SearchResultDto(
-    string Target, int Total, IReadOnlyList<SearchHitDto> Hits, bool Truncated, IReadOnlyList<string> Warnings);
+    string Target,
+    int Total,
+    IReadOnlyList<SearchHitDto> Hits,
+    bool Truncated,
+    int AssetsSearched,
+    int AssetsSkipped,
+    int RegexTimeouts,
+    IReadOnlyList<string> Warnings);
 
 internal sealed record OpDto(int Line, string Verb, bool Skipped, string Text);
 

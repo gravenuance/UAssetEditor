@@ -25,6 +25,7 @@ internal sealed class AssetReadTools(MappingsStore store)
     private const int MaxResults = 2000;
     private const int MaxSearchHits = 1000;
     private const int MaxValueLength = 500;
+    private static readonly TimeSpan SearchRegexTimeout = TimeSpan.FromSeconds(3);
     private const int MaxDumpCharacters = 150_000;
 
     [McpServerTool(Name = "list_exports", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
@@ -192,7 +193,7 @@ internal sealed class AssetReadTools(MappingsStore store)
     }
 
     [McpServerTool(Name = "search_assets", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Searches one asset, or every .uasset under a folder, for exports, properties, values or references that match. Terms are case-insensitive substrings unless regex is true. A folder search can take minutes (progress is reported); an asset that cannot be opened is skipped. The result is capped: narrow the terms when truncated is true." + Untrusted.Note)]
+    [Description("Searches one asset, or every .uasset under a folder, for exports, properties, values or references that match. Terms are case-insensitive substrings unless regex is true. A folder search can take minutes (progress is reported); an asset that cannot be opened or searched is skipped, counted in assetsSkipped and named in warnings, and one whose regular expression runs over its 3 s limit is counted in regexTimeouts, so a missing hit may mean the asset was not searched. Only the first maxResults hits are returned but total counts every match: narrow the terms when truncated is true." + Untrusted.Note)]
     public async Task<SearchResultDto> SearchAssetsAsync(
         [Description("Absolute path of one .uasset, or of a folder searched recursively.")] string path,
         [Description("Match export names.")] string? exportName = null,
@@ -233,38 +234,44 @@ internal sealed class AssetReadTools(MappingsStore store)
             ValueCompare = compare,
             ReferenceTerms = ToTerms(terms[3]),
             ReferenceCompare = compare,
+            RegexTimeout = SearchRegexTimeout,
         };
 
-        IReadOnlyList<SearchResult> results;
+        SearchOutcome outcome;
         if (isFolder)
         {
             var versions = await Task.Run(
                 () => new EngineVersionResolver { DefaultVersion = settings.EngineVersion, Mappings = AssetIo.ResolveMappings(settings.Args), Game = settings.Game },
                 cancellationToken).ConfigureAwait(false);
             var sink = new ProgressSink(progress, "Searched assets");
-            results = await SearchService.SearchAllAsync(
+            outcome = await SearchService.SearchAllAsync(
                 new LooseFolderAssetSource(target),
                 versions,
                 query,
                 new InlineProgress<SearchProgress>(p => sink.Report((p.Completed, p.Total))),
+                maxResults: maxResults,
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            results = await Task.Run(() => SearchService.SearchAsset(AssetIo.Open(target, settings.Args), target, query).ToList(), cancellationToken).ConfigureAwait(false);
+            outcome = await Task.Run(() => SearchOneAsset(AssetIo.Open(target, settings.Args), target, query, maxResults), cancellationToken).ConfigureAwait(false);
         }
 
-        var hits = results
-            .OrderBy(r => r.AssetPath, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(r => r.ExportIndex)
-            .ThenBy(r => r.PropertyPath, StringComparer.Ordinal)
-            .Take(maxResults)
+        var hits = outcome.Results
             .Select(r => new SearchHitDto(
                 Untrusted.Clean(r.AssetPath, 500), r.ExportIndex, Untrusted.Clean(r.ExportName), r.Kind.ToString(),
                 r.PropertyPath is { } hitPath ? Untrusted.Clean(hitPath, 500) : null, Untrusted.Clean(r.MatchedText, MaxValueLength)))
             .ToList();
+        var warnings = settings.Warnings().Concat(outcome.Warnings().Select(line => Untrusted.Clean(line, 500))).ToList();
 
-        return new SearchResultDto(target, results.Count, hits, results.Count > hits.Count, settings.Warnings());
+        return new SearchResultDto(
+            target, outcome.TotalMatches, hits, outcome.TotalMatches > hits.Count, outcome.AssetsSearched, outcome.AssetsSkipped, outcome.RegexTimeouts, warnings);
+    }
+
+    private static SearchOutcome SearchOneAsset(UAsset asset, string path, SearchQuery query, int maxResults)
+    {
+        var found = SearchService.SearchAsset(asset, path, query).Order(SearchResultOrder.Instance).ToList();
+        return new SearchOutcome([.. found.Take(maxResults)], found.Count, 1, 0, 0, []);
     }
 
     private static IReadOnlyList<ConditionTerm> ToTerms(string? text) => text == null ? [] : [new ConditionTerm(text)];

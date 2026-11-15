@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetEditor.Core.AssetSources;
@@ -96,17 +97,17 @@ public static class SearchService
                 if (asset.Exports[e] is not NormalExport export) continue;
                 var exportName = FNameDisplay.ToDisplayString(export.ObjectName);
 
-                if (!ConditionMatcher.Matches(exportName, query.ExportNameTerms, query.ExportNameCompare))
+                if (!ConditionMatcher.Matches(exportName, query.ExportNameTerms, query.ExportNameCompare, query.RegexTimeout))
                     continue;
 
                 foreach (var node in PropertyWalker.Walk(export))
                 {
-                    if (!ConditionMatcher.Matches(node.Path, query.PropertyNameTerms, query.PropertyNameCompare))
+                    if (!ConditionMatcher.Matches(node.Path, query.PropertyNameTerms, query.PropertyNameCompare, query.RegexTimeout))
                         continue;
 
                     var text = PropertyValueAccessor.AsSearchableString(node.Property, asset);
                     if (query.ValueTerms.Count > 0 &&
-                        (text == null || !ConditionMatcher.Matches(text, query.ValueTerms, query.ValueCompare)))
+                        (text == null || !ConditionMatcher.Matches(text, query.ValueTerms, query.ValueCompare, query.RegexTimeout)))
                         continue;
 
                     yield return new SearchResult(assetPath, e, exportName, SearchMatchKind.Property, node.Path, text ?? "");
@@ -119,30 +120,41 @@ public static class SearchService
             foreach (var import in asset.Imports)
             {
                 var full = ImportPathResolver.GetFullPath(import, asset);
-                if (ConditionMatcher.Matches(full, query.ReferenceTerms, query.ReferenceCompare))
+                if (ConditionMatcher.Matches(full, query.ReferenceTerms, query.ReferenceCompare, query.RegexTimeout))
                     yield return new SearchResult(assetPath, -1, "", SearchMatchKind.Reference, null, full);
             }
         }
     }
 
+    private const int MaxSkipsKept = 20;
+
     /// <summary>
-    /// Opens and searches every asset in <paramref name="source"/> in parallel. Assets
-    /// that fail to open (unsupported version, corrupt file, missing mappings, etc.) are
-    /// skipped rather than aborting the whole batch.
+    /// Opens and searches every asset in <paramref name="source"/> in parallel. An asset that cannot be opened or searched
+    /// (unsupported version, corrupt file, missing mappings, an invalid pattern) is skipped rather than aborting the batch,
+    /// and one whose regular expression runs past its time limit is abandoned the same way; both are counted and the first
+    /// few named in the outcome. Only the first <paramref name="maxResults"/> matches, in (asset, export, property) order,
+    /// are kept (all of them when null), so a broad query over a huge folder cannot exhaust memory; the total still counts every match.
     /// </summary>
-    public static async Task<IReadOnlyList<SearchResult>> SearchAllAsync(
+    public static async Task<SearchOutcome> SearchAllAsync(
         IAssetSource source,
         EngineVersionResolver versions,
         SearchQuery query,
         IProgress<SearchProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
+        int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(versions);
+        ArgumentNullException.ThrowIfNull(query);
+        if (maxResults is < 0) throw new ArgumentOutOfRangeException(nameof(maxResults), maxResults, "The hit cap cannot be negative.");
 
         var paths = source.EnumerateAssetPaths().ToList();
-        var results = new ConcurrentBag<SearchResult>();
+        var hits = new FirstHits(maxResults);
+        var skips = new ConcurrentBag<SearchSkip>();
         var completed = 0;
+        var skipped = 0;
+        var timeouts = 0;
 
         await ThrottledParallel.ForEachAsync(paths, maxDegreeOfParallelism, (path, _) =>
         {
@@ -150,13 +162,22 @@ public static class SearchService
             {
                 var asset = source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game);
                 foreach (var result in SearchAsset(asset, path, query))
-                    results.Add(result);
+                    hits.Add(result);
             }
-            catch
+            catch (OperationCanceledException)
             {
-                // Skip assets that fail to open, or whose search throws (e.g. an invalid
-                // regex pattern in the query) - one bad asset shouldn't discard every
-                // other asset's results too.
+                throw;
+            }
+            catch (RegexMatchTimeoutException ex)
+            {
+                Interlocked.Increment(ref timeouts);
+                skips.Add(new SearchSkip(path, $"regular expression timed out after {ex.MatchTimeout.TotalSeconds:0.###} s"));
+            }
+            catch (Exception ex)
+            {
+                // One bad asset must not discard every other asset's results; it is counted and named in the outcome, not lost.
+                Interlocked.Increment(ref skipped);
+                skips.Add(new SearchSkip(path, $"{ex.GetType().Name}: {ex.Message}"));
             }
 
             var done = Interlocked.Increment(ref completed);
@@ -165,6 +186,44 @@ public static class SearchService
             return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
 
-        return results.ToList();
+        // Which assets fail first depends on thread timing, so the few named are the first by path.
+        var named = skips.OrderBy(s => s.AssetPath, StringComparer.OrdinalIgnoreCase).Take(MaxSkipsKept).ToList();
+        return new SearchOutcome(hits.Take(), hits.Total, paths.Count, skipped, timeouts, named);
+    }
+
+    /// <summary>Collects matches from many threads, keeping only the first <c>cap</c> in result order while counting them all.</summary>
+    private sealed class FirstHits(int? cap)
+    {
+        private readonly List<SearchResult> _kept = [];
+        private int _total;
+
+        public int Total => Volatile.Read(ref _total);
+
+        public void Add(SearchResult result)
+        {
+            Interlocked.Increment(ref _total);
+            lock (_kept)
+            {
+                _kept.Add(result);
+                // Trimmed in batches, so a hit costs a sort only now and then.
+                if (cap is { } limit && _kept.Count >= Math.Max(2 * limit, 64)) Trim(limit);
+            }
+        }
+
+        public IReadOnlyList<SearchResult> Take()
+        {
+            lock (_kept)
+            {
+                if (cap is { } limit) Trim(limit);
+                else _kept.Sort(SearchResultOrder.Instance);
+                return [.. _kept];
+            }
+        }
+
+        private void Trim(int limit)
+        {
+            _kept.Sort(SearchResultOrder.Instance);
+            if (_kept.Count > limit) _kept.RemoveRange(limit, _kept.Count - limit);
+        }
     }
 }

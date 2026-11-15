@@ -8,9 +8,10 @@ public static class ConditionMatcher
     /// An empty term list is "no restriction" (always matches). Otherwise: every AND term
     /// must match, at least one OR term must match if any OR terms are present, and no NOT
     /// term may match - NOT is a hard exclusion applied on top of whatever the AND/OR terms
-    /// decide, not a third alternative combined the same way they are.
+    /// decide, not a third alternative combined the same way they are. A regex that runs past
+    /// <paramref name="regexTimeout"/> (default: the process's) throws <see cref="RegexMatchTimeoutException"/>.
     /// </summary>
-    public static bool Matches(string text, IReadOnlyList<ConditionTerm> terms, TextCompare compare)
+    public static bool Matches(string text, IReadOnlyList<ConditionTerm> terms, TextCompare compare, TimeSpan? regexTimeout = null)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(terms);
@@ -22,7 +23,7 @@ public static class ConditionMatcher
 
         foreach (var term in terms)
         {
-            var isMatch = MatchesOne(text, term.Text, compare);
+            var isMatch = MatchesOne(text, term.Text, compare, regexTimeout);
             switch (term.Tag)
             {
                 case TermTag.And when !isMatch:
@@ -39,11 +40,11 @@ public static class ConditionMatcher
         return !sawOr || anyOrMatched;
     }
 
-    private static bool MatchesOne(string text, string pattern, TextCompare compare) => compare switch
+    private static bool MatchesOne(string text, string pattern, TextCompare compare, TimeSpan? regexTimeout) => compare switch
     {
         TextCompare.Equals => string.Equals(text, pattern, StringComparison.OrdinalIgnoreCase),
         TextCompare.Contains => text.Contains(pattern, StringComparison.OrdinalIgnoreCase),
-        TextCompare.Regex => Regex.IsMatch(text, pattern),
+        TextCompare.Regex => regexTimeout is { } limit ? Regex.IsMatch(text, pattern, RegexOptions.None, limit) : Regex.IsMatch(text, pattern),
         _ => false,
     };
 }

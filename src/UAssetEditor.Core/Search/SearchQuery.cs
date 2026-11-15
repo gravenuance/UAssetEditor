@@ -57,6 +57,9 @@ public sealed class SearchQuery
     public IReadOnlyList<ConditionTerm> ReferenceTerms { get; init; } = Array.Empty<ConditionTerm>();
     public TextCompare ReferenceCompare { get; init; } = TextCompare.Contains;
 
+    /// <summary>How long one regular-expression match may run before the asset's search is abandoned; null takes the process default.</summary>
+    public TimeSpan? RegexTimeout { get; init; }
+
     internal bool HasPropertyCriteria =>
         ExportNameTerms.Count > 0 || PropertyNameTerms.Count > 0 || ValueTerms.Count > 0;
 }
