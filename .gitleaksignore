@@ -1,0 +1,10 @@
+# Made-up AES keys in tests (0011..EEFF patterns, base64 "foo" echoes); none is a real key.
+daf0873a8c11520bc13d954152e9ed5c4aedebb5:tests/UAssetEditor.Mcp.Tests/SecretsTests.cs:generic-api-key:41
+daf0873a8c11520bc13d954152e9ed5c4aedebb5:tests/UAssetEditor.Mcp.Tests/SecretsTests.cs:generic-api-key:42
+daf0873a8c11520bc13d954152e9ed5c4aedebb5:tests/UAssetEditor.Mcp.Tests/SecretsTests.cs:generic-api-key:165
+daf0873a8c11520bc13d954152e9ed5c4aedebb5:tests/UAssetEditor.Mcp.Tests/SecretsTests.cs:generic-api-key:167
+067af22cb8a63481e2bc9231c2b89cec01fb4389:tests/UAssetEditor.Mcp.Tests/ArchiveReadToolTests.cs:generic-api-key:41
+067af22cb8a63481e2bc9231c2b89cec01fb4389:tests/UAssetEditor.Mcp.Tests/SecretsTests.cs:generic-api-key:18
+e95dddc41e50bddea3fb6cbc56f695461b105ac1:tests/UAssetEditor.App.Tests/EditorSessionTests.cs:generic-api-key:39
+# Marvel Rivals' own pak AES key, published in modding tools; not a credential of ours. Replaced by a dummy in a later commit.
+ac2fedceccf13b4021a67a6ca46adbfd546347ed:tests/UAssetEditor.App.Tests/EditorSessionTests.cs:generic-api-key:37
