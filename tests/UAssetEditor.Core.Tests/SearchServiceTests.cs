@@ -333,6 +333,35 @@ public class SearchServiceTests
     }
 
     [Fact]
+    public void SearchOne_CountsARegexThatRunsOutOfTime_InsteadOfThrowing()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, new string('a', 40) + "b");
+        var query = new SearchQuery { ExportNameTerms = ["^(a+)+$"], ExportNameCompare = TextCompare.Regex, RegexTimeout = TimeSpan.FromMilliseconds(1) };
+
+        var outcome = SearchService.SearchOne(asset, "x.uasset", query);
+
+        Assert.Equal(1, outcome.AssetsSearched);
+        Assert.Equal(1, outcome.RegexTimeouts);
+        Assert.Equal(0, outcome.AssetsSkipped);
+        Assert.Contains("1 of 1 asset(s) hit the regular-expression time limit; their matches may be incomplete.", outcome.Warnings());
+    }
+
+    [Fact]
+    public void SearchOne_KeepsTheFirstHitsUpToTheCap_ButCountsEveryMatch()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, "First");
+        TestAssets.CreateSampleExport(asset, "Second");
+        var query = new SearchQuery { PropertyNameTerms = ["Count"] }; // one Count property per export
+
+        var outcome = SearchService.SearchOne(asset, "x.uasset", query, maxResults: 1);
+
+        Assert.Equal(2, outcome.TotalMatches);
+        Assert.Equal("First", Assert.Single(outcome.Results).ExportName);
+    }
+
+    [Fact]
     public async Task SearchAllAsync_KeepsOnlyTheFirstFewSkipReasons_ButCountsAll()
     {
         var outcome = await SearchService.SearchAllAsync(new ManyBadAssetsSource(100), new EngineVersionResolver(), new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);

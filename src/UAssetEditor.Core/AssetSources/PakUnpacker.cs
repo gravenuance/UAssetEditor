@@ -53,6 +53,9 @@ public static class PakUnpacker
                 var outputPath = Path.GetFullPath(Path.Combine(destinationRoot, entry.Replace('/', Path.DirectorySeparatorChar)));
                 if (!outputPath.StartsWith(destinationRootWithSeparator, StringComparison.Ordinal))
                     throw new InvalidOperationException($"Entry path '{entry}' escapes the destination folder.");
+                // On Windows a ':' names an alternate data stream: the bytes would land hidden inside another file.
+                if (OperatingSystem.IsWindows() && outputPath.IndexOf(':', destinationRootWithSeparator.Length) >= 0)
+                    throw new InvalidOperationException($"Entry path '{entry}' contains ':', which names a hidden data stream on Windows.");
 
                 var folder = Path.GetDirectoryName(outputPath)!;
                 RefuseLinkBelowDestination(destinationRoot, destinationFinal, folder, entry);

@@ -129,6 +129,35 @@ public static class SearchService
     private const int MaxSkipsKept = 20;
 
     /// <summary>
+    /// Searches one opened asset and reports it as <see cref="SearchAllAsync"/> reports each of its assets: the first
+    /// <paramref name="maxResults"/> hits in (export, property) order with every match counted, and a regular expression that
+    /// runs past its time limit counted in the outcome, with the hits found before it, rather than thrown.
+    /// </summary>
+    public static SearchOutcome SearchOne(UAsset asset, string assetPath, SearchQuery query, int? maxResults = null)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        ArgumentNullException.ThrowIfNull(query);
+        if (maxResults is < 0) throw new ArgumentOutOfRangeException(nameof(maxResults), maxResults, "The hit cap cannot be negative.");
+
+        var found = new List<SearchResult>();
+        IReadOnlyList<SearchSkip> skips = [];
+        try
+        {
+            foreach (var result in SearchAsset(asset, assetPath, query)) found.Add(result);
+        }
+        catch (RegexMatchTimeoutException ex)
+        {
+            skips = [TimedOut(assetPath, ex)];
+        }
+
+        found.Sort(SearchResultOrder.Instance);
+        return new SearchOutcome([.. found.Take(maxResults ?? int.MaxValue)], found.Count, 1, 0, skips.Count, skips);
+    }
+
+    private static SearchSkip TimedOut(string assetPath, RegexMatchTimeoutException ex) =>
+        new(assetPath, $"regular expression timed out after {ex.MatchTimeout.TotalSeconds:0.###} s");
+
+    /// <summary>
     /// Opens and searches every asset in <paramref name="source"/> in parallel. An asset that cannot be opened or searched
     /// (unsupported version, corrupt file, missing mappings, an invalid pattern) is skipped rather than aborting the batch,
     /// and one whose regular expression runs past its time limit is abandoned the same way; both are counted and the first
@@ -171,7 +200,7 @@ public static class SearchService
             catch (RegexMatchTimeoutException ex)
             {
                 Interlocked.Increment(ref timeouts);
-                skips.Add(new SearchSkip(path, $"regular expression timed out after {ex.MatchTimeout.TotalSeconds:0.###} s"));
+                skips.Add(TimedOut(path, ex));
             }
             catch (Exception ex)
             {

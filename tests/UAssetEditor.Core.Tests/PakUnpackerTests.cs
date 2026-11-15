@@ -136,6 +136,36 @@ public class PakUnpackerTests
     }
 
     [Fact]
+    public void Unpack_EntryNamingAnAlternateDataStream_FailsThatEntryInsteadOfHidingDataInAFile()
+    {
+        // On Windows "Foo.uasset:hidden" is a hidden stream of Foo.uasset: the write would succeed and show nowhere.
+        if (!OperatingSystem.IsWindows()) return;
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]>
+        {
+            ["Content/Foo.uasset"] = Encoding.UTF8.GetBytes("foo"),
+            ["Content/Foo.uasset:hidden"] = Encoding.UTF8.GetBytes("hidden"),
+        });
+        var destination = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_UnpackStream_" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+            var result = PakUnpacker.Unpack(source, destination, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.SucceededCount);
+            var failedEntry = Assert.Single(result.FailedEntries);
+            Assert.Equal("Content/Foo.uasset:hidden", failedEntry.Entry);
+            Assert.Contains("':'", failedEntry.Reason, StringComparison.Ordinal);
+            Assert.Equal("foo", File.ReadAllText(Path.Combine(destination, "Content", "Foo.uasset")));
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Unpack_WhenAFolderInsideTheDestinationIsAJunction_FailsThoseEntriesInsteadOfWritingThroughIt()
     {
         // A junction already inside the destination (planted, or left by an earlier extraction) would send the entry's

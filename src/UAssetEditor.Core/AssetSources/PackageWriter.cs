@@ -167,13 +167,14 @@ public static partial class PackageWriter
         return new BackupResult(placed, stranded);
     }
 
-    /// <summary>Copies the file as it was before this save to its ".orig.bak", unless an earlier save already did.</summary>
+    /// <summary>Copies the earliest state at hand to the file's ".orig.bak", unless an earlier save already did: a ".bak" left by
+    /// a save from before ".orig.bak" existed, else the file as it was before this save.</summary>
     private static bool KeepVanilla(StagedBackup copy)
     {
         if (File.Exists(copy.Vanilla)) return true;
         try
         {
-            File.Copy(copy.Staged, copy.Vanilla, overwrite: false);
+            File.Copy(File.Exists(copy.Backup) ? copy.Backup : copy.Staged, copy.Vanilla, overwrite: false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

@@ -29,7 +29,9 @@ public static class FinalPaths
             existing = parent;
         }
 
-        var resolved = OperatingSystem.IsWindows() ? FinalPathOfHandle(existing) ?? existing : ResolveLinks(existing);
+        // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
+        // where a write through it would, rather than trusting the link's own name.
+        var resolved = OperatingSystem.IsWindows() ? FinalPathOfHandle(existing) ?? ResolveLinks(existing) : ResolveLinks(existing);
         while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
         return resolved;
     }
@@ -51,7 +53,9 @@ public static class FinalPaths
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
 
-        var root = Path.TrimEndingDirectorySeparator(Resolve(folder)) + Path.DirectorySeparatorChar;
+        // A root such as C:\ keeps its separator when trimmed, so one is added only where it is missing.
+        var root = Path.TrimEndingDirectorySeparator(Resolve(folder));
+        if (!Path.EndsInDirectorySeparator(root)) root += Path.DirectorySeparatorChar;
         return Resolve(path).StartsWith(root, PathComparison);
     }
 
@@ -124,10 +128,11 @@ public static class FinalPaths
     [StructLayout(LayoutKind.Sequential)]
     private struct ByHandleFileInformation
     {
+        // FILETIMEs are two DWORDs, 4-byte aligned: a long here would pad the struct and shift every field after it.
         public uint FileAttributes;
-        public long CreationTime;
-        public long LastAccessTime;
-        public long LastWriteTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
         public uint VolumeSerialNumber;
         public uint FileSizeHigh;
         public uint FileSizeLow;

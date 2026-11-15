@@ -115,4 +115,34 @@ public sealed class FinalPathsTests : IDisposable
         Assert.False(FinalPaths.IsInside(Path.Combine(_dir, "mod2", "out.pak"), folder));
         Assert.False(FinalPaths.IsInside(folder, folder));
     }
+
+    [Fact]
+    public void IsInside_TakesADriveRootAsTheFolder()
+    {
+        var root = Path.GetPathRoot(_dir)!;
+
+        Assert.True(FinalPaths.IsInside(Path.Combine(_dir, "a.pak"), root));
+    }
+
+    [Fact]
+    public void IsInside_FollowsALinkWhoseTargetIsMissing_InsteadOfTrustingItsName()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var destination = Path.Combine(_dir, "dest");
+        Directory.CreateDirectory(destination);
+        var link = Path.Combine(destination, "Content");
+        _links.MakeJunction(link, Path.Combine(_dir, "outside", "missing"));
+
+        // A write through the link lands outside the destination once its target appears.
+        Assert.False(FinalPaths.IsInside(Path.Combine(link, "a.uasset"), destination));
+    }
+
+    [Fact]
+    public void FileInformation_MatchesTheNativeLayout()
+    {
+        // BY_HANDLE_FILE_INFORMATION: one DWORD, three FILETIMEs of two DWORDs each, then six DWORDs, all 4-byte aligned.
+        var layout = typeof(FinalPaths).GetNestedType("ByHandleFileInformation", System.Reflection.BindingFlags.NonPublic)!;
+
+        Assert.Equal(52, System.Runtime.InteropServices.Marshal.SizeOf(layout));
+    }
 }

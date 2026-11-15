@@ -59,6 +59,20 @@ public sealed class BackupWriteTests : IDisposable
     }
 
     [Fact]
+    public void FileSavedBeforeOrigBakExisted_GetsItsOlderBakAsTheOrigBak()
+    {
+        // Saves before .orig.bak existed left only a .bak: it holds an earlier state than the file about to be saved over.
+        File.WriteAllText(_uasset + ".bak", "header v0");
+        File.WriteAllText(_uexp + ".bak", "exports v0");
+
+        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+        Assert.Equal("header v0", File.ReadAllText(_uasset + ".orig.bak"));
+        Assert.Equal("exports v0", File.ReadAllText(_uexp + ".orig.bak"));
+        Assert.Equal("header v1", File.ReadAllText(_uasset + ".bak"));
+    }
+
+    [Fact]
     public void RefusedFirstWrite_LeavesNoOrigBak_SoTheNextSaveKeepsTheRealVanillaFile()
     {
         Assert.Throws<InvalidDataException>(() => PackageWriter.WithBackup(_uasset, backupFolder: null, () => throw new InvalidDataException("refused")));
@@ -148,10 +162,12 @@ public sealed class BackupWriteTests : IDisposable
             var stranded = Assert.Single(result.Stranded); // the fresh backup waits beside the stuck one
             Assert.Equal("header v1", File.ReadAllText(stranded));
             Assert.EndsWith(".tmp", stranded, StringComparison.Ordinal);
+            Assert.Equal("header v0", File.ReadAllText(_uasset + ".orig.bak")); // the older .bak, copied with its read-only flag
         }
         finally
         {
             File.SetAttributes(oldBackup, FileAttributes.Normal);
+            if (File.Exists(_uasset + ".orig.bak")) File.SetAttributes(_uasset + ".orig.bak", FileAttributes.Normal);
         }
     }
 

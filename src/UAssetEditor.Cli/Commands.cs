@@ -118,9 +118,7 @@ internal static class Commands
         }
         else
         {
-            var asset = AssetIo.Open(path, args);
-            var found = SearchService.SearchAsset(asset, path, query).ToList();
-            outcome = new SearchOutcome(found, found.Count, 1, 0, 0, []);
+            outcome = SearchService.SearchOne(AssetIo.Open(path, args), path, query);
         }
 
         foreach (var r in outcome.Results)
