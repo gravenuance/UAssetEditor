@@ -244,6 +244,27 @@ public sealed class FinalPathsTests : IDisposable
         Assert.Throws<PathNotPlaceableException>(() => FinalPaths.Resolve(path));
     }
 
+    [Theory]
+    [InlineData("safe.")]
+    [InlineData("safe ")]
+    public void Resolve_RefusesAnExtendedNameThatEndsInADotOrSpace_ThatGetFullPathWouldTrimToAnotherFolder(string name)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var spelled = @"\\?\" + Path.Combine(_dir, name, "x.pak");
+
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.Resolve(spelled));
+        Assert.Throws<PathNotPlaceableException>(() => FinalPaths.ResolveLinks(Path.Combine(_dir, "link"), path => path.EndsWith("link", StringComparison.Ordinal) ? spelled : null, new FinalPaths.LinkBudget()));
+    }
+
+    [Fact]
+    public void Normalise_LeavesABackslashNameAlone_WhereBackslashIsAnOrdinaryCharacter()
+    {
+        if (OperatingSystem.IsWindows()) return;
+
+        Assert.Equal(Path.GetFullPath(@"\??\UNC\x"), FinalPaths.Normalise(@"\??\UNC\x"));
+        Assert.Equal(Path.GetFullPath(@"\\?\C:\a"), FinalPaths.Normalise(@"\\?\C:\a"));
+    }
+
     [Fact]
     public void Resolve_ReadsAnExtendedDriveSpellingAsThePlainOne_AndCollapsesItsDotDotSegments()
     {

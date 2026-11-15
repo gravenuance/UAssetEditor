@@ -30,23 +30,40 @@ public static class FinalPaths
     /// any other <c>\\?\</c>, <c>\\.\</c> or <c>\??\</c> form (a volume GUID, GLOBALROOT, a device) names no plain path and is refused.</summary>
     private static string WithoutDevicePrefix(string path)
     {
+        // Elsewhere a backslash is an ordinary character of a file name.
+        if (!OperatingSystem.IsWindows()) return path;
         if (!(path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal) || path.StartsWith(@"\??\", StringComparison.Ordinal)))
             return path;
 
         var rest = path[4..];
-        if (path[2] == '?' && rest.StartsWith(@"UNC\", StringComparison.OrdinalIgnoreCase)) return @"\\" + rest[4..];
-        if (rest.Length >= 3 && char.IsAsciiLetter(rest[0]) && rest[1] == ':' && rest[2] == '\\') return rest;
-        throw PathNotPlaceableException.Unplaceable(path, "it names a device or volume, not a drive or network path");
+        string plain;
+        if (path[2] == '?' && rest.StartsWith(@"UNC\", StringComparison.OrdinalIgnoreCase)) plain = @"\\" + rest[4..];
+        else if (rest.Length >= 3 && char.IsAsciiLetter(rest[0]) && rest[1] == ':' && rest[2] == '\\') plain = rest;
+        else throw PathNotPlaceableException.Unplaceable(path, "it names a device or volume, not a drive or network path");
+
+        // \\?\ takes names literally, but GetFullPath would drop a trailing dot or space and land in another folder.
+        if (path[2] != '.' && plain.Split('\\').Any(segment => segment is not ("." or "..") && (segment.EndsWith('.') || segment.EndsWith(' '))))
+            throw PathNotPlaceableException.Unplaceable(path, "a name in it ends in a dot or a space, which Windows cannot name");
+        return plain;
     }
 
     // The exit choke point: whatever a branch produced, only a plain drive or network path leaves.
     private static string Gate(string resolved, string source)
     {
-        if (!OperatingSystem.IsWindows()) return resolved;
+        var separator = Path.DirectorySeparatorChar;
+        bool plain;
+        if (OperatingSystem.IsWindows())
+        {
+            var drive = resolved.Length >= 3 && char.IsAsciiLetter(resolved[0]) && resolved[1] == ':' && resolved[2] == '\\';
+            var network = resolved.Length > 2 && resolved.StartsWith(@"\\", StringComparison.Ordinal) && resolved[2] is not ('?' or '.' or '\\');
+            plain = drive || network;
+        }
+        else
+        {
+            plain = resolved.StartsWith('/');
+        }
 
-        var drive = resolved.Length >= 3 && char.IsAsciiLetter(resolved[0]) && resolved[1] == ':' && resolved[2] == '\\';
-        var network = resolved.Length > 2 && resolved.StartsWith(@"\\", StringComparison.Ordinal) && resolved[2] is not ('?' or '.' or '\\');
-        if ((drive || network) && !resolved.Split('\\').Any(segment => segment is "." or "..")) return resolved;
+        if (plain && !resolved.Split(separator).Any(segment => segment is "." or "..")) return resolved;
         throw PathNotPlaceableException.Unplaceable(source, $"its final form {resolved} is not a plain drive or network path");
     }
 
