@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using UAssetAPI;
@@ -14,7 +15,7 @@ namespace UAssetEditor.Mcp.Tools;
 /// <summary>Tools that write archives or loose files from .pak and IoStore containers. Every one refuses to replace an
 /// existing output unless told to. Windows only: they run the bundled pak worker and retoc.</summary>
 [McpServerToolType]
-internal sealed class ArchiveWriteTools(MappingsStore store)
+internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<ArchiveWriteTools> logger)
 {
     private const int DefaultUnpackFiles = 1000;
     private const int MaxUnpackFiles = 20_000;
@@ -115,7 +116,7 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
 
         return isIoStore
             ? await PackIoStoreAsync(source, target, settings, rivalsOnly, obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps, progress, cancellationToken).ConfigureAwait(false)
-            : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, cancellationToken).ConfigureAwait(false);
+            : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, logger, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The .ucas beside a .utoc is part of the container, and so is the companion .pak a Marvel Rivals pack writes.</summary>
@@ -131,7 +132,7 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
 
     private static async Task<PackResult> PackPakAsync(
         string source, string target, OpenSettings settings, string? mount, string? pakVersion, string? compression,
-        bool rivalsOnly, IProgress<ProgressNotificationValue>? progress, CancellationToken cancellationToken)
+        bool rivalsOnly, IProgress<ProgressNotificationValue>? progress, ILogger log, CancellationToken cancellationToken)
     {
         if (rivalsOnly)
             throw new McpException($"{string.Join(", ", RivalsPackSwitches)} only apply to IoStore (.utoc) output.");
@@ -144,30 +145,39 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         var sink = new ProgressSink(progress, "Packed files");
         var key = settings.AesKey;
 
-        // Built under a staging name and moved into place only once whole, so a cancelled or failed build leaves no partial
-        // archive and keeps the file it was to replace.
-        var folder = Path.GetDirectoryName(target)!;
-        Directory.CreateDirectory(folder);
-        var staging = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(target)}.{Guid.NewGuid():N}.partial.pak");
-        try
+        var succeeded = await StagedAsync(target, async staging =>
         {
             var result = await ToolRuntime.UsePakWorkerBlockingAsync(
                 () => PakPacker.Build(source, staging, mountPoint, version, codecs, key, sink, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
             if (result.HasFailures) throw new McpException($"Packing failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
+            return result.SucceededCount;
+        }, log).ConfigureAwait(false);
+        return new PackResult(target, "pak", succeeded, [$"mount point {mountPoint}, pak version {version}"], settings.Warnings());
+    }
 
+    /// <summary>Runs <paramref name="build"/> against a staging name beside <paramref name="target"/> and moves the file into
+    /// place only once it returned, so a cancelled or failed build leaves no partial archive and keeps the file it was to replace.</summary>
+    internal static async Task<T> StagedAsync<T>(string target, Func<string, Task<T>> build, ILogger log)
+    {
+        var folder = Path.GetDirectoryName(target)!;
+        Directory.CreateDirectory(folder);
+        var staging = Path.Combine(folder, $"{Path.GetFileNameWithoutExtension(target)}.{Guid.NewGuid():N}.partial.pak");
+        try
+        {
+            var built = await build(staging).ConfigureAwait(false);
             File.Move(staging, target, overwrite: true);
-            return new PackResult(target, "pak", result.SucceededCount, [$"mount point {mountPoint}, pak version {version}"], settings.Warnings());
+            return built;
         }
         finally
         {
-            DeleteStaging(staging);
+            DeleteStaging(staging, log);
         }
     }
 
     /// <summary>A no-op once the archive was moved into place. A staging file that cannot go (a scanner holding it) stays
     /// under its ".partial.pak" name, so the error the caller sees is the build's own, not the clean-up's.</summary>
-    private static void DeleteStaging(string staging)
+    private static void DeleteStaging(string staging, ILogger log)
     {
         try
         {
@@ -175,9 +185,12 @@ internal sealed class ArchiveWriteTools(MappingsStore store)
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine($"Could not delete the partial archive {staging}: {ex.Message}");
+            LogStagingNotDeleted(log, ex, staging);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not delete the partial archive {Staging}; it stays under that name")]
+    private static partial void LogStagingNotDeleted(ILogger logger, Exception exception, string staging);
 
     private static async Task<PackResult> PackIoStoreAsync(
         string source, string target, OpenSettings settings, bool rivalsOnly, bool obfuscate, bool kawaiiPhysics, bool patchDefaultHiddenMats,

@@ -1,8 +1,10 @@
 using System.Text;
+using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Tests.Rig;
+using UAssetEditor.Mcp.Tools;
 
 namespace UAssetEditor.Mcp.Tests;
 
@@ -237,6 +239,50 @@ public sealed class ArchiveWriteToolTests : IDisposable
         Assert.Contains("noPaksResolve", layer.Message, StringComparison.Ordinal);
         Assert.Contains("noPaksResolve", paks.Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(_rig.Folder.Combine("out")));
+    }
+
+    [Fact]
+    public async Task StagedBuild_WhoseStagingFileIsLocked_KeepsTheBuildsOwnError_AndLogsWhereThePartialArchiveStays()
+    {
+        // A virus scanner holding the half-written file: the clean-up fails, and must not hide why the build failed.
+        if (!OperatingSystem.IsWindows()) return;
+        var target = _rig.Folder.Combine("out", "mod.pak");
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        var log = new RecordingLogger();
+        FileStream? scanner = null;
+
+        try
+        {
+            var error = await Assert.ThrowsAsync<McpException>(() => ArchiveWriteTools.StagedAsync<int>(target, async staging =>
+            {
+                await File.WriteAllTextAsync(staging, "half", TestContext.Current.CancellationToken);
+                scanner = new FileStream(staging, FileMode.Open, FileAccess.Read, FileShare.None);
+                throw new McpException("Packing failed: the worker stopped");
+            }, log));
+
+            Assert.Equal("Packing failed: the worker stopped", error.Message);
+            Assert.Contains(log.Warnings, line => line.Contains(".partial.pak", StringComparison.Ordinal));
+            Assert.False(File.Exists(target));
+        }
+        finally
+        {
+            if (scanner != null) await scanner.DisposeAsync();
+        }
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<string> Warnings { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning) Warnings.Add(formatter(state, exception));
+        }
     }
 
     private sealed class CancelOnFirstReport(CancellationTokenSource cancellation) : IProgress<ProgressNotificationValue>

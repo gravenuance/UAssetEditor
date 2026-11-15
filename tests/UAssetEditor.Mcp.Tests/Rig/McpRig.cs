@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Mcp.Tools;
@@ -16,7 +17,7 @@ internal sealed class McpRig : IDisposable
         Edits = new AssetEditTools(Store);
         Rulesets = new RulesetTools(Store);
         ArchiveReads = new ArchiveReadTools(Store);
-        ArchiveWrites = new ArchiveWriteTools(Store);
+        ArchiveWrites = new ArchiveWriteTools(Store, NullLogger<ArchiveWriteTools>.Instance);
         Usmaps = new UsmapTools(Store);
     }
 
