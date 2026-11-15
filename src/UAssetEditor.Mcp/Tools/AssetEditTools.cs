@@ -19,7 +19,8 @@ internal sealed class AssetEditTools(MappingsStore store)
         "Script ops, one per line, exactly as 'uacli script --ops' reads them: a verb then --option value pairs, " +
         "e.g. 'set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5'. Double quotes group a value with spaces; " +
         "\\\" is a literal quote. Blank lines and lines starting with # are skipped. Every line is checked before the asset is opened; " +
-        "a line that fails at run time is reported as skipped and the rest still run.";
+        "a line that fails at run time is reported as skipped and the rest still run. A line cannot set --usmap, --version or --game " +
+        "(use the tool's parameters), and its --from-file must be the absolute path of an existing local .uasset.";
 
     private const string OpsDescription =
         "Verbs: set, duplicate, remove, add-node, splice-node, append-clone, duplicate-export, duplicate-row, set-string, " +
@@ -65,6 +66,7 @@ internal sealed class AssetEditTools(MappingsStore store)
         if (lines.Length > MaxOpLines) throw new McpException($"ops is limited to {MaxOpLines} lines; split the edit into several calls.");
         var parsed = ScriptOps.Parse(lines, "ops");
         if (parsed.Count == 0) throw new McpException("ops holds no op: every line is blank or a # comment.");
+        ScriptOpPolicy.Validate(parsed, "ops");
 
         return await Task.Run(() =>
         {

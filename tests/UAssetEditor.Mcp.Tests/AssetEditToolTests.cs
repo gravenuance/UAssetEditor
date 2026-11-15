@@ -132,6 +132,48 @@ public sealed class AssetEditToolTests : IDisposable
         Assert.Equal(before, AssetFixtures.Snapshot(path));
     }
 
+    [Theory]
+    [InlineData("graft-nodes --export 0 --nodes X --from-file relative/Donor.uasset", "from-file")]
+    [InlineData("graft-nodes --export 0 --nodes X --from-file \\\\127.0.0.1\\share\\Donor.uasset", "from-file")]
+    [InlineData("graft-nodes --export 0 --nodes X --from-file //127.0.0.1/share/Donor.uasset", "from-file")]
+    [InlineData("graft-nodes --export 0 --nodes X --from-file Z:/NoSuchFolder/Donor.uasset", "from-file")]
+    public async Task EditAsset_WithAnOpWhoseFromFileIsNotAnExistingLocalFile_RefusesItBeforeOpeningAnything(string op, string option)
+    {
+        var path = Sample();
+        var before = AssetFixtures.Snapshot(path);
+
+        var error = await Assert.ThrowsAsync<McpException>(() => _rig.Edits.EditAssetAsync(path, SetCount + "\n" + op, save: true, cancellationToken: _ct));
+
+        Assert.Contains("ops:2:", error.Message, StringComparison.Ordinal);
+        Assert.Contains(option, error.Message, StringComparison.Ordinal);
+        Assert.Equal(before, AssetFixtures.Snapshot(path));
+        Assert.False(HasBackup(path));
+    }
+
+    [Theory]
+    [InlineData("set --export 0 --path Count --value 7 --usmap \\\\127.0.0.1\\share\\Evil.usmap", "usmap")]
+    [InlineData("set --export 0 --path Count --value 7 --version VER_UE5_3", "version")]
+    [InlineData("set --export 0 --path Count --value 7 --game rivals", "game")]
+    public async Task PreviewEdit_WithAnOpThatSetsItsOwnUsmapVersionOrGame_RefusesIt(string op, string option)
+    {
+        var error = await Assert.ThrowsAsync<McpException>(() => _rig.Edits.PreviewEditAsync(Sample(), op, cancellationToken: _ct));
+
+        Assert.Contains("ops:1:", error.Message, StringComparison.Ordinal);
+        Assert.Contains("--" + option, error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EditAsset_WithAnOpWhoseFromFileIsAnExistingLocalFile_RunsIt()
+    {
+        var path = Sample();
+        var donor = AssetFixtures.WriteSample(_rig.Folder, "Donor.uasset");
+
+        var result = await _rig.Edits.PreviewEditAsync(path, $"graft-nodes --export 0 --nodes X --from-file \"{donor}\"", cancellationToken: _ct);
+
+        var op = Assert.Single(result.Ops);
+        Assert.DoesNotContain("from-file", op.Text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task EditAsset_WithAMissingFile_SaysSo()
     {
