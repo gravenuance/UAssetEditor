@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using UAssetAPI;
+using UAssetAPI.FieldTypes;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Core.PropertyAccess;
@@ -27,9 +28,10 @@ internal sealed class AssetReadTools(MappingsStore store)
     private const int MaxValueLength = 500;
     private static readonly TimeSpan SearchRegexTimeout = TimeSpan.FromSeconds(3);
     private const int MaxDumpCharacters = 150_000;
+    private const int MaxMemberCharacters = 150_000;
 
     [McpServerTool(Name = "list_exports", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]
-    [Description("Lists an asset's exports: index, name and export type, and optionally each class or struct export's declared members. The index (or a unique part of the name) is what the other asset tools take as export." + Untrusted.Note)]
+    [Description("Lists an asset's exports: index, name and export type, and optionally each class or struct export's declared members (the first 200 of each, within a shared 150,000-character budget; truncated says when a list was cut). The index (or a unique part of the name) is what the other asset tools take as export." + Untrusted.Note)]
     public async Task<ExportsResult> ListExportsAsync(
         [Description("Absolute path of the .uasset or .umap; its .uexp must sit beside it.")] string file,
         [Description("Also list the declared members of class and struct exports.")] bool members = false,
@@ -43,29 +45,60 @@ internal sealed class AssetReadTools(MappingsStore store)
         return await Task.Run(() =>
         {
             var (path, asset) = ToolAssets.Open(file, settings);
-            var shown = new List<ExportDto>(Math.Min(asset.Exports.Count, MaxExports));
-            for (var i = 0; i < asset.Exports.Count && i < MaxExports; i++)
-            {
-                var export = asset.Exports[i];
-                shown.Add(new ExportDto(
-                    i,
-                    Untrusted.Clean(FNameDisplay.ToDisplayString(export.ObjectName)),
-                    export.GetType().Name,
-                    members ? MembersOf(export) : null));
-            }
-
-            return new ExportsResult(path, asset.Exports.Count, shown, asset.Exports.Count > shown.Count, settings.Warnings());
+            return DescribeExports(asset, path, members, settings.Warnings());
         }, cancellationToken).ConfigureAwait(false);
     }
 
-    private static List<MemberDto>? MembersOf(UAssetAPI.ExportTypes.Export export)
+    internal static ExportsResult DescribeExports(UAsset asset, string path, bool members, IReadOnlyList<string> warnings)
     {
-        if (export is not UAssetAPI.ExportTypes.StructExport { LoadedProperties: { } properties }) return null;
+        var shown = new List<ExportDto>(Math.Min(asset.Exports.Count, MaxExports));
+        var budget = MaxMemberCharacters;
+        var classesOverTheCount = 0;
+        var cutByBudget = false;
+        for (var i = 0; i < asset.Exports.Count && i < MaxExports; i++)
+        {
+            var export = asset.Exports[i];
+            List<MemberDto>? listed = null;
+            if (members && export is UAssetAPI.ExportTypes.StructExport { LoadedProperties: { } properties })
+            {
+                listed = MembersOf(properties, ref budget, out var overTheCount, out var overTheBudget);
+                if (overTheCount) classesOverTheCount++;
+                cutByBudget |= overTheBudget;
+            }
 
-        return [.. properties.Take(MaxMembersPerExport).Select((member, index) => new MemberDto(
-            index,
-            Untrusted.Clean(FNameDisplay.ToDisplayString(member.Name)),
-            member.SerializedType?.Value?.Value is { } type ? Untrusted.Clean(type) : null))];
+            shown.Add(new ExportDto(i, Untrusted.Clean(FNameDisplay.ToDisplayString(export.ObjectName)), export.GetType().Name, listed));
+        }
+
+        var notes = new List<string>(warnings);
+        if (cutByBudget)
+            notes.Add($"Member lists were cut after {MaxMemberCharacters} characters of member names and types; list_exports with members=false, then dump_export or get_tree for the export you need.");
+        if (classesOverTheCount > 0)
+            notes.Add($"{classesOverTheCount} class or struct export(s) declare more than {MaxMembersPerExport} members; only the first {MaxMembersPerExport} of each are listed.");
+        return new ExportsResult(path, asset.Exports.Count, shown, asset.Exports.Count > shown.Count || cutByBudget || classesOverTheCount > 0, notes);
+    }
+
+    /// <summary>The first members of one export, at most <see cref="MaxMembersPerExport"/> and while the shared character budget lasts.</summary>
+    private static List<MemberDto> MembersOf(FProperty[] properties, ref int budget, out bool overTheCount, out bool overTheBudget)
+    {
+        overTheCount = properties.Length > MaxMembersPerExport;
+        overTheBudget = false;
+
+        var listed = new List<MemberDto>(Math.Min(properties.Length, MaxMembersPerExport));
+        foreach (var (member, index) in properties.Take(MaxMembersPerExport).Select((m, i) => (m, i)))
+        {
+            var name = Untrusted.Clean(FNameDisplay.ToDisplayString(member.Name));
+            var type = member.SerializedType?.Value?.Value is { } text ? Untrusted.Clean(text) : null;
+            var cost = name.Length + (type?.Length ?? 0);
+            if (budget < cost)
+            {
+                overTheBudget = true;
+                break;
+            }
+
+            budget -= cost;
+            listed.Add(new MemberDto(index, name, type));
+        }
+        return listed;
     }
 
     [McpServerTool(Name = "list_imports", ReadOnly = true, Idempotent = true, Destructive = false, OpenWorld = false)]

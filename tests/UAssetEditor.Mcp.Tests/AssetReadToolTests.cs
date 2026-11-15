@@ -1,10 +1,12 @@
 using ModelContextProtocol;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
+using UAssetAPI.FieldTypes;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Tests.Rig;
+using UAssetEditor.Mcp.Tools;
 using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tests;
@@ -31,6 +33,76 @@ public sealed class AssetReadToolTests : IDisposable
         Assert.Equal("TestExport", export.Name);
         Assert.Equal("NormalExport", export.Type);
         Assert.Null(export.Members);
+    }
+
+    // An in-memory asset with classes that each declare many members, named long so the lists are big (a class export
+    // does not survive the fixture writer, and the listing needs no file).
+    private static UAsset BigClassAsset(int classes, int membersEach, int nameLength)
+    {
+        var asset = TestAssets.CreateAsset();
+        for (var c = 0; c < classes; c++)
+        {
+            var (classExport, _) = TestAssets.CreateClassWithNode(asset, "Node0", $"Class{c}_C", $"Default__Class{c}_C", $"NodeType{c}");
+            var members = new List<FProperty>();
+            for (var m = 0; m < membersEach; m++)
+            {
+                members.Add(new FStructProperty
+                {
+                    Name = new FName(asset, $"M{m:D3}_" + new string('x', nameLength)),
+                    SerializedType = new FName(asset, "StructProperty"),
+                    Struct = FPackageIndex.FromImport(asset.Imports.Count - 1),
+                    ElementSize = 8,
+                });
+            }
+            classExport.LoadedProperties = [.. members];
+        }
+        return asset;
+    }
+
+    [Fact]
+    public void DescribeExports_WithMembers_ListsTheDeclaredMembersOfAClass()
+    {
+        var result = AssetReadTools.DescribeExports(BigClassAsset(classes: 1, membersEach: 3, nameLength: 4), "x.uasset", members: true, []);
+
+        var export = Assert.Single(result.Exports, e => e.Type == "ClassExport");
+        Assert.Equal(["M000_xxxx", "M001_xxxx", "M002_xxxx"], export.Members!.Select(m => m.Name));
+        Assert.False(result.Truncated);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void DescribeExports_WithMembers_StopsListingMembersOnceTheirTextIsOverTheBudget_AndSaysSo()
+    {
+        // 20 classes x 150 members x ~290 characters is about 870 KB of member text.
+        var result = AssetReadTools.DescribeExports(BigClassAsset(classes: 20, membersEach: 150, nameLength: 280), "x.uasset", members: true, []);
+
+        var characters = result.Exports.Where(e => e.Members != null).Sum(e => e.Members!.Sum(m => m.Name.Length + (m.Type?.Length ?? 0)));
+        Assert.InRange(characters, 100_000, 160_000);
+        Assert.True(result.Truncated);
+        Assert.Contains(result.Warnings, w => w.Contains("member", StringComparison.OrdinalIgnoreCase) && w.Contains("cut", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(40, result.Total); // every export is still listed, only the member lists are cut
+        Assert.Equal(40, result.Exports.Count);
+        Assert.Contains(result.Exports, e => e.Type == "ClassExport" && e.Members is { Count: 0 });
+    }
+
+    [Fact]
+    public void DescribeExports_WithMembers_SaysSoWhenOneClassHasMoreMembersThanItWillList()
+    {
+        var result = AssetReadTools.DescribeExports(BigClassAsset(classes: 1, membersEach: 250, nameLength: 4), "x.uasset", members: true, []);
+
+        var export = Assert.Single(result.Exports, e => e.Type == "ClassExport");
+        Assert.Equal(200, export.Members!.Count);
+        Assert.True(result.Truncated);
+        Assert.Contains(result.Warnings, w => w.Contains("200", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DescribeExports_WithoutMembers_ListsNoMembersAndTruncatesNothing()
+    {
+        var result = AssetReadTools.DescribeExports(BigClassAsset(classes: 3, membersEach: 250, nameLength: 4), "x.uasset", members: false, []);
+
+        Assert.All(result.Exports, e => Assert.Null(e.Members));
+        Assert.False(result.Truncated);
     }
 
     [Fact]
