@@ -37,7 +37,7 @@ internal static class ScriptRunner
 
         if (args.Flag("save"))
         {
-            AssetIo.Save(asset, path, backup: args.Flag("backup"));
+            AssetIo.WarnIfBackupMissing(AssetIo.Save(asset, path, backup: args.Flag("backup")), args.Diagnostics);
             output.AppendLine($"Saved {path}");
         }
         return output.ToString();

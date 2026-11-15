@@ -11,4 +11,8 @@ internal static class BackupPathResolver
         Directory.CreateDirectory(backupFolder);
         return Path.Combine(backupFolder, Path.GetFileName(filePath) + ".bak");
     }
+
+    /// <summary>Where the file as it was before its first save is kept: the same place as <see cref="Resolve"/>, with an ".orig.bak" suffix.</summary>
+    public static string ResolveOriginal(string filePath, string? backupFolder) =>
+        Path.ChangeExtension(Resolve(filePath, backupFolder), ".orig.bak");
 }

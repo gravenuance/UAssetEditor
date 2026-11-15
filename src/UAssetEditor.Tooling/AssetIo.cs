@@ -194,25 +194,33 @@ internal static class AssetIo
             diagnostics.WriteLine($"WARNING: {Path.GetFileName(path)}: {warning}");
     }
 
-    public static void Save(UAsset asset, string path, bool backup)
+    /// <returns>What became of the backups (null when none was asked for); a backup that could not be placed does not fail the save.</returns>
+    public static BackupResult? Save(UAsset asset, string path, bool backup)
     {
         // Backs up the .uexp too: a restore from the .uasset.bak alone would pair stale property bytes with the edited .uexp.
-        if (backup) PackageWriter.WriteWithBackup(asset, path, backupFolder: null);
-        else PackageWriter.Write(asset, path);
+        if (backup) return PackageWriter.WriteWithBackup(asset, path, backupFolder: null);
+        PackageWriter.Write(asset, path);
+        return null;
+    }
+
+    /// <summary>Says on <paramref name="diagnostics"/> when a save's backup is not where it should be, and where the copy is.</summary>
+    public static void WarnIfBackupMissing(BackupResult? backup, TextWriter diagnostics)
+    {
+        if (backup is not { Placed: false }) return;
+        diagnostics.WriteLine(
+            "Warning: the backup of the previous files could not be put in place" +
+            (backup.Stranded.Count > 0 ? $"; the copies are at {string.Join(", ", backup.Stranded)}." : "; see the log."));
     }
 
     /// <summary>
     /// Saves to <paramref name="output"/>, in place when it is <paramref name="source"/> itself. A new path also gets
     /// the source's bulk-data companions (.ubulk, .uptnl), which Write() never touches but the package still needs.
     /// </summary>
-    public static void SaveAs(UAsset asset, string source, string output, bool backup)
+    public static BackupResult? SaveAs(UAsset asset, string source, string output, bool backup)
     {
         var sameFile = string.Equals(Path.GetFullPath(output), Path.GetFullPath(source), StringComparison.OrdinalIgnoreCase);
-        if (sameFile)
-        {
-            Save(asset, source, backup);
-            return;
-        }
+        if (sameFile) return Save(asset, source, backup);
+
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         PackageWriter.Write(asset, output);
         foreach (var extension in (string[])[".ubulk", ".uptnl"])
@@ -220,6 +228,7 @@ internal static class AssetIo
             var companion = Path.ChangeExtension(source, extension);
             if (File.Exists(companion)) File.Copy(companion, Path.ChangeExtension(output, extension), overwrite: true);
         }
+        return null;
     }
 
     /// <summary>Resolves an --export value as either a 0-based index or a (sub)string match against export names - whichever the caller finds more convenient to type.</summary>

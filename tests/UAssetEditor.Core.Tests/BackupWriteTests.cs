@@ -31,12 +31,71 @@ public sealed class BackupWriteTests : IDisposable
     [Fact]
     public void SuccessfulWrite_BacksUpBothFilesAsTheyWereBefore()
     {
-        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+        var result = PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
 
-        Assert.Equal(["A.uasset", "A.uasset.bak", "A.uexp", "A.uexp.bak"], FileNames());
+        Assert.Equal(["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak"], FileNames());
         Assert.Equal("header v1", File.ReadAllText(_uasset + ".bak"));
         Assert.Equal("exports v1", File.ReadAllText(_uexp + ".bak"));
         Assert.Equal("header v2", File.ReadAllText(_uasset));
+        Assert.True(result.Placed);
+        Assert.Empty(result.Stranded);
+    }
+
+    [Fact]
+    public void FirstSave_KeepsTheVanillaFilesAsOrigBak_AndLaterSavesNeverReplaceThem()
+    {
+        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+        PackageWriter.WithBackup(_uasset, backupFolder: null, () =>
+        {
+            File.WriteAllText(_uasset, "header v3");
+            File.WriteAllText(_uexp, "exports v3");
+        });
+
+        Assert.Equal("header v1", File.ReadAllText(_uasset + ".orig.bak"));
+        Assert.Equal("exports v1", File.ReadAllText(_uexp + ".orig.bak"));
+        Assert.Equal("header v2", File.ReadAllText(_uasset + ".bak"));
+        Assert.Equal("exports v2", File.ReadAllText(_uexp + ".bak"));
+        Assert.Equal("header v3", File.ReadAllText(_uasset));
+    }
+
+    [Fact]
+    public void RefusedFirstWrite_LeavesNoOrigBak_SoTheNextSaveKeepsTheRealVanillaFile()
+    {
+        Assert.Throws<InvalidDataException>(() => PackageWriter.WithBackup(_uasset, backupFolder: null, () => throw new InvalidDataException("refused")));
+        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+        Assert.Equal("header v1", File.ReadAllText(_uasset + ".orig.bak"));
+    }
+
+    [Fact]
+    public void ExistingOrigBak_IsLeftAloneEvenWhenItIsReadOnly()
+    {
+        var orig = _uasset + ".orig.bak";
+        File.WriteAllText(orig, "header v0");
+        File.SetAttributes(orig, FileAttributes.ReadOnly);
+        try
+        {
+            var result = PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+            Assert.Equal("header v0", File.ReadAllText(orig));
+            Assert.True(result.Placed);
+        }
+        finally
+        {
+            File.SetAttributes(orig, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public void StagingNameIsUnique_SoAnotherSaversStagedCopyIsNotClobbered()
+    {
+        var other = _uasset + ".bak.tmp";
+        File.WriteAllText(other, "someone else's staged copy");
+
+        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+        Assert.Equal("someone else's staged copy", File.ReadAllText(other));
+        Assert.Equal("header v1", File.ReadAllText(_uasset + ".bak"));
     }
 
     [Fact]
@@ -69,21 +128,26 @@ public sealed class BackupWriteTests : IDisposable
 
         Assert.Equal("header v1", File.ReadAllText(_uasset + ".bak"));
         Assert.Equal("exports v1", File.ReadAllText(_uexp + ".bak"));
+        Assert.Equal("header v1", File.ReadAllText(_uasset + ".orig.bak"));
     }
 
     [Fact]
-    public void BackupThatCannotBeReplaced_DoesNotFailASuccessfulWrite()
+    public void BackupThatCannotBeReplaced_DoesNotFailASuccessfulWrite_ButSaysTheBackupIsNotInPlace()
     {
         var oldBackup = _uasset + ".bak";
         File.WriteAllText(oldBackup, "header v0");
         File.SetAttributes(oldBackup, FileAttributes.ReadOnly);
         try
         {
-            PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+            var result = PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
 
             Assert.Equal("header v2", File.ReadAllText(_uasset));
-            Assert.Equal("header v1", File.ReadAllText(oldBackup + ".tmp")); // the fresh backup waits beside the stuck one
+            Assert.Equal("header v0", File.ReadAllText(oldBackup));
             Assert.Equal("exports v1", File.ReadAllText(_uexp + ".bak"));
+            Assert.False(result.Placed);
+            var stranded = Assert.Single(result.Stranded); // the fresh backup waits beside the stuck one
+            Assert.Equal("header v1", File.ReadAllText(stranded));
+            Assert.EndsWith(".tmp", stranded, StringComparison.Ordinal);
         }
         finally
         {
@@ -100,6 +164,8 @@ public sealed class BackupWriteTests : IDisposable
 
         Assert.Equal("header v1", File.ReadAllText(Path.Combine(backups, "A.uasset.bak")));
         Assert.Equal("exports v1", File.ReadAllText(Path.Combine(backups, "A.uexp.bak")));
+        Assert.Equal("header v1", File.ReadAllText(Path.Combine(backups, "A.uasset.orig.bak")));
+        Assert.Equal("exports v1", File.ReadAllText(Path.Combine(backups, "A.uexp.orig.bak")));
         Assert.Empty(Directory.GetFiles(backups, "*.tmp"));
     }
 }

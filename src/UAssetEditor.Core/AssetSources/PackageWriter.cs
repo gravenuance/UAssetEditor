@@ -54,6 +54,11 @@ public static class InlineDataResources
         || ((resource.LegacyBulkDataFlags & LegacyForceInlinePayload) != 0 && (resource.LegacyBulkDataFlags & LegacyPayloadInSeparateFile) == 0);
 }
 
+/// <summary>What became of the backups a write asked for.</summary>
+/// <param name="Placed">Every ".bak" (and the first save's ".orig.bak") is where it belongs; false when one could not be put there.</param>
+/// <param name="Stranded">Copies of the previous files still under their temporary names, the only good copy when <paramref name="Placed"/> is false.</param>
+public sealed record BackupResult(bool Placed, IReadOnlyList<string> Stranded);
+
 /// <summary>Writes a package to disk, keeping inline data resources pointed at their bytes.</summary>
 public static partial class PackageWriter
 {
@@ -70,40 +75,48 @@ public static partial class PackageWriter
     }
 
     /// <summary>
-    /// Backs up the package (its .uasset and, when present, .uexp) before writing it. A write that fails without having
-    /// changed either file leaves no backup behind, and any backup already there stays as it was; one that fails after
-    /// changing a file keeps the backup, since it is then the only good copy.
+    /// Backs up the package (its .uasset and, when present, .uexp) before writing it: "&lt;file&gt;.bak" is the state before this
+    /// save, replaced each time, and "&lt;file&gt;.orig.bak" the state before the first save, written once and never replaced. A
+    /// write that fails without having changed either file leaves no backup behind, and any backup already there stays as it
+    /// was; one that fails after changing a file keeps the backup, since it is then the only good copy.
     /// </summary>
     /// <param name="backupFolder">Where backups go; null puts each next to its file with a ".bak" suffix.</param>
-    public static void WriteWithBackup(UAsset asset, string path, string? backupFolder)
+    /// <returns>Whether the backups are in place; a failed move does not fail a save that went through.</returns>
+    public static BackupResult WriteWithBackup(UAsset asset, string path, string? backupFolder)
     {
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(path);
-        WithBackup(path, backupFolder, () => Write(asset, path));
+        return WithBackup(path, backupFolder, () => Write(asset, path));
     }
 
+    private readonly record struct StagedBackup(string Original, string Staged, string Backup, string Vanilla);
+
     /// <summary>The backup handling of <see cref="WriteWithBackup"/> around any <paramref name="write"/> of the package at <paramref name="path"/>.</summary>
-    internal static void WithBackup(string path, string? backupFolder, Action write)
+    internal static BackupResult WithBackup(string path, string? backupFolder, Action write)
     {
-        // Staged under a temporary name so an existing backup is only replaced once there is reason to.
-        var staged = new List<(string Original, string Staged, string Backup)>();
+        // Staged under a name of this save's own, so an existing backup is only replaced once there is reason to and
+        // another save of the same file cannot pick up or overwrite this copy.
+        var stagingId = Guid.NewGuid().ToString("N");
+        var staged = new List<StagedBackup>();
         try
         {
             foreach (var file in (string[])[path, Path.ChangeExtension(path, ".uexp")])
             {
                 if (!File.Exists(file)) continue;
                 var backup = BackupPathResolver.Resolve(file, backupFolder);
-                File.Copy(file, backup + ".tmp", overwrite: true);
-                staged.Add((file, backup + ".tmp", backup));
+                var stagedPath = $"{backup}.{stagingId}.tmp";
+                File.Copy(file, stagedPath, overwrite: true);
+                staged.Add(new StagedBackup(file, stagedPath, backup, BackupPathResolver.ResolveOriginal(file, backupFolder)));
             }
         }
         catch
         {
-            foreach (var (_, stagedPath, _) in staged) TryDelete(stagedPath);
+            foreach (var copy in staged) TryDelete(copy.Staged);
             throw;
         }
 
         var written = false;
+        BackupResult result;
         try
         {
             write();
@@ -111,12 +124,13 @@ public static partial class PackageWriter
         }
         finally
         {
-            SettleBackups(staged, written);
+            result = SettleBackups(staged, written);
         }
+        return result;
     }
 
     /// <summary>Never throws, so the write's own outcome is what the caller sees. When in doubt the copy is kept as the backup.</summary>
-    private static void SettleBackups(List<(string Original, string Staged, string Backup)> staged, bool written)
+    private static BackupResult SettleBackups(List<StagedBackup> staged, bool written)
     {
         bool untouched;
         try
@@ -128,17 +142,44 @@ public static partial class PackageWriter
             untouched = false;
         }
 
-        foreach (var (_, stagedPath, backup) in staged)
+        var placed = true;
+        var stranded = new List<string>();
+        foreach (var copy in staged)
         {
             try
             {
-                if (untouched) File.Delete(stagedPath);
-                else File.Move(stagedPath, backup, overwrite: true);
+                if (untouched)
+                {
+                    File.Delete(copy.Staged);
+                    continue;
+                }
+
+                placed &= KeepVanilla(copy);
+                File.Move(copy.Staged, copy.Backup, overwrite: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                LogBackupNotPlaced(AppLog.For<UAsset>(), backup, stagedPath, ex);
+                placed = false;
+                if (!untouched) stranded.Add(copy.Staged);
+                LogBackupNotPlaced(AppLog.For<UAsset>(), copy.Backup, copy.Staged, ex);
             }
+        }
+        return new BackupResult(placed, stranded);
+    }
+
+    /// <summary>Copies the file as it was before this save to its ".orig.bak", unless an earlier save already did.</summary>
+    private static bool KeepVanilla(StagedBackup copy)
+    {
+        if (File.Exists(copy.Vanilla)) return true;
+        try
+        {
+            File.Copy(copy.Staged, copy.Vanilla, overwrite: false);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogBackupNotPlaced(AppLog.For<UAsset>(), copy.Vanilla, copy.Staged, ex);
+            return File.Exists(copy.Vanilla);
         }
     }
 

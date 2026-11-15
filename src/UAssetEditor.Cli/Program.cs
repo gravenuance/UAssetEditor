@@ -302,6 +302,7 @@ static void PrintUsage()
               and nothing is repacked; assets that can't be opened print SKIPPED and are packed unchanged.
 
         Nothing is written to disk unless --save/--apply is passed (or for a pak-* command, unconditionally, since packing/repacking/converting IS the write);
-        --backup copies the original file first ("<file>.bak" for single-file commands).
+        --backup copies the original file first ("<file>.bak" for single-file commands: the state before this save), and on the first
+        save also keeps "<file>.orig.bak", the state before any save, which later saves never replace.
         """);
 }

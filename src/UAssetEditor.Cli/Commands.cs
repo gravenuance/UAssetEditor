@@ -234,7 +234,7 @@ internal static class Commands
         if (results.Any(r => !r.Found)) throw new ArgException("Some names were not found; nothing saved.");
 
         if (!args.Flag("save")) return 0;
-        AssetIo.SaveAs(asset, path, output, args.Flag("backup"));
+        AssetIo.WarnIfBackupMissing(AssetIo.SaveAs(asset, path, output, args.Flag("backup")), args.Diagnostics);
         Console.WriteLine($"Saved {output}");
         return 0;
     }
@@ -263,7 +263,7 @@ internal static class Commands
         foreach (var name in dropped) Console.WriteLine($"dropped {name} (not in the game's schema)");
         Console.WriteLine($"{path}: unversioned, {dropped.Count} propert{(dropped.Count == 1 ? "y" : "ies")} dropped");
         if (!args.Flag("save")) return 0;
-        AssetIo.SaveAs(asset, path, output, args.Flag("backup"));
+        AssetIo.WarnIfBackupMissing(AssetIo.SaveAs(asset, path, output, args.Flag("backup")), args.Diagnostics);
         Console.WriteLine($"Saved {output}");
         return 0;
     }
@@ -285,7 +285,7 @@ internal static class Commands
 
         Console.WriteLine($"{path}: summary unversioned, properties stay tagged");
         if (!args.Flag("save")) return 0;
-        AssetIo.SaveAs(asset, path, output, args.Flag("backup"));
+        AssetIo.WarnIfBackupMissing(AssetIo.SaveAs(asset, path, output, args.Flag("backup")), args.Diagnostics);
         Console.WriteLine($"Saved {output}");
         return 0;
     }
@@ -356,7 +356,7 @@ internal static class Commands
     private static void MaybeSave(UAsset asset, string path, ArgReader args)
     {
         if (!args.Flag("save")) return;
-        AssetIo.Save(asset, path, backup: args.Flag("backup"));
+        AssetIo.WarnIfBackupMissing(AssetIo.Save(asset, path, backup: args.Flag("backup")), args.Diagnostics);
         Console.WriteLine($"Saved {path}");
     }
 }
