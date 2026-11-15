@@ -16,6 +16,7 @@ namespace UAssetEditor.Mcp.Tools;
 internal sealed class OpenSettings
 {
     private const int MaxWarnings = 20;
+    private const int AesKeyBytes = 32;
 
     private readonly StringWriter _diagnostics;
     private readonly List<string> _notes;
@@ -111,14 +112,14 @@ internal sealed class OpenSettings
     private static string ValidateHex(string text)
     {
         var hex = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? text[2..] : text;
+        const string Refusal = "aesKey must be exactly 32 bytes: 64 hex digits, with or without a leading 0x.";
         try
         {
-            _ = Convert.FromHexString(hex);
+            return Convert.FromHexString(hex).Length == AesKeyBytes ? text : throw new McpException(Refusal);
         }
         catch (FormatException ex)
         {
-            throw new McpException("aesKey is not valid hex.", ex);
+            throw new McpException(Refusal, ex);
         }
-        return text;
     }
 }

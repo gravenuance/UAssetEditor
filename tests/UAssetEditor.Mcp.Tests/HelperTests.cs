@@ -186,6 +186,45 @@ public sealed class HelperTests : IDisposable
         Assert.Equal(LogLevel.Information, McpLogging.ParseLevel("42"));
     }
 
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<(LogLevel Level, string Text)> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Lines.Add((logLevel, formatter(state, exception) + (exception is null ? "" : Environment.NewLine + exception)));
+    }
+
+    [Fact]
+    public void LogFailure_WritesTheWholeExceptionChain_WithAnAesKeyRedacted()
+    {
+        const string key = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"; // gitleaks:allow (a made-up test key)
+        var log = new RecordingLogger();
+        var failure = new InvalidOperationException($"retoc --aes-key 0x{key} failed", new IOException($"inner {key}"));
+
+        McpLogging.LogFailure(log, LogLevel.Critical, "Stopped unexpectedly", failure);
+
+        var (level, text) = Assert.Single(log.Lines);
+        Assert.Equal(LogLevel.Critical, level);
+        Assert.Contains("Stopped unexpectedly", text, StringComparison.Ordinal);
+        Assert.Contains("InvalidOperationException", text, StringComparison.Ordinal);
+        Assert.Contains("IOException: inner [redacted]", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(key, text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LogFailure_WithNoException_LogsTheMessageAlone()
+    {
+        var log = new RecordingLogger();
+
+        McpLogging.LogFailure(log, LogLevel.Error, "Something odd", exception: null);
+
+        Assert.Contains("Something odd", Assert.Single(log.Lines).Text, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void LogDirectory_IsUnderTheCacheFoldersLogs_NotInTheAppsOwnLogFolder()
     {

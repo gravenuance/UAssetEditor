@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using UAssetEditor.Core;
 using UAssetEditor.Core.Logging;
+using UAssetEditor.Mcp.Tools;
 
 namespace UAssetEditor.Mcp.Hosting;
 
@@ -65,12 +66,19 @@ internal static class McpLogging
         ArgumentNullException.ThrowIfNull(log);
 
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            log.LogCritical(e.ExceptionObject as Exception, "Unhandled exception; the process is exiting");
+            LogFailure(log, LogLevel.Critical, "Unhandled exception; the process is exiting", e.ExceptionObject as Exception);
 
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            log.LogError(e.Exception, "Unobserved task exception");
+            LogFailure(log, LogLevel.Error, "Unobserved task exception", e.Exception);
             e.SetObserved();
         };
+    }
+
+    /// <summary>Logs <paramref name="exception"/> with its stack as text, redacted: a failed retoc call's message repeats the AES key it was given.</summary>
+    public static void LogFailure(ILogger log, LogLevel level, string what, Exception? exception)
+    {
+        ArgumentNullException.ThrowIfNull(log);
+        log.Log(level, "{What}{NewLine}{Exception}", what, Environment.NewLine, Secrets.Redact(exception?.ToString()));
     }
 }

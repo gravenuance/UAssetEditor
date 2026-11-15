@@ -19,7 +19,7 @@ internal static class ToolParams
         "Fail with the real parse error instead of opening an asset without its property data.";
 
     public const string AesKey =
-        "AES key in hex for an encrypted pak that is not the game's. Never echoed or logged.";
+        "AES key for an encrypted pak that is not the game's: exactly 32 bytes as 64 hex digits, with or without a leading 0x. Never echoed or logged.";
 
     public const string Overwrite = "Replace the output when it already exists. Without it an existing output is refused.";
 }

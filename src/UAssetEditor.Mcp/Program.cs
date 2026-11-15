@@ -73,7 +73,7 @@ try
 }
 catch (Exception ex)
 {
-    log.LogCritical(ex, "{Command} stopped unexpectedly", CommandName);
+    McpLogging.LogFailure(log, LogLevel.Critical, $"{CommandName} stopped unexpectedly", ex);
     await Console.Error.WriteLineAsync($"{CommandName} stopped unexpectedly; see the log in {McpLogging.LogDirectory(paths)}").ConfigureAwait(false);
     return 1;
 }

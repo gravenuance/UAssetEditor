@@ -37,6 +37,30 @@ public sealed class SecretsTests
     }
 
     [Theory]
+    [InlineData("failed with key Zm9vYmFyLXNlY3JldA==", "Zm9vYmFyLXNlY3JldA==", "failed with key [redacted]")]
+    [InlineData("failed with key 0xAbCdEf0123456789", "abcdef0123456789", "failed with key 0x[redacted]")]
+    [InlineData("key=ABCDEF0123456789;again abcdef0123456789", "0xABCDEF0123456789", "key=[redacted];again [redacted]")]
+    public void Redact_GivenTheKeyTheCallReceived_ReplacesItWhateverShapeItAppearsIn(string text, string secret, string expected)
+    {
+        Assert.Equal(expected, Secrets.Redact(text, [secret]));
+    }
+
+    [Fact]
+    public void Redact_GivenSecrets_StillReplacesTheShapesItAlwaysDid()
+    {
+        Assert.Equal("a [redacted] b --aes-key [redacted]", Secrets.Redact($"a {Key} b --aes-key 0xZZ", ["unrelated-secret"]));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData("a")]
+    public void Redact_IgnoresASecretTooShortToBeAKey(string secret)
+    {
+        Assert.Equal("a banana", Secrets.Redact("a banana", [secret]));
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     public void Redact_GivenNothing_ReturnsAnEmptyString(string? text)
@@ -63,6 +87,15 @@ public sealed class SecretsTests
         [McpServerTool(Name = "bad_input")]
         [Description("Fails with a message that names the key.")]
         public static string BadInput() => throw new McpException($"key {Key} is not accepted");
+
+        [McpServerTool(Name = "key_echo")]
+        [Description("Fails with the key it was given, in a form no pattern recognises.")]
+        public static string KeyEcho(string aesKey) =>
+            throw new InvalidOperationException($"cannot use {aesKey}", new FormatException($"inner {aesKey}"));
+
+        [McpServerTool(Name = "key_echo_input")]
+        [Description("Rejects the key it was given, naming it.")]
+        public static string KeyEchoInput(string aesKey) => throw new McpException($"{aesKey} is not accepted");
     }
 
     private sealed class CapturingLogs : ILoggerProvider
@@ -88,7 +121,8 @@ public sealed class SecretsTests
         }
     }
 
-    private static async Task<(CallToolResult Result, IReadOnlyCollection<string> Logs)> CallAsync(string tool, CancellationToken ct)
+    private static async Task<(CallToolResult Result, IReadOnlyCollection<string> Logs)> CallAsync(
+        string tool, CancellationToken ct, Dictionary<string, object?>? arguments = null)
     {
         var toServer = new Pipe();
         var toClient = new Pipe();
@@ -106,7 +140,7 @@ public sealed class SecretsTests
         await host.StartAsync(ct);
         await using var client = await McpClient.CreateAsync(
             new StreamClientTransport(toServer.Writer.AsStream(), toClient.Reader.AsStream()), cancellationToken: ct);
-        var result = await client.CallToolAsync(tool, new Dictionary<string, object?>(), cancellationToken: ct);
+        var result = await client.CallToolAsync(tool, arguments ?? [], cancellationToken: ct);
         await client.DisposeAsync();
         await host.StopAsync(ct);
         return (result, logs.Lines);
@@ -125,6 +159,24 @@ public sealed class SecretsTests
         Assert.DoesNotContain(Key, shown, StringComparison.OrdinalIgnoreCase);
         Assert.NotEmpty(logs);
         Assert.All(logs, line => Assert.DoesNotContain(Key, line, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("key_echo", "Zm9vYmFyLXNlY3JldC1rZXk=")]
+    [InlineData("key_echo", "hunter2-not-hex-at-all")]
+    [InlineData("key_echo_input", "Zm9vYmFyLXNlY3JldC1rZXk=")]
+    [InlineData("key_echo_input", "0xDEADBEEFCAFE")]
+    public async Task AFailureThatEchoesTheKeyTheCallReceived_NeverReachesTheCallerOrTheLog_WithIt(string tool, string givenKey)
+    {
+        var (result, logs) = await CallAsync(tool, TestContext.Current.CancellationToken, new Dictionary<string, object?> { ["aesKey"] = givenKey });
+
+        Assert.True(result.IsError);
+        var shown = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        ArgumentNullException.ThrowIfNull(givenKey);
+        var bare = givenKey.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? givenKey[2..] : givenKey;
+        Assert.DoesNotContain(bare, shown, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(logs);
+        Assert.All(logs, line => Assert.DoesNotContain(bare, line, StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

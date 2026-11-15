@@ -151,11 +151,36 @@ public sealed class UsmapAndLogToolTests : IDisposable
     }
 
     [Fact]
-    public void OpenSettings_GivenAKey_KeepsItForThePakCallsOnly()
+    public void OpenSettings_RefusesAKeyThatIsOnlyThePrefix()
     {
-        var settings = OpenSettings.Create(_rig.Store, null, null, null, aesKey: "0x00112233");
+        var error = Assert.Throws<McpException>(() => OpenSettings.Create(_rig.Store, null, null, null, aesKey: "0x"));
 
-        Assert.Equal([0x00, 0x11, 0x22, 0x33], settings.AesKey);
+        Assert.Contains("32 bytes", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("00112233")]
+    [InlineData("0x00112233")]
+    [InlineData("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDD")] // 31 bytes
+    [InlineData("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF00")] // 33 bytes
+    [InlineData("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEF")] // 63 digits
+    [InlineData("0x00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEE")] // 31 bytes
+    public void OpenSettings_RefusesAKeyThatIsNotExactly32Bytes_WithoutRepeatingIt(string key)
+    {
+        var error = Assert.Throws<McpException>(() => OpenSettings.Create(_rig.Store, null, null, null, aesKey: key));
+
+        Assert.Contains("32 bytes", error.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(key, error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF")]
+    [InlineData("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")]
+    public void OpenSettings_GivenA32ByteKey_KeepsItForThePakCallsOnly(string key) // gitleaks:allow (a made-up test key)
+    {
+        var settings = OpenSettings.Create(_rig.Store, null, null, null, aesKey: key);
+
+        Assert.Equal(Convert.FromHexString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"), settings.AesKey);
         Assert.DoesNotContain("00112233", string.Join(' ', settings.Warnings()), StringComparison.OrdinalIgnoreCase);
     }
 
