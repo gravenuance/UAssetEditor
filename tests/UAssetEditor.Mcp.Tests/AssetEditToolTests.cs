@@ -70,6 +70,66 @@ public sealed class AssetEditToolTests : IDisposable
         Assert.Equal("7", AssetFixtures.ReadProperty(path, "Count"));
         Assert.Equal(before[0], await File.ReadAllBytesAsync(path + ".bak", _ct));
         Assert.Equal(before[1], await File.ReadAllBytesAsync(Path.ChangeExtension(path, ".uexp") + ".bak", _ct));
+        Assert.Equal(path + ".orig.bak", result.OriginalBackup);
+        Assert.Equal(before[0], await File.ReadAllBytesAsync(path + ".orig.bak", _ct));
+        Assert.Equal(before[1], await File.ReadAllBytesAsync(Path.ChangeExtension(path, ".uexp") + ".orig.bak", _ct));
+    }
+
+    [Fact]
+    public async Task EditAsset_SavedTwice_KeepsTheVanillaFilesAsOrigBak_AndTheStateBeforeTheLatestSaveAsBak()
+    {
+        var path = Sample();
+        var vanilla = AssetFixtures.Snapshot(path);
+
+        await _rig.Edits.EditAssetAsync(path, SetCount, save: true, cancellationToken: _ct);
+        var afterFirst = AssetFixtures.Snapshot(path);
+        await _rig.Edits.EditAssetAsync(path, "set --export 0 --path Count --value 8", save: true, cancellationToken: _ct);
+
+        Assert.Equal("8", AssetFixtures.ReadProperty(path, "Count"));
+        Assert.Equal(vanilla[0], await File.ReadAllBytesAsync(path + ".orig.bak", _ct));
+        Assert.Equal(vanilla[1], await File.ReadAllBytesAsync(Path.ChangeExtension(path, ".uexp") + ".orig.bak", _ct));
+        Assert.Equal(afterFirst[0], await File.ReadAllBytesAsync(path + ".bak", _ct));
+        Assert.Equal(afterFirst[1], await File.ReadAllBytesAsync(Path.ChangeExtension(path, ".uexp") + ".bak", _ct));
+    }
+
+    [Fact]
+    public async Task EditAsset_WhenTheBackupCannotBePutInPlace_SavesAnyway_AndDoesNotClaimItWasKept()
+    {
+        var path = Sample();
+        var stuck = path + ".bak";
+        await File.WriteAllTextAsync(stuck, "an older backup", _ct);
+        File.SetAttributes(stuck, FileAttributes.ReadOnly);
+        try
+        {
+            var result = await _rig.Edits.EditAssetAsync(path, SetCount, save: true, cancellationToken: _ct);
+
+            Assert.True(result.Saved);
+            Assert.Equal("7", AssetFixtures.ReadProperty(path, "Count"));
+            Assert.Null(result.Backup);
+            Assert.Contains("could not be put in place", result.Note, StringComparison.Ordinal);
+            Assert.DoesNotContain("are kept as .bak", result.Note, StringComparison.Ordinal);
+            Assert.Equal("an older backup", await File.ReadAllTextAsync(stuck, _ct));
+        }
+        finally
+        {
+            File.SetAttributes(stuck, FileAttributes.Normal);
+        }
+    }
+
+    [Fact]
+    public async Task EditAsset_CalledConcurrentlyOnOneFile_RunsTheCallsOneAfterAnother()
+    {
+        var path = Sample();
+        var vanilla = AssetFixtures.Snapshot(path);
+
+        var results = await Task.WhenAll(Enumerable.Range(1, 8).Select(i =>
+            Task.Run(() => _rig.Edits.EditAssetAsync(path, $"set --export 0 --path Count --value {i}", save: true, cancellationToken: _ct), _ct)));
+
+        Assert.All(results, r => Assert.True(r.Saved));
+        Assert.Contains(AssetFixtures.ReadProperty(path, "Count"), Enumerable.Range(1, 8).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        Assert.Equal(vanilla[0], await File.ReadAllBytesAsync(path + ".orig.bak", _ct));
+        Assert.Equal(vanilla[1], await File.ReadAllBytesAsync(Path.ChangeExtension(path, ".uexp") + ".orig.bak", _ct));
+        Assert.Empty(Directory.GetFiles(_rig.Folder.Path, "*.tmp"));
     }
 
     [Fact]

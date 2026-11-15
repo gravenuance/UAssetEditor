@@ -43,12 +43,12 @@ internal sealed class AssetEditTools(MappingsStore store)
     }
 
     [McpServerTool(Name = "edit_asset", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]
-    [Description("Runs script ops on an asset. With save=false (the default) it is a dry run like preview_edit. With save=true it overwrites the .uasset and .uexp in place, after copying both to .bak files unless backup is false; nothing is saved when any op was skipped, so a half-applied edit never lands. " + OpsDescription + Untrusted.Note)]
+    [Description("Runs script ops on an asset. With save=false (the default) it is a dry run like preview_edit. With save=true it overwrites the .uasset and .uexp in place; unless backup is false, both are first copied to .bak files (the state before this save, replaced on each save), and on the first save also to .orig.bak files (the original, never replaced); nothing is saved when any op was skipped, so a half-applied edit never lands. " + OpsDescription + Untrusted.Note)]
     public async Task<EditResultDto> EditAssetAsync(
         [Description("Absolute path of the .uasset; its .uexp must sit beside it.")] string file,
         [Description(OpsParameter)] string ops,
         [Description("Write the result to disk. False runs the ops in memory and reports only.")] bool save = false,
-        [Description("Copy the .uasset and .uexp to .bak files before overwriting them (default true). Only used with save.")] bool backup = true,
+        [Description("Copy the .uasset and .uexp to .bak files before overwriting them, and to .orig.bak files on the first save (default true). Only used with save.")] bool backup = true,
         [Description(ToolParams.Game)] string? game = null,
         [Description(ToolParams.EngineVersion)] string? engineVersion = null,
         [Description(ToolParams.Usmap)] string? usmap = null,
@@ -68,13 +68,18 @@ internal sealed class AssetEditTools(MappingsStore store)
         if (parsed.Count == 0) throw new McpException("ops holds no op: every line is blank or a # comment.");
         ScriptOpPolicy.Validate(parsed, "ops");
 
-        return await Task.Run(() =>
+        var target = ToolPaths.ExistingFile(file, nameof(file), ".uasset", ".umap");
+
+        // One call at a time per file, from opening it to saving it: a second save would otherwise interleave with the first.
+        return await PathLocks.RunAsync([target], () => Task.Run(() =>
         {
-            var (path, asset) = ToolAssets.Open(file, settings);
+            var (path, asset) = ToolAssets.Open(target, settings);
             var results = ScriptOps.Execute(asset, parsed, settings.Args);
             var skipped = results.Count(r => r.Skipped);
 
             var saved = false;
+            string? backupPath = null;
+            string? originalPath = null;
             string note;
             if (!save)
             {
@@ -87,14 +92,28 @@ internal sealed class AssetEditTools(MappingsStore store)
             else
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                AssetIo.Save(asset, path, backup);
+                var kept = AssetIo.Save(asset, path, backup);
                 saved = true;
-                note = backup ? $"Saved {path}; the previous files are kept as .bak beside it." : $"Saved {path} without a backup.";
+                if (!backup)
+                {
+                    note = $"Saved {path} without a backup.";
+                }
+                else if (kept is { Placed: true })
+                {
+                    backupPath = path + ".bak";
+                    originalPath = path + ".orig.bak";
+                    note = $"Saved {path}. Beside it, .bak holds the files as they were before this save, and .orig.bak the files as they were before the first save (never replaced).";
+                }
+                else
+                {
+                    var stranded = kept is { Stranded.Count: > 0 } ? $" The copies are at {string.Join(", ", kept.Stranded)}." : "";
+                    note = $"Saved {path}, but the backup of the previous files could not be put in place.{stranded}";
+                }
             }
 
             var (opDtos, truncated) = ToDtos(results);
-            return new EditResultDto(path, saved, saved && backup ? path + ".bak" : null, results.Count - skipped, skipped, opDtos, truncated, note, settings.Warnings());
-        }, cancellationToken).ConfigureAwait(false);
+            return new EditResultDto(path, saved, backupPath, originalPath, results.Count - skipped, skipped, opDtos, truncated, note, settings.Warnings());
+        }, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     private static (List<OpDto> Ops, bool Truncated) ToDtos(IReadOnlyList<OpResult> results)

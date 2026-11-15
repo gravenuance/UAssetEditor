@@ -34,11 +34,11 @@ internal sealed class RulesetTools(MappingsStore store)
     }
 
     [McpServerTool(Name = "apply_ruleset", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]
-    [Description("Runs a rule set over one asset or every .uasset under a folder and overwrites each changed asset in place (its .uasset and .uexp), after copying both to .bak files unless backup is false. An asset that cannot be opened is skipped; one whose edit or save fails is left unsaved and reported. Run preview_ruleset first. Progress is reported and the list is capped. Cancelling stops between assets: those already saved stay saved." + Untrusted.Note)]
+    [Description("Runs a rule set over one asset or every .uasset under a folder and overwrites each changed asset in place (its .uasset and .uexp), unless backup is false, after copying both to .bak files (the state before this save, replaced on each save) and, on an asset's first save, to .orig.bak files (the original, never replaced). An asset that cannot be opened is skipped; one whose edit or save fails is left unsaved and reported. Run preview_ruleset first. Progress is reported and the list is capped. Cancelling stops between assets: those already saved stay saved." + Untrusted.Note)]
     public async Task<RulesetResultDto> ApplyRulesetAsync(
         [Description("Absolute path of one .uasset, or of a folder searched recursively.")] string path,
         [Description(RulesetInput.Description)] string ruleset,
-        [Description("Copy each .uasset and .uexp to .bak files before overwriting them (default true).")] bool backup = true,
+        [Description("Copy each .uasset and .uexp to .bak files before overwriting them, and to .orig.bak files on the first save (default true).")] bool backup = true,
         [Description("Most changes to list, 1 to 1000 (default 200); the counts always cover all of them.")] int maxChanges = DefaultChanges,
         [Description(ToolParams.Game)] string? game = null,
         [Description(ToolParams.EngineVersion)] string? engineVersion = null,
@@ -62,12 +62,16 @@ internal sealed class RulesetTools(MappingsStore store)
             () => new EngineVersionResolver { DefaultVersion = settings.EngineVersion, Mappings = AssetIo.ResolveMappings(settings.Args), Game = settings.Game },
             cancellationToken).ConfigureAwait(false);
         IAssetSource source = isFolder ? new LooseFolderAssetSource(target) : new SingleFileAssetSource(target);
+        var assetFiles = isFolder ? Directory.EnumerateFiles(target, "*.uasset", SearchOption.AllDirectories) : [target];
 
         var sink = new ProgressSink(progress, apply ? "Edited assets" : "Checked assets");
         var editProgress = new InlineProgress<EditProgress>(p => sink.Report((p.Completed, p.Total)));
-        var results = apply
+
+        // Every asset it may open, so an edit_asset on one of them waits for the run (and the run for it).
+        var results = await PathLocks.RunAsync(assetFiles, async () => apply
             ? await EditExecutor.ApplyAsync(source, versions, rules, backup, backupFolder: null, editProgress, cancellationToken: cancellationToken).ConfigureAwait(false)
-            : await EditExecutor.PreviewAsync(source, versions, rules, editProgress, cancellationToken: cancellationToken).ConfigureAwait(false);
+            : await EditExecutor.PreviewAsync(source, versions, rules, editProgress, cancellationToken: cancellationToken).ConfigureAwait(false),
+            cancellationToken).ConfigureAwait(false);
 
         return ToResult(target, apply, results, maxChanges, settings);
     }

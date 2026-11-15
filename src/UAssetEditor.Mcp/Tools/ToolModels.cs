@@ -33,6 +33,7 @@ internal sealed record EditResultDto(
     string File,
     bool Saved,
     string? Backup,
+    string? OriginalBackup,
     int OpsRun,
     int OpsSkipped,
     IReadOnlyList<OpDto> Ops,

@@ -164,6 +164,42 @@ public sealed class RulesetToolTests : IDisposable
     }
 
     [Fact]
+    public async Task ApplyRuleset_AndEditAsset_CalledTogetherOnOneFile_RunOneAfterAnother()
+    {
+        var path = Sample();
+        var vanilla = AssetFixtures.Snapshot(path);
+
+        var calls = Enumerable.Range(0, 4).SelectMany(_ => new Func<Task>[]
+        {
+            async () => Assert.Equal(0, (await _rig.Rulesets.ApplyRulesetAsync(path, SetCountTo9, cancellationToken: _ct)).Failed),
+            async () => Assert.True((await _rig.Edits.EditAssetAsync(path, "set --export 0 --path Count --value 7", save: true, cancellationToken: _ct)).Saved),
+        });
+        await Task.WhenAll(calls.Select(call => Task.Run(call, _ct)));
+
+        Assert.Contains(AssetFixtures.ReadProperty(path, "Count"), new[] { "7", "9" });
+        Assert.Equal(vanilla[0], await File.ReadAllBytesAsync(path + ".orig.bak", _ct));
+        Assert.Empty(Directory.GetFiles(_rig.Folder.Path, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task ApplyRulesetOverAFolder_AndEditAssetOnAFileInIt_RunOneAfterAnother()
+    {
+        var inside = Sample("Sub/A.uasset");
+        Sample("Sub/B.uasset");
+        var vanilla = AssetFixtures.Snapshot(inside);
+
+        var calls = Enumerable.Range(0, 4).SelectMany(_ => new Func<Task>[]
+        {
+            async () => Assert.Equal(0, (await _rig.Rulesets.ApplyRulesetAsync(_rig.Folder.Path, SetCountTo9, cancellationToken: _ct)).Failed),
+            async () => Assert.True((await _rig.Edits.EditAssetAsync(inside, "set --export 0 --path Count --value 7", save: true, cancellationToken: _ct)).Saved),
+        });
+        await Task.WhenAll(calls.Select(call => Task.Run(call, _ct)));
+
+        Assert.Equal(vanilla[0], await File.ReadAllBytesAsync(inside + ".orig.bak", _ct));
+        Assert.Empty(Directory.GetFiles(_rig.Folder.Path, "*.tmp", SearchOption.AllDirectories));
+    }
+
+    [Fact]
     public async Task Rulesets_WhenCancelled_Throw_AndApplyWritesNothing()
     {
         var path = Sample();

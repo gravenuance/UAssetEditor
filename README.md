@@ -82,8 +82,8 @@ Tools that write (the client asks first). Every one that can replace something i
 
 | Tool | What it writes |
 |---|---|
-| `edit_asset` | Runs script ops. A dry run unless `save=true`, which overwrites the `.uasset`/`.uexp` after copying both to `.bak` (`backup=false` skips that), and saves nothing when any op was skipped. |
-| `apply_ruleset` | Applies a rule set in place, with `.bak` copies; a failed asset is left unsaved and reported. |
+| `edit_asset` | Runs script ops. A dry run unless `save=true`, which overwrites the `.uasset`/`.uexp` after copying both to `.bak` (the files as they were before that save, replaced on each save) and, on the first save, to `.orig.bak` (the original, never replaced); `backup=false` skips both. It saves nothing when any op was skipped, and one call at a time runs per file. A line cannot set its own `--usmap`, `--version` or `--game`, and its `--from-file` must be an existing local `.uasset`. |
+| `apply_ruleset` | Applies a rule set in place, with `.bak` and `.orig.bak` copies as for `edit_asset`; a failed asset is left unsaved and reported. |
 | `unpack_pak` | Extracts entries matching a required `filter` (real game paks are tens of GB); refuses more than `maxFiles` matches or an existing file unless `overwrite=true`. Windows only. |
 | `pack`, `to_legacy`, `repack` | Write a new `.pak`, `.utoc`/`.ucas` pair, legacy folder or `.pak`; refuse an existing output unless `overwrite=true`. `repack` never changes its source. Windows only. |
 | `usmap_add` | Copies a dumped `.usmap` into the store; `force=true` replaces a stored build. |
