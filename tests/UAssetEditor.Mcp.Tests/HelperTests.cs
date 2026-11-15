@@ -166,6 +166,16 @@ public sealed class HelperTests : IDisposable
         Assert.All([inside, same, locked], error => Assert.Contains("Too many levels of links", error.Message, StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void APathTooLongToResolve_IsAToolError_InThePathChecks()
+    {
+        if (!OperatingSystem.IsWindows()) return; // Windows is where a path can pass 32,767 characters
+        var tooLong = Path.Combine(_folder.Path, new string('a', 40_000));
+
+        Assert.Throws<McpException>(() => ToolPaths.RefuseInside(tooLong, _folder.Combine("mod"), "output", "source"));
+        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(tooLong, _folder.Combine("b.pak"), "pak", "output"));
+    }
+
     // Untrusted / ToolInput
 
     [Fact]

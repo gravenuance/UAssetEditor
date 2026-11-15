@@ -73,7 +73,7 @@ internal static class ToolPaths
     /// Both are resolved first, so a link, junction or 8.3 name into the folder does not get round it.</summary>
     public static void RefuseInside(string candidate, string folder, string candidateName, string folderName)
     {
-        if (FinalPaths.IsInside(candidate, folder))
+        if (Placed(() => FinalPaths.IsInside(candidate, folder)))
             throw new McpException($"{candidateName} must not be inside {folderName}.");
     }
 
@@ -81,7 +81,23 @@ internal static class ToolPaths
     /// name, in another letter case, or as a hard link.</summary>
     public static void RefuseSame(string first, string second, string firstName, string secondName)
     {
-        if (FinalPaths.SameFile(first, second)) throw new McpException($"{firstName} and {secondName} are the same file.");
+        if (Placed(() => FinalPaths.SameFile(first, second))) throw new McpException($"{firstName} and {secondName} are the same file.");
+    }
+
+    /// <summary><see cref="FinalPaths.ResolveAll"/> for a tool.</summary>
+    public static IReadOnlyList<string> ResolveAll(IEnumerable<string> paths) => Placed(() => FinalPaths.ResolveAll(paths));
+
+    // An unplaceable path is reported by ToolErrorFilter as it is; any other I/O failure of the resolution (a path too long) becomes a tool error here.
+    private static T Placed<T>(Func<T> resolve)
+    {
+        try
+        {
+            return resolve();
+        }
+        catch (IOException ex) when (ex is not PathNotPlaceableException)
+        {
+            throw new McpException(ex.Message, ex);
+        }
     }
 
     private static string RefuseExisting(string path, string name, bool overwrite, bool exists) =>

@@ -232,4 +232,54 @@ public class PakUnpackerTests
             Directory.Delete(root, recursive: true);
         }
     }
+
+    [Fact]
+    public void Unpack_WhenTheDestinationRootCannotBePlaced_RefusesTheWholeUnpack_NotEveryEntry()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/Foo.uasset"] = Encoding.UTF8.GetBytes("foo") });
+        var root = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_UnpackLoop_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        using var links = new TestLinks();
+        links.MakeJunction(Path.Combine(root, "first"), Path.Combine(root, "second"));
+        links.MakeJunction(Path.Combine(root, "second"), Path.Combine(root, "first"));
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+
+            Assert.Throws<PathNotPlaceableException>(() => PakUnpacker.Unpack(source, Path.Combine(root, "first", "dest"), cancellationToken: TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            links.Dispose();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Unpack_WhenTheDestinationIsNamedByItsShortName_WritesWithoutRefusingLinkFreeEntries()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var pakPath = TestPaks.CreatePak(new Dictionary<string, byte[]> { ["Content/Foo.uasset"] = Encoding.UTF8.GetBytes("foo") });
+        var root = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_UnpackShort_" + Guid.NewGuid().ToString("N"));
+        var longFolder = Path.Combine(root, "A Destination With A Long Name");
+        Directory.CreateDirectory(longFolder);
+
+        try
+        {
+            using var source = new PakAssetSource(pakPath);
+            var result = PakUnpacker.Unpack(source, TestLinks.ShortName(longFolder), cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(1, result.SucceededCount);
+            Assert.Empty(result.FailedEntries);
+            Assert.True(File.Exists(Path.Combine(longFolder, "Content", "Foo.uasset")));
+        }
+        finally
+        {
+            File.Delete(pakPath);
+            Directory.Delete(root, recursive: true);
+        }
+    }
 }

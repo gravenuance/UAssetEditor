@@ -19,69 +19,104 @@ public static class FinalPaths
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        return ResolveFull(Path.GetFullPath(path), OperatingSystem.IsWindows() ? FinalPathOfHandle : null);
+        return Placer.ForThisSystem().Resolve(Path.GetFullPath(path));
     }
 
-    // A null lookup follows the links part by part (other systems); the Windows lookup asks the file system instead.
-    private static string ResolveFull(string full, Func<string, HandleLookup>? lookup)
+    /// <summary><see cref="Resolve"/> for many paths at once: the links above a folder are looked up once, however many paths share it.</summary>
+    public static IReadOnlyList<string> ResolveAll(IEnumerable<string> paths)
     {
-        var existing = full;
-        var tail = new Stack<string>();
-        while (!Path.Exists(existing))
-        {
-            var parent = Path.GetDirectoryName(existing);
-            if (parent == null) return full; // not even the root exists (a drive that is not there): nothing to resolve
-            tail.Push(Path.GetFileName(existing));
-            existing = parent;
-        }
+        ArgumentNullException.ThrowIfNull(paths);
 
-        var resolved = lookup == null ? ResolveLinks(existing, LinkTargetOf) : ResolveExisting(existing, lookup);
-        while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
-        return resolved;
+        var placer = Placer.ForThisSystem();
+        return [.. paths.Select(path =>
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            return placer.Resolve(Path.GetFullPath(path));
+        })];
     }
 
     /// <summary>What the file system said about one path: where it lands, or the Win32 error that stopped it saying.</summary>
     internal readonly record struct HandleLookup(string? FinalPath, int Error);
 
-    /// <summary>Where an existing path lands according to <paramref name="lookup"/>. When the file system cannot say and a
-    /// link is in the path, the path is refused rather than judged by its name: a link to an offline share or a loop would
-    /// pass for a path inside any folder its own name sits in.</summary>
-    internal static string ResolveExisting(string existing, Func<string, HandleLookup> lookup)
+    /// <summary>Places paths. A null <paramref name="lookup"/> follows the links part by part (other systems); the Windows
+    /// lookup asks the file system instead. The other functions are seams for the tests.</summary>
+    internal sealed class Placer(Func<string, HandleLookup>? lookup, Func<string, string?>? linkTargetOf = null, Func<string, string?>? longPathOf = null)
     {
-        var found = lookup(existing);
-        if (found.FinalPath is { } final) return final;
+        private readonly Func<string, string?> _linkTargetOf = linkTargetOf ?? LinkTargetOf;
+        private readonly Func<string, string?> _longPathOf = longPathOf ?? LongPathOf;
+        private readonly Dictionary<string, bool> _linkInChain = new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
 
-        // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
-        // where a write through it would. The target's own existing part is placed in turn, so its case and short names match.
-        if (found.Error is ErrorFileNotFound or ErrorPathNotFound)
+        public static Placer ForThisSystem() => new(OperatingSystem.IsWindows() ? FinalPathOfHandle : null);
+
+        public string Resolve(string full, int depth = 0)
         {
-            var followed = ResolveLinks(existing, LinkTargetOf);
-            return string.Equals(followed, existing, PathComparison) ? followed : ResolveFull(followed, lookup);
+            var existing = full;
+            var tail = new Stack<string>();
+            while (!Path.Exists(existing))
+            {
+                var parent = Path.GetDirectoryName(existing);
+                if (parent == null) return full; // not even the root exists (a drive that is not there): nothing to resolve
+                tail.Push(Path.GetFileName(existing));
+                existing = parent;
+            }
+
+            var resolved = lookup == null ? ResolveLinks(existing, _linkTargetOf) : ResolveExisting(existing, depth);
+            while (tail.Count > 0) resolved = Path.Combine(resolved, tail.Pop());
+            return resolved;
         }
 
-        // No link, so the path cannot lead anywhere but where it reads (a RAM disk, a locked file): the real write reports its own error.
-        if (!HasLinkInChain(existing)) return Path.GetFullPath(existing);
-
-        throw found.Error == ErrorCantResolveFilename
-            ? PathNotPlaceableException.LinkLoop(existing) // what a link loop reports
-            : PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
-    }
-
-    /// <summary>True when <paramref name="existing"/> or a folder above it is a link, junction or other reparse point; one whose attributes cannot be read counts as one.</summary>
-    private static bool HasLinkInChain(string existing)
-    {
-        for (var current = existing; Path.GetDirectoryName(current) is { } parent; current = parent)
+        /// <summary>Where an existing path lands according to the lookup. When the file system cannot say and a link is in the
+        /// path, the path is refused rather than judged by its name: a link to an offline share or a loop would pass for a
+        /// path inside any folder its own name sits in.</summary>
+        public string ResolveExisting(string existing, int depth = 0)
         {
+            var found = (lookup ?? throw new InvalidOperationException("This system has no handle lookup."))(existing);
+            if (found.FinalPath is { } final) return final;
+
+            // A handle cannot be opened through a link whose target is missing; following the links by name then still lands
+            // where a write through it would. The target's own existing part is placed in turn, so its case and short names match.
+            if (found.Error is ErrorFileNotFound or ErrorPathNotFound)
+            {
+                var followed = ResolveLinks(existing, _linkTargetOf);
+                if (string.Equals(followed, existing, PathComparison)) return followed;
+                return depth >= MaxLinkHops ? throw PathNotPlaceableException.LinkLoop(existing) : Resolve(followed, depth + 1);
+            }
+
+            // No link, so the path cannot lead anywhere but where it reads (a RAM disk, a locked file): the real write reports its own error.
+            if (!HasLinkInChain(existing)) return WithLongNames(existing);
+
+            throw found.Error == ErrorCantResolveFilename
+                ? PathNotPlaceableException.LinkLoop(existing) // what a link loop reports
+                : PathNotPlaceableException.Unplaceable(existing, Marshal.GetPInvokeErrorMessage(found.Error));
+        }
+
+        // Without a handle an 8.3 name cannot be told from a long one by its spelling, so one that stays unexpanded is refused.
+        private string WithLongNames(string existing)
+        {
+            var full = Path.GetFullPath(existing);
+            if (_longPathOf(full) is { } expanded) return expanded;
+            return full.Contains('~', StringComparison.Ordinal) ? throw PathNotPlaceableException.Unplaceable(existing, "its short (8.3) names cannot be expanded") : full;
+        }
+
+        /// <summary>True when <paramref name="path"/> or a folder above it is a symbolic link or junction (a mark that is not
+        /// one, such as a OneDrive placeholder, does not count); one that cannot be read counts as one. Remembered per folder.</summary>
+        private bool HasLinkInChain(string path)
+        {
+            if (Path.GetDirectoryName(path) is not { } parent) return false; // the root
+            if (_linkInChain.TryGetValue(path, out var known)) return known;
+
+            bool isLink;
             try
             {
-                if (File.GetAttributes(current).HasFlag(FileAttributes.ReparsePoint)) return true;
+                isLink = _linkTargetOf(path) != null || HasLinkInChain(parent);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return true;
+                isLink = true;
             }
+            _linkInChain[path] = isLink;
+            return isLink;
         }
-        return false;
     }
 
     /// <summary>True when both names reach the same file: they resolve to one path, or both exist and share a volume and file id (hard links).</summary>
@@ -136,6 +171,21 @@ public static class FinalPaths
     }
 
     private static string? LinkTargetOf(string path) => new FileInfo(path).LinkTarget;
+
+    /// <summary>The path with its 8.3 names written out, or null when the file system cannot say; other systems have none, so the path itself.</summary>
+    private static string? LongPathOf(string path)
+    {
+        if (!OperatingSystem.IsWindows()) return path;
+
+        var buffer = new char[1024];
+        while (true)
+        {
+            var length = GetLongPathNameW(path, buffer, (uint)buffer.Length);
+            if (length == 0) return null;
+            if (length < buffer.Length) return new string(buffer, 0, (int)length);
+            buffer = new char[length + 1];
+        }
+    }
 
     // Reading a link can fail for want of access (Unix) or on a damaged one; either way the path is refused, as a tool error.
     private static string? LinkTargetIn(string existing, string part, Func<string, string?> linkTargetOf)
@@ -212,6 +262,10 @@ public static class FinalPaths
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern SafeFileHandle CreateFileW(
         string fileName, uint desiredAccess, uint shareMode, IntPtr securityAttributes, uint creationDisposition, uint flagsAndAttributes, IntPtr templateFile);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint GetLongPathNameW(string shortPath, [Out] char[] longPath, uint longPathLength);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

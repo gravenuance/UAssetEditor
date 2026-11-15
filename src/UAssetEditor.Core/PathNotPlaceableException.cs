@@ -15,7 +15,7 @@ public sealed class PathNotPlaceableException : IOException
     {
     }
 
-    public PathNotPlaceableException(string message, Exception innerException)
+    public PathNotPlaceableException(string message, Exception? innerException)
         : base(message, innerException)
     {
     }
@@ -23,7 +23,5 @@ public sealed class PathNotPlaceableException : IOException
     internal static PathNotPlaceableException LinkLoop(string path) => new($"{LinkLoopText} {path}.");
 
     internal static PathNotPlaceableException Unplaceable(string path, string reason, Exception? inner = null) =>
-        inner is null
-            ? new($"Cannot tell where {path} lands, so it is refused: {reason}")
-            : new($"Cannot tell where {path} lands, so it is refused: {reason}", inner);
+        new($"Cannot tell where {path} lands, so it is refused: {reason}", inner);
 }
