@@ -2,6 +2,11 @@
 
 This project embeds prebuilt third-party binaries in its single-file publish output.
 
+## Oodle (not distributed)
+
+- **What**: `oo2core_<n>_win64.dll`, the Oodle compression library by Epic Games Tools (RAD Game Tools), which legacy Unreal 4 paks such as Days Gone's use (`COMPRESS_Custom`).
+- **Not included**: it is proprietary, so neither this repository nor any release contains it. The app loads the user's own copy, from `REPAK_OODLE_DLL` or the game's install (README, "Oodle-compressed paks"; `docs/adr/0001-oodle-from-the-game-install.md`).
+
 ## retoc
 
 - **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc

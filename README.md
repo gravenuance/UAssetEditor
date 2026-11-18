@@ -46,6 +46,14 @@ The result is a single self-contained `UAssetEditor.App.exe` under `src/UAssetEd
 
 Pak extractions for editing and IoStore repacking use the system temp folder and are removed when the pak is closed or the repack ends. Nothing is written next to the executable.
 
+### Oodle-compressed paks
+
+Some older Unreal 4 games (Days Gone) compress their `.pak` entries with Oodle, a proprietary library by Epic Games Tools (RAD) that this project does not include or distribute. Reading those entries needs your own copy of the 64-bit `oo2core_<n>_win64.dll`, found in this order:
+
+1. `REPAK_OODLE_DLL`, set to the full path of the DLL (in the app, the CLI or the MCP server's environment).
+2. A copy in the game's install, searched from the pak's folder up through at most five parent folders: the game folder itself, `Engine\Binaries\ThirdParty\Oodle\**`, or `<project>\Binaries\Win64`. The highest version found in the nearest install wins.
+
+Only a file named `oo2core_<n>_win64.dll` is accepted, and neither `PATH` nor the working folder is searched. Many games link Oodle into their executable and ship no DLL (Days Gone and Marvel Rivals do not); take it from another Unreal game that does ship one (for example Final Fantasy VII Remake keeps `oo2core_7_win64.dll` under `Engine\Binaries\ThirdParty\Oodle\Win64`) and point `REPAK_OODLE_DLL` at it. Without a DLL, opening an Oodle entry fails with "Oodle DLL not found. Point REPAK_OODLE_DLL at the game's oo2core_*_win64.dll."
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the non-obvious design decisions behind the pak worker process, retoc integration, and a few other things that aren't visible just from reading the code top to bottom.
 
 ## MCP server
