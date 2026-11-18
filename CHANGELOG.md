@@ -26,14 +26,14 @@ All notable changes to this project are documented here.
 - Rebuilt the bundled retoc from `dbc705e`: its dependencies lz4_flex (0.11.6), crossbeam-channel (0.5.15), rustls (0.23.46), time (0.3.47), serde_with (3.21.0), rand (0.8.6), tracing-subscriber (0.3.20) and ring (0.17.14) are updated for published security advisories. No code changed.
 
 ### Fixed
-- Oodle-compressed `.pak` entries (Days Gone, legacy UE4 paks) can be read from the published single-file app, CLI and MCP server when the game's `oo2core_*_win64.dll` is found (`REPAK_OODLE_DLL`, else a copy in the install the pak sits in; see the README). Before, the pak worker never got the DLL and they failed with "pointer to OodleLZ_Decompress was not provided". Without a DLL the error now says "Oodle DLL not found. Point REPAK_OODLE_DLL at the game's oo2core_*_win64.dll."
+- Oodle-compressed `.pak` entries (Days Gone, legacy UE4 paks) can be read from the published single-file app, CLI and MCP server when the game's `oo2core_*_win64.dll` is found (`REPAK_OODLE_DLL`, else a copy inside the game's install around the pak; see the README). Before, the pak worker never got the DLL and they failed with "pointer to OodleLZ_Decompress was not provided". Without a DLL the error now says "Oodle DLL not found. Point REPAK_OODLE_DLL at the game's oo2core_*_win64.dll."
 - `to-legacy` no longer fails on some mods (e.g. a Hela skin whose lobby mesh was not written): the bundled retoc (`96c2cc4`) panicked when several import slots pointed at the same import. It also keeps the real path of an import whose package ships in no container, instead of writing `/Engine/UnknownPackage.UnknownExport`. `.utoc` output is unchanged, for `--game rivals` and without a game.
 - `to-legacy` on a container with no entries of its own under a Paks folder converted with no filter against the whole merged Paks view; it now converts the container alone.
 - A long-running host (the MCP server) kept every earlier load of a usmap replaced in place, and warned that a usmap was older than the game only once per process. It now keeps one load per usmap file, and checks again whenever the game's newest log changes, so a patch noticed after the server started still draws the warning.
 - A folder search (`uacli search`, `search_assets`) dropped assets it could not open or whose regular expression failed, without a word, so a missing hit looked like no match. It now counts them, names the first few with the reason, and gives a regular expression 3 s per match instead of running without limit. `search_assets` also stops collecting hits at `maxResults` while still counting every match.
 
 ### Removed
-- The vendored `oo2core_9_win64.dll`: Oodle is proprietary, so the repository and releases no longer carry it (`THIRD_PARTY_NOTICES.md`, `docs/adr/0001-oodle-from-the-game-install.md`). Neither a release nor a published executable ever contained it.
+- The vendored `oo2core_9_win64.dll`: Oodle is proprietary, so the repository and releases no longer carry it (`THIRD_PARTY_NOTICES.md`, `docs/adr/0001-oodle-from-the-game-install.md`). It has been in the repository's public history since 84e788b (2026-09-16), and removing it from the tree does not remove it from old commits.
 
 ## [1.11.0] - 2026-10-30
 
