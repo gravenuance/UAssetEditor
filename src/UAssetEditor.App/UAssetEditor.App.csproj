@@ -128,6 +128,11 @@
       <LogicalName>retoc.exe</LogicalName>
       <Visible>false</Visible>
     </EmbeddedResource>
+    <!-- The pak worker loads Oodle from the path PakWorkerProcess gives it; without this resource Oodle-compressed paks cannot be read. -->
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)vendor\oo2core_9_win64.dll">
+      <LogicalName>oo2core_9_win64.dll</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

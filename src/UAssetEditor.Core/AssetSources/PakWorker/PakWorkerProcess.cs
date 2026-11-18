@@ -16,6 +16,10 @@ public sealed class PakWorkerProcess : IDisposable
     private const string EmbeddedResourceName = "UAssetEditor.PakWorker.exe";
     private const string EnvVarOverride = "UASSETEDITOR_PAKWORKER_PATH";
 
+    /// <summary>Oodle (COMPRESS_Custom in legacy paks) is a separate DLL that repak_bind loads by the path in <see cref="OodleEnvVar"/>, else from beside the worker exe - and an extracted worker has nothing beside it.</summary>
+    internal const string OodleResourceName = "oo2core_9_win64.dll";
+    internal const string OodleEnvVar = "REPAK_OODLE_DLL";
+
     /// <summary>One worker reused for the app's (or test process's) whole session - the app only ever has one pak open/being built at a time, so there's nothing to gain from more than one worker, and every direct repak touchpoint (PakAssetSource, PakMountPointReader, PakPacker, PakRepacker) shares this same instance.</summary>
     public static PakWorkerProcess Shared { get; } = new();
 
@@ -65,6 +69,8 @@ public sealed class PakWorkerProcess : IDisposable
                 },
                 EnableRaisingEvents = true,
             };
+            if (ResolveOodleLibrary() is { } oodlePath)
+                _process.StartInfo.Environment[OodleEnvVar] = oodlePath;
             _process.Exited += (_, _) => IsDead = true;
             _process.Start();
 
@@ -94,6 +100,16 @@ public sealed class PakWorkerProcess : IDisposable
 
     private static string ResolveWorkerExecutable() =>
         EmbeddedToolLocator.Resolve(EmbeddedResourceName, EnvVarOverride, TryFindDevBuildOutput);
+
+    /// <summary>Null when no Oodle DLL is bundled or beside the sources: only Oodle-compressed paks then fail, with repak's own "OodleLZ_Decompress was not provided" message.</summary>
+    internal static string? ResolveOodleLibrary() =>
+        EmbeddedToolLocator.TryResolve(OodleResourceName, OodleEnvVar, TryFindDevOodleLibrary);
+
+    private static string? TryFindDevOodleLibrary() => EmbeddedToolLocator.FindUnderSrcSibling(srcDir =>
+    {
+        var vendored = Path.Combine(srcDir.FullName, "UAssetEditor.App", "vendor", OodleResourceName);
+        return File.Exists(vendored) ? vendored : null;
+    });
 
     /// <summary>
     /// Dev/test fallback: looks for the worker's own build output in a sibling folder,

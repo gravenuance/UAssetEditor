@@ -24,7 +24,13 @@ public static class EmbeddedToolLocator
     /// </summary>
     private static readonly ConcurrentDictionary<string, string> ResolvedPaths = new(StringComparer.Ordinal);
 
-    public static string Resolve(string embeddedResourceName, string envVarOverrideName, Func<string?> devFallback)
+    public static string Resolve(string embeddedResourceName, string envVarOverrideName, Func<string?> devFallback) =>
+        TryResolve(embeddedResourceName, envVarOverrideName, devFallback)
+        ?? throw new FileNotFoundException(
+            $"Could not locate {embeddedResourceName} via {envVarOverrideName}, an embedded resource, or a dev-environment fallback.");
+
+    /// <summary>Same lookup as <see cref="Resolve"/>, but null when the tool is nowhere - for a tool whose absence only disables one feature.</summary>
+    public static string? TryResolve(string embeddedResourceName, string envVarOverrideName, Func<string?> devFallback)
     {
         ArgumentNullException.ThrowIfNull(embeddedResourceName);
         ArgumentNullException.ThrowIfNull(envVarOverrideName);
@@ -34,19 +40,12 @@ public static class EmbeddedToolLocator
         if (!string.IsNullOrWhiteSpace(overridePath) && File.Exists(overridePath))
             return overridePath;
 
-        return ResolvedPaths.GetOrAdd(embeddedResourceName, _ => ResolveEmbeddedOrFallback(embeddedResourceName, envVarOverrideName, devFallback));
-    }
+        if (ResolvedPaths.TryGetValue(embeddedResourceName, out var cached)) return cached;
 
-    private static string ResolveEmbeddedOrFallback(string embeddedResourceName, string envVarOverrideName, Func<string?> devFallback)
-    {
-        var embedded = TryExtractEmbedded(embeddedResourceName);
-        if (embedded != null) return embedded;
-
-        var fallback = devFallback();
-        if (fallback != null) return fallback;
-
-        throw new FileNotFoundException(
-            $"Could not locate {embeddedResourceName} via {envVarOverrideName}, an embedded resource, or a dev-environment fallback.");
+        // A racing duplicate lookup is harmless: extraction is write-to-temp-then-move.
+        var found = TryExtractEmbedded(embeddedResourceName) ?? devFallback();
+        if (found != null) ResolvedPaths[embeddedResourceName] = found;
+        return found;
     }
 
     /// <summary>

@@ -26,6 +26,7 @@ All notable changes to this project are documented here.
 - Rebuilt the bundled retoc from `dbc705e`: its dependencies lz4_flex (0.11.6), crossbeam-channel (0.5.15), rustls (0.23.46), time (0.3.47), serde_with (3.21.0), rand (0.8.6), tracing-subscriber (0.3.20) and ring (0.17.14) are updated for published security advisories. No code changed.
 
 ### Fixed
+- Oodle-compressed `.pak` entries (Days Gone, legacy UE4 paks) can be read from the published single-file app and MCP server: the Oodle library was never part of the single file, so they failed with "pointer to OodleLZ_Decompress was not provided". It is now embedded and handed to the pak worker.
 - `to-legacy` no longer fails on some mods (e.g. a Hela skin whose lobby mesh was not written): the bundled retoc (`96c2cc4`) panicked when several import slots pointed at the same import. It also keeps the real path of an import whose package ships in no container, instead of writing `/Engine/UnknownPackage.UnknownExport`. `.utoc` output is unchanged, for `--game rivals` and without a game.
 - `to-legacy` on a container with no entries of its own under a Paks folder converted with no filter against the whole merged Paks view; it now converts the container alone.
 - A long-running host (the MCP server) kept every earlier load of a usmap replaced in place, and warned that a usmap was older than the game only once per process. It now keeps one load per usmap file, and checks again whenever the game's newest log changes, so a patch noticed after the server started still draws the warning.
