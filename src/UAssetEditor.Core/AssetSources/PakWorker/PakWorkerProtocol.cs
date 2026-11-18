@@ -78,6 +78,10 @@ public sealed class PakWorkerRequest
     public int SessionId { get; init; }
     public string? PakPath { get; init; }
     public string? AesKeyHex { get; init; }
+
+    /// <summary>For <see cref="PakWorkerOpcode.OpenReader"/>: the Oodle DLL <see cref="OodleLibrary"/> found for this pak, which the worker points repak at before any read.</summary>
+    public string? OodleLibraryPath { get; init; }
+
     public string? EntryPath { get; init; }
     public string? MountPoint { get; init; }
     public PakVersion? Version { get; init; }

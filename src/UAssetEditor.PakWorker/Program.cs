@@ -44,6 +44,10 @@ try
             {
                 case PakWorkerOpcode.OpenReader:
                 {
+                    // repak_bind reads the variable when it first needs Oodle and keeps that result for the process's life.
+                    if (!string.IsNullOrEmpty(request.OodleLibraryPath))
+                        Environment.SetEnvironmentVariable(OodleLibrary.EnvironmentVariable, request.OodleLibraryPath);
+
                     var stream = File.Open(request.PakPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
                     using var builder = new PakBuilder();
                     if (!string.IsNullOrEmpty(request.AesKeyHex))

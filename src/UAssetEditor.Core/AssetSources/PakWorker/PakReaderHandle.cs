@@ -17,6 +17,8 @@ public sealed class PakReaderHandle : IDisposable
     private readonly PakWorkerClient _client;
     private readonly string _pakPath;
     private readonly byte[]? _aesKey;
+    private readonly Func<string, OodleLookup> _locateOodle;
+    private OodleLookup _oodle = OodleLibrary.NotFound;
     private int _sessionId;
     private bool _opened;
 
@@ -25,20 +27,29 @@ public sealed class PakReaderHandle : IDisposable
     public IReadOnlyList<string> Entries { get; private set; } = Array.Empty<string>();
 
     public PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey)
+        : this(process, pakPath, aesKey, static path => OodleLibrary.Locate(path))
+    {
+    }
+
+    /// <summary><paramref name="locateOodle"/> is how the pak's Oodle DLL is found (a test seam: the real lookup depends on the machine).</summary>
+    internal PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey, Func<string, OodleLookup> locateOodle)
     {
         _process = process;
         _client = new PakWorkerClient(process);
         _pakPath = pakPath;
         _aesKey = aesKey;
+        _locateOodle = locateOodle;
     }
 
     public async Task OpenAsync(CancellationToken cancellationToken = default)
     {
+        _oodle = _locateOodle(_pakPath);
         var request = new PakWorkerRequest
         {
             Opcode = PakWorkerOpcode.OpenReader,
             PakPath = _pakPath,
             AesKeyHex = _aesKey != null ? Convert.ToHexString(_aesKey) : null,
+            OodleLibraryPath = _oodle.Path,
         };
 
         var (response, _) = await _client.SendAsync(request, operation: $"opening '{_pakPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -66,7 +77,7 @@ public sealed class PakReaderHandle : IDisposable
                 // A failure response never actually carries a payload today, but don't rely
                 // on that staying true - whatever was rented here still needs to go back.
                 payload.Dispose();
-                throw new InvalidOperationException(response.Error ?? $"Failed to read '{entryPath}'.");
+                throw new InvalidOperationException(OodleLibrary.Explain(response.Error, _oodle) ?? response.Error ?? $"Failed to read '{entryPath}'.");
             }
             return payload;
         }
