@@ -5,8 +5,8 @@ This project embeds prebuilt third-party binaries in its single-file publish out
 ## retoc
 
 - **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc
-- **Vendored version**: built from commit `4c97820` on branch `deps-2026-11-18` (the dependency pass on top of
-  `feat/game-variant-marvel-rivals`; `cargo build --release --locked`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
+- **Vendored version**: built from commit `4c97820` on branch `feat/game-variant-marvel-rivals`
+  (the 2026-11-18 dependency pass; `cargo build --release --locked`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
   natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
   plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
@@ -71,7 +71,7 @@ SOFTWARE.
 - Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
   by trumank). See https://github.com/trumank/repak for that project's own license/attribution.
   The Windows `repak_bind.dll.gz` is built from https://github.com/gravenuance/repak branch
-  `deps-2026-11-18-bindings` @ `09dc525` (`cargo build --release --locked -p repak_bind`; SHA-256 of the
+  `feat/upstream-read-fixes` @ `09dc525` (`cargo build --release --locked -p repak_bind`; SHA-256 of the
   uncompressed DLL `b60f1bdbab9e8ce6688332e51a4e98de66f9a614cf91a290abce255f9c6961fd`): upstream's `cs-bindings`
   line with our legacy-compression fix and upstream master's `1ef2c6f` and `355b5f6` cherry-picked (previous
   vendor: `feat/upstream-read-fixes` @ `3d3fce0`), with the dependencies moved to their latest majors (aes 0.9,
