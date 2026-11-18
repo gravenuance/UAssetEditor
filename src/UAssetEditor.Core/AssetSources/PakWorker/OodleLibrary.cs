@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,9 @@ public static partial class OodleLibrary
 
     private static readonly string[] OodleFolder = ["Engine", "Binaries", "ThirdParty", "Oodle"];
     private static readonly string[] ProjectBinaries = ["Binaries", "Win64"];
+
+    /// <summary>A DLL found for a pak's folder is reused while the file exists; a failed search is not remembered, so a DLL the user adds later is found.</summary>
+    private static readonly ConcurrentDictionary<string, string> FoundByPakFolder = new(StringComparer.OrdinalIgnoreCase);
 
     public static OodleLookup NotFound { get; } = new(null);
 
@@ -79,11 +83,19 @@ public static partial class OodleLibrary
     {
         try
         {
-            var folder = Path.GetDirectoryName(Path.GetFullPath(pakPath));
-            for (var level = 0; folder != null && level <= MaxParentLevels; level++, folder = Path.GetDirectoryName(folder))
+            var pakFolder = Path.GetDirectoryName(Path.GetFullPath(pakPath));
+            if (pakFolder != null && FoundByPakFolder.TryGetValue(pakFolder, out var known) && File.Exists(known)) return known;
+
+            string? previous = null;
+            var folder = pakFolder;
+            for (var level = 0; folder != null && level <= MaxParentLevels; level++, previous = folder, folder = Path.GetDirectoryName(folder))
             {
                 if (Path.GetDirectoryName(folder) == null) return null; // a drive or share root
-                if (LooksLikeGameRoot(folder)) return BestIn(folder);
+                if (!LooksLikeGameRoot(folder, previous)) continue;
+
+                var found = BestIn(folder);
+                if (found != null) FoundByPakFolder[pakFolder!] = found;
+                return found;
             }
 
             return null;
@@ -98,14 +110,15 @@ public static partial class OodleLibrary
     [LoggerMessage(Level = LogLevel.Warning, Message = "Looking for an Oodle DLL near {Pak} failed")]
     private static partial void LogSearchFailed(ILogger logger, string pak, Exception exception);
 
-    /// <summary>An Unreal install's top folder: it has <c>Engine</c> or a <c>.uproject</c>, or holds a project folder with both <c>Content</c> and <c>Binaries/Win64</c>.</summary>
-    private static bool LooksLikeGameRoot(string folder)
-    {
-        var options = new EnumerationOptions { IgnoreInaccessible = true };
-        return Directory.Exists(Path.Combine(folder, "Engine"))
-            || Directory.EnumerateFiles(folder, "*.uproject", options).Any()
-            || Directory.EnumerateDirectories(folder, "*", options).Any(IsProjectFolder);
-    }
+    /// <summary>
+    /// An Unreal install's top folder: it has <c>Engine</c> or a <c>.uproject</c>, or the folder just below it on the way
+    /// down to the pak (<paramref name="child"/>) is a project folder holding both <c>Content</c> and <c>Binaries/Win64</c>.
+    /// Only folders on the path are looked at; a folder's other children are never listed.
+    /// </summary>
+    private static bool LooksLikeGameRoot(string folder, string? child) =>
+        Directory.Exists(Path.Combine(folder, "Engine"))
+        || Directory.EnumerateFiles(folder, "*.uproject", new EnumerationOptions { IgnoreInaccessible = true }).Any()
+        || (child != null && IsProjectFolder(child));
 
     private static bool IsProjectFolder(string folder) =>
         Directory.Exists(Path.Combine(folder, "Content")) && Directory.Exists(Path.Combine([folder, .. ProjectBinaries]));

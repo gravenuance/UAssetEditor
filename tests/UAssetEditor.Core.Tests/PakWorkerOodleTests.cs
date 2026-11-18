@@ -2,7 +2,16 @@ using System.Text;
 using UAssetAPI;
 using UAssetEditor.Core.AssetSources.PakWorker;
 
+[assembly: AssemblyFixture(typeof(UAssetEditor.Core.Tests.PakWorkerTestHooks))]
+
 namespace UAssetEditor.Core.Tests;
+
+/// <summary>Lets this test process's workers answer the test-only entries (crash, state); production workers never do.</summary>
+public sealed class PakWorkerTestHooks
+{
+    public PakWorkerTestHooks() =>
+        Environment.SetEnvironmentVariable(PakWorkerProcess.TestHooksEnvironmentVariable, "1");
+}
 
 /// <summary>
 /// A copy of the worker in a folder of its own, so nothing beside it (an old oo2core_9_win64.dll left in a build output,
@@ -60,11 +69,11 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
     private static string AbsentDll(string name) =>
         Path.Combine(Path.GetTempPath(), "UAssetEditorTest_NoOodle_" + Guid.NewGuid().ToString("N"), name);
 
-    /// <summary>The worker's process id and the REPAK_OODLE_DLL it holds ("" when none), through the worker's test-only state entry.</summary>
-    private async Task<(int ProcessId, string Variable)> StateAsync()
+    /// <summary>The process id and the REPAK_OODLE_DLL ("" when none) of <paramref name="worker"/>, through its test-only state entry.</summary>
+    private static async Task<(int ProcessId, string Variable)> StateAsync(PakWorkerProcess worker)
     {
         var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, EntryPath = "__TEST_STATE__" };
-        var (response, payload) = await new PakWorkerClient(_worker).SendPooledAsync(request, cancellationToken: TestContext.Current.CancellationToken);
+        var (response, payload) = await new PakWorkerClient(worker).SendPooledAsync(request, cancellationToken: TestContext.Current.CancellationToken);
         using (payload)
         {
             Assert.True(response.Success);
@@ -79,12 +88,14 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
         return await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
     }
 
+    private static string CouldNotLoad(string dll) => $"Could not load {dll}. Use a 64-bit oo2core_*_win64.dll.";
+
     [Fact]
     public async Task Worker_WhenTheVariableIsRelative_IsStartedWithoutIt()
     {
         Environment.SetEnvironmentVariable(OodleLibrary.EnvironmentVariable, "oo2core_9_win64.dll");
 
-        var (_, variable) = await StateAsync();
+        var (_, variable) = await StateAsync(_worker);
 
         Assert.Equal("", variable);
         Assert.Null(_worker.OodleLibraryPath);
@@ -100,7 +111,7 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
         {
             Environment.SetEnvironmentVariable(OodleLibrary.EnvironmentVariable, file);
 
-            Assert.Equal("", (await StateAsync()).Variable);
+            Assert.Equal("", (await StateAsync(_worker)).Variable);
         }
         finally
         {
@@ -118,13 +129,44 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
         {
             Environment.SetEnvironmentVariable(OodleLibrary.EnvironmentVariable, file);
 
-            Assert.Equal(file, (await StateAsync()).Variable);
+            Assert.Equal(file, (await StateAsync(_worker)).Variable);
             Assert.Equal(file, _worker.OodleLibraryPath);
         }
         finally
         {
             Directory.Delete(Path.GetDirectoryName(file)!, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task Worker_WithoutTheTestHooksVariable_IgnoresTheTestOnlyEntries()
+    {
+        var saved = Environment.GetEnvironmentVariable(PakWorkerProcess.TestHooksEnvironmentVariable);
+        Environment.SetEnvironmentVariable(PakWorkerProcess.TestHooksEnvironmentVariable, null);
+        try
+        {
+            var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, EntryPath = "__TEST_STATE__" };
+            var (response, payload) = await new PakWorkerClient(_worker).SendPooledAsync(request, cancellationToken: TestContext.Current.CancellationToken);
+            payload.Dispose();
+
+            Assert.False(response.Success);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(PakWorkerProcess.TestHooksEnvironmentVariable, saved);
+        }
+    }
+
+    [Fact]
+    public async Task Ensure_WhenTheWorkerCannotStart_LeavesTheProcessDeadAndFailsAgainNextTime()
+    {
+        using var broken = new PakWorkerProcess(Path.Combine(Path.GetTempPath(), "UAssetEditorTest_NoWorker_" + Guid.NewGuid().ToString("N") + ".exe"));
+
+        await Assert.ThrowsAnyAsync<Exception>(() => broken.EnsureAsync(TestContext.Current.CancellationToken));
+
+        Assert.True(broken.IsDead);
+        Assert.Null(broken.OodleLibraryPath);
+        await Assert.ThrowsAnyAsync<Exception>(() => broken.EnsureAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -139,58 +181,120 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
     }
 
     [Fact]
-    public async Task ReadEntry_ForAPakWhoseDllIsOtherThanTheWorkers_RestartsTheWorkerWithIt()
+    public async Task ReadEntry_ForAPakWhoseDllIsOtherThanTheWorkers_ReadsOnAWorkerOfItsOwn()
+    {
+        var dll = AbsentDll("oo2core_9_win64.dll");
+        using var pak = new TempPak(OodlePaks.CreateOodleMarked());
+        var before = await StateAsync(_worker);
+
+        using (var reader = new PakReaderHandle(_worker, pak.Path, null, _ => new OodleLookup(dll)))
+        {
+            Assert.Equal(CouldNotLoad(dll), (await ReadFailureAsync(reader)).Message);
+        }
+
+        var own = await StateAsync(_worker.ForOodleLibrary(dll));
+        var after = await StateAsync(_worker);
+        Assert.Equal(dll, own.Variable);
+        Assert.Equal("", after.Variable);
+        Assert.Equal(before.ProcessId, after.ProcessId);
+        Assert.NotEqual(after.ProcessId, own.ProcessId);
+    }
+
+    [Fact]
+    public async Task ReadEntry_ForAnotherDll_UsesAnotherWorkerAndLeavesTheFirstOnesAlone()
     {
         var first = AbsentDll("oo2core_9_win64.dll");
         var second = AbsentDll("oo2core_7_win64.dll");
         using var pakA = new TempPak(OodlePaks.CreateOodleMarked());
         using var pakB = new TempPak(OodlePaks.CreateOodleMarked());
-
         using (var readerA = new PakReaderHandle(_worker, pakA.Path, null, _ => new OodleLookup(first)))
         {
-            Assert.Equal($"Could not load {first}. Use a 64-bit oo2core_*_win64.dll.", (await ReadFailureAsync(readerA)).Message);
+            Assert.Equal(CouldNotLoad(first), (await ReadFailureAsync(readerA)).Message);
         }
 
-        var afterFirst = await StateAsync();
-        Assert.Equal(first, afterFirst.Variable);
-
+        var firstBefore = await StateAsync(_worker.ForOodleLibrary(first));
         using (var readerB = new PakReaderHandle(_worker, pakB.Path, null, _ => new OodleLookup(second)))
         {
-            Assert.Equal($"Could not load {second}. Use a 64-bit oo2core_*_win64.dll.", (await ReadFailureAsync(readerB)).Message);
+            Assert.Equal(CouldNotLoad(second), (await ReadFailureAsync(readerB)).Message);
         }
 
-        var afterSecond = await StateAsync();
-        Assert.Equal(second, afterSecond.Variable);
-        Assert.NotEqual(afterFirst.ProcessId, afterSecond.ProcessId);
+        var secondState = await StateAsync(_worker.ForOodleLibrary(second));
+        Assert.Equal(second, secondState.Variable);
+        Assert.Equal(firstBefore, await StateAsync(_worker.ForOodleLibrary(first)));
     }
 
     [Fact]
-    public async Task ReadEntry_ForTheDllTheWorkerAlreadyHolds_DoesNotRestartIt()
+    public async Task ReadEntry_ForTheDllItsWorkerWasStartedWith_DoesNotStartAnotherWorker()
     {
         var dll = AbsentDll("oo2core_9_win64.dll");
         using var pak = new TempPak(OodlePaks.CreateOodleMarked());
         using var reader = new PakReaderHandle(_worker, pak.Path, null, _ => new OodleLookup(dll));
         await ReadFailureAsync(reader);
-        var before = await StateAsync();
+        var before = await StateAsync(_worker.ForOodleLibrary(dll));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
 
-        Assert.Equal(before.ProcessId, (await StateAsync()).ProcessId);
+        Assert.Equal(CouldNotLoad(dll), ex.Message);
+        Assert.Equal(before, await StateAsync(_worker.ForOodleLibrary(dll)));
     }
 
     [Fact]
-    public async Task ReadEntry_AfterTheWorkerWasRestartedForAnotherReader_StillWorks()
+    public async Task ReadEntry_ForAnOodleReaderThatMoves_LeavesEveryOtherSessionOnTheDefaultWorkerWorking()
     {
         using var plain = TestPaks.CreateTemp(new Dictionary<string, byte[]> { ["Foo.uasset"] = Encoding.UTF8.GetBytes("foo-bytes") });
         using var oodle = new TempPak(OodlePaks.CreateOodleMarked());
-        using var plainReader = new PakReaderHandle(_worker, plain.Path, null, _ => OodleLibrary.NotFound);
-        await plainReader.OpenAsync(TestContext.Current.CancellationToken);
-        using var oodleReader = new PakReaderHandle(_worker, oodle.Path, null, _ => new OodleLookup(AbsentDll("oo2core_9_win64.dll")));
-        await ReadFailureAsync(oodleReader);
+        var written = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Written_" + Guid.NewGuid().ToString("N") + ".pak");
+        try
+        {
+            using var plainReader = new PakReaderHandle(_worker, plain.Path, null, _ => OodleLibrary.NotFound);
+            await plainReader.OpenAsync(TestContext.Current.CancellationToken);
+            using var writer = new PakWriterHandle(_worker);
+            await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, TestContext.Current.CancellationToken);
+            await writer.WriteFileAsync("Bar.uasset", Encoding.UTF8.GetBytes("bar"), TestContext.Current.CancellationToken);
+            var before = await StateAsync(_worker);
 
-        using var bytes = await plainReader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken);
+            using (var oodleReader = new PakReaderHandle(_worker, oodle.Path, null, _ => new OodleLookup(AbsentDll("oo2core_9_win64.dll"))))
+            {
+                await ReadFailureAsync(oodleReader);
+            }
 
-        Assert.Equal("foo-bytes", Encoding.UTF8.GetString(bytes.Span));
+            using var bytes = await plainReader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken);
+            Assert.Equal("foo-bytes", Encoding.UTF8.GetString(bytes.Span));
+            await writer.WriteFileAsync("Baz.uasset", Encoding.UTF8.GetBytes("baz"), TestContext.Current.CancellationToken);
+            await writer.WriteIndexAsync(TestContext.Current.CancellationToken);
+            Assert.Equal(before, await StateAsync(_worker));
+        }
+        finally
+        {
+            TempPak.DeleteQuietly(written);
+        }
+    }
+
+    [Fact]
+    public async Task Worker_AfterACrash_IsRestartedWithTheCurrentVariableNotAnEarlierFailedPath()
+    {
+        var failed = AbsentDll("oo2core_9_win64.dll");
+        var valid = AbsentDll("oo2core_8_win64.dll");
+        Directory.CreateDirectory(Path.GetDirectoryName(valid)!);
+        await File.WriteAllBytesAsync(valid, [0], TestContext.Current.CancellationToken);
+        try
+        {
+            using var pak = new TempPak(OodlePaks.CreateOodleMarked());
+            using (var reader = new PakReaderHandle(_worker, pak.Path, null, _ => new OodleLookup(failed)))
+            {
+                await ReadFailureAsync(reader);
+            }
+
+            Environment.SetEnvironmentVariable(OodleLibrary.EnvironmentVariable, valid);
+            var crash = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, EntryPath = "__TEST_CRASH__" };
+            await Assert.ThrowsAsync<PakWorkerCrashedException>(() => new PakWorkerClient(_worker).SendPooledAsync(crash, cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal(valid, (await StateAsync(_worker)).Variable);
+        }
+        finally
+        {
+            Directory.Delete(Path.GetDirectoryName(valid)!, recursive: true);
+        }
     }
 
     [Fact]
@@ -207,13 +311,15 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
     }
 
     [Fact]
-    public async Task ReadEntry_NeedingOodle_SearchesForADllOnceForTheFailedRead()
+    public async Task ReadEntry_NeedingOodle_SearchesForADllOncePerReader()
     {
         var searches = 0;
         using var pak = new TempPak(OodlePaks.CreateOodleMarked());
         using var reader = new PakReaderHandle(_worker, pak.Path, null, _ => { searches++; return OodleLibrary.NotFound; });
 
         await ReadFailureAsync(reader);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
 
         Assert.Equal(1, searches);
     }

@@ -20,6 +20,9 @@ var readerSessions = new Dictionary<int, (FileStream Stream, PakReader Reader)>(
 var writerSessions = new Dictionary<int, (FileStream Stream, PakWriter Writer)>();
 var nextSessionId = 1;
 
+// The test-only entries below answer only a worker the tests started with this variable; read once, at start.
+var testHooks = Environment.GetEnvironmentVariable(PakWorkerProcess.TestHooksEnvironmentVariable) == "1";
+
 try
 {
     while (true)
@@ -70,12 +73,12 @@ try
                     // crash (abrupt process termination, no response) without needing the
                     // actual buggy repak code path or a real crash-triggering pak entry - see
                     // PakWorkerCrashRecoveryTests. Never matches a real pak entry path.
-                    if (request.EntryPath == "__TEST_CRASH__")
+                    if (testHooks && request.EntryPath == "__TEST_CRASH__")
                         Environment.FailFast("Simulated pak worker crash for testing.");
 
                     // Test-only: reports which process this is and the Oodle path it was started with
                     // (PakWorkerOodleTests); never matches a real pak entry path.
-                    if (request.EntryPath == "__TEST_STATE__")
+                    if (testHooks && request.EntryPath == "__TEST_STATE__")
                     {
                         responsePayload = System.Text.Encoding.UTF8.GetBytes(
                             $"{Environment.ProcessId}|{Environment.GetEnvironmentVariable(OodleLibrary.EnvironmentVariable)}");

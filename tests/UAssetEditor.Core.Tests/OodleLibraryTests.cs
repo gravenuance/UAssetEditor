@@ -269,6 +269,21 @@ public sealed class OodleLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Locate_ReusesADllFoundForAPakFolderWhileTheFileExists()
+    {
+        MarkInstall("Game");
+        var dll = Touch("Game", "oo2core_9_win64.dll");
+        var pak = PakIn("Game", "Project", "Content", "Paks");
+        Assert.Equal(dll, OodleLibrary.Locate(pak, NoEnvironment).Path);
+        Directory.Delete(Path.Combine(_root, "Game", "Engine")); // the root no longer looks like one, yet the known DLL is still used
+
+        Assert.Equal(dll, OodleLibrary.Locate(pak, NoEnvironment).Path);
+
+        File.Delete(dll);
+        Assert.Null(OodleLibrary.Locate(pak, NoEnvironment).Path);
+    }
+
+    [Fact]
     public void IsMissingError_RecognisesOnlyRepaksOodleFailure()
     {
         Assert.True(OodleLibrary.IsMissingError(RepakError));
