@@ -156,6 +156,37 @@ public sealed class OodleLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Locate_WhenTheUprojectFolderIsTheRoot_FindsADllInItsOwnWin64BinariesFolder()
+    {
+        Touch("Game", "Game.uproject");
+        var dll = Touch("Game", "Binaries", "Win64", "oo2core_9_win64.dll");
+        var pak = PakIn("Game", "Content", "Paks");
+
+        Assert.Equal(dll, OodleLibrary.Locate(pak, NoEnvironment).Path);
+    }
+
+    [Theory]
+    [InlineData("\"{0}\"")]
+    [InlineData("  \"{0}\"  ")]
+    public void Locate_WithAQuotedEnvironmentPath_UsesTheUnquotedPath(string format)
+    {
+        var configured = Touch("elsewhere", "oo2core_8_win64.dll");
+
+        var lookup = OodleLibrary.Locate(null, EnvWith(string.Format(System.Globalization.CultureInfo.InvariantCulture, format, configured)));
+
+        Assert.Equal(configured, lookup.Path);
+        Assert.Null(lookup.RejectedEnvironmentValue);
+    }
+
+    [Fact]
+    public void Locate_WithAQuoteOnOneSideOnly_RejectsTheValue()
+    {
+        var configured = Touch("elsewhere", "oo2core_8_win64.dll");
+
+        Assert.Null(OodleLibrary.Locate(null, EnvWith("\"" + configured)).Path);
+    }
+
+    [Fact]
     public void Locate_FromAPakInAModsSubfolder_StillReachesTheGameRoot()
     {
         MarkInstall("Game");

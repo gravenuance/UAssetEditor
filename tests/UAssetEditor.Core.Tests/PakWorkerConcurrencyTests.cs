@@ -156,4 +156,55 @@ public sealed class PakWorkerConcurrencyTests : IClassFixture<CleanWorkerFolder>
         Assert.Throws<ObjectDisposedException>(() => _worker.ForOodleLibrary(dll));
         await Assert.ThrowsAsync<ObjectDisposedException>(() => _worker.EnsureAsync(TestContext.Current.CancellationToken));
     }
+
+    [Fact]
+    public async Task Send_WhenTheWorkerExitsBeforeConnecting_FailsPromptlyInsteadOfWaitingForever()
+    {
+        // whoami.exe takes the pipe name as a bad argument, prints an error and exits without ever connecting.
+        using var exiting = new PakWorkerProcess(Path.Combine(Environment.SystemDirectory, "whoami.exe"));
+        var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.CloseReader };
+
+        await Assert.ThrowsAsync<PakWorkerCrashedException>(
+            () => new PakWorkerClient(exiting).SendAsync(request, cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken));
+
+        Assert.True(exiting.IsDead);
+    }
+
+    [Fact]
+    public async Task Dispose_WhileAnotherCallerHoldsTheWorker_DoesNotWaitForIt()
+    {
+        var pak = PakWith(("Foo.uasset", Encoding.UTF8.GetBytes("foo")));
+        using var reader = new PakReaderHandle(_worker, pak, null); // disposed twice (a no-op the second time)
+        await reader.OpenAsync(TestContext.Current.CancellationToken);
+
+        var turn = await _worker.AcquireRequestAsync(TestContext.Current.CancellationToken); // someone else's long request
+        try
+        {
+            await Task.Run(reader.Dispose, TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            turn.Dispose();
+        }
+
+        using var another = new PakReaderHandle(_worker, pak, null);
+        await another.OpenAsync(TestContext.Current.CancellationToken); // the closed session did not stay open and the worker still answers
+        using var bytes = await another.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken);
+        Assert.Equal("foo", Encoding.UTF8.GetString(bytes.Span));
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Open_WithAPakPathRelativeToTheHostsFolder_ReachesTheFile()
+    {
+        var pak = PakWith(("Foo.uasset", Encoding.UTF8.GetBytes("foo")));
+        var relative = Path.GetRelativePath(Environment.CurrentDirectory, pak); // the worker runs in its own folder
+        using var reader = new PakReaderHandle(_worker, relative, null);
+
+        await reader.OpenAsync(TestContext.Current.CancellationToken);
+
+        using var bytes = await reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken);
+        Assert.Equal("foo", Encoding.UTF8.GetString(bytes.Span));
+    }
 }

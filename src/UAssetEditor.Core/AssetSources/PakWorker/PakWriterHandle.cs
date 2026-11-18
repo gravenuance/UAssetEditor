@@ -29,7 +29,7 @@ public sealed class PakWriterHandle : IDisposable
         var request = new PakWorkerRequest
         {
             Opcode = PakWorkerOpcode.OpenWriter,
-            PakPath = outputPakPath,
+            PakPath = Path.GetFullPath(outputPakPath), // the worker's working folder is its own, so a relative path would resolve there
             MountPoint = mountPoint,
             Version = version,
             Compression = compression,
@@ -64,18 +64,13 @@ public sealed class PakWriterHandle : IDisposable
             throw new InvalidOperationException(response.UnknownSession ? SessionLostMessage : response.Error ?? "Failed to finalize pak index.");
     }
 
+    /// <summary>Closes the session without waiting on other callers' long requests, see <see cref="PakWorkerClient.FinishSoon"/>.</summary>
     public void Dispose()
     {
         if (!_opened) return;
 
-        try
-        {
-            var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.CloseWriter, SessionId = _sessionId };
-            _client.SendAsync(request).GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // Best effort - a worker that's already gone has nothing left to close.
-        }
+        _opened = false;
+        var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.CloseWriter, SessionId = _sessionId };
+        PakWorkerClient.FinishSoon(() => _client.SendAsync(request));
     }
 }

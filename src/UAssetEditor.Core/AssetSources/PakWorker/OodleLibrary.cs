@@ -49,12 +49,16 @@ public static partial class OodleLibrary
     {
         getEnvironmentVariable ??= Environment.GetEnvironmentVariable;
 
-        var configured = getEnvironmentVariable(EnvironmentVariable)?.Trim();
+        var configured = Unquote(getEnvironmentVariable(EnvironmentVariable)?.Trim());
         if (!string.IsNullOrEmpty(configured))
             return IsUsableDll(configured) ? new OodleLookup(Path.GetFullPath(configured)) : new OodleLookup(null, configured);
 
         return string.IsNullOrWhiteSpace(pakPath) ? NotFound : new OodleLookup(FindInGameRoot(pakPath));
     }
+
+    /// <summary>The value without one pair of surrounding double quotes, as Explorer's "Copy as path" puts them.</summary>
+    private static string? Unquote(string? value) =>
+        value is { Length: >= 2 } && value[0] == '"' && value[^1] == '"' ? value[1..^1].Trim() : value;
 
     /// <summary>True for repak's failure to reach Oodle: no DLL was given, or the one given would not load.</summary>
     public static bool IsMissingError(string? repakError) =>
@@ -130,7 +134,8 @@ public static partial class OodleLibrary
         var deep = new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = true, MaxRecursionDepth = OodleFolderDepth };
 
         var candidates = Files(root, flat)
-            .Concat(Files(Path.Combine([root, .. OodleFolder]), deep));
+            .Concat(Files(Path.Combine([root, .. OodleFolder]), deep))
+            .Concat(Files(Path.Combine([root, .. ProjectBinaries]), flat)); // the root may itself be the project folder (found by its .uproject)
         foreach (var project in Directory.EnumerateDirectories(root, "*", flat))
             candidates = candidates.Concat(Files(Path.Combine([project, .. ProjectBinaries]), flat));
 

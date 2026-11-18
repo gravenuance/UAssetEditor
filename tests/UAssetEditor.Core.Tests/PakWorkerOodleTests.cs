@@ -311,7 +311,7 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
     }
 
     [Fact]
-    public async Task ReadEntry_NeedingOodle_SearchesForADllOncePerReader()
+    public async Task ReadEntry_NeedingOodleWithNoDllFound_SearchesAgainOnEachRead()
     {
         var searches = 0;
         using var pak = new TempPak(OodlePaks.CreateOodleMarked());
@@ -321,7 +321,23 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
         await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
 
-        Assert.Equal(1, searches);
+        Assert.Equal(3, searches);
+    }
+
+    [Fact]
+    public async Task ReadEntry_AfterAFailedSearch_FindsADllThatAppearedMeanwhile()
+    {
+        var dll = AbsentDll("oo2core_9_win64.dll");
+        var present = false;
+        using var pak = new TempPak(OodlePaks.CreateOodleMarked());
+        using var reader = new PakReaderHandle(_worker, pak.Path, null, _ => present ? new OodleLookup(dll) : OodleLibrary.NotFound);
+
+        var first = await ReadFailureAsync(reader);
+        present = true;
+        var second = await Assert.ThrowsAsync<InvalidOperationException>(() => reader.ReadEntryAsync("Foo.uasset", TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("Oodle DLL not found", first.Message, StringComparison.Ordinal);
+        Assert.Equal(CouldNotLoad(dll), second.Message);
     }
 }
 

@@ -22,6 +22,9 @@ public sealed class PakWorkerProcess : IDisposable
     /// <summary>When set to 1 in the worker's environment, it answers the test-only entries (<c>__TEST_CRASH__</c>, <c>__TEST_STATE__</c>); production workers never do.</summary>
     public const string TestHooksEnvironmentVariable = "UASSETEDITOR_PAKWORKER_TEST_HOOKS";
 
+    /// <summary>How long a started worker has to connect (its own connect gives up after 10 s; the first start also unpacks the embedded exe).</summary>
+    internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
+
     private const string EmbeddedResourceName = "UAssetEditor.PakWorker.exe";
     private const string EnvVarOverride = "UASSETEDITOR_PAKWORKER_PATH";
 
@@ -153,6 +156,9 @@ public sealed class PakWorkerProcess : IDisposable
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true,
+                    // Never the host's folder: repak_bind's bare-name Oodle fallback searches the working folder, so a DLL planted
+                    // wherever the host was started from would load. The pak handles send absolute paths for this reason.
+                    WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(exePath)) ?? "",
                     RedirectStandardOutput = false,
                     RedirectStandardError = false,
                 },
@@ -161,9 +167,11 @@ public sealed class PakWorkerProcess : IDisposable
             process.StartInfo.Environment.Remove(OodleLibrary.EnvironmentVariable);
             if (oodlePath != null)
                 process.StartInfo.Environment[OodleLibrary.EnvironmentVariable] = oodlePath;
+            var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             process.Exited += (_, _) =>
             {
-                if (ReferenceEquals(_process, process)) IsDead = true;
+                exited.TrySetResult();
+                if (ReferenceEquals(_process, process)) IsDead = true; // an exit before _process is assigned is caught by the HasExited check below
             };
 
             try
@@ -183,7 +191,7 @@ public sealed class PakWorkerProcess : IDisposable
 
             try
             {
-                await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+                await ConnectAsync(pipe, exited.Task, cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -197,6 +205,38 @@ public sealed class PakWorkerProcess : IDisposable
         finally
         {
             _ensureLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Waits for a just-started worker to connect, but not forever: a worker that exits first (a missing runtime, a crash on
+    /// start) or stays silent past <see cref="ConnectTimeout"/> fails the call with an <see cref="IOException"/>, which
+    /// <see cref="PakWorkerClient"/> reports as a crashed worker. The caller's own cancellation still surfaces as such.
+    /// </summary>
+    private static async Task ConnectAsync(NamedPipeServerStream pipe, Task exited, CancellationToken cancellationToken)
+    {
+        using var give = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        give.CancelAfter(ConnectTimeout);
+        var connect = pipe.WaitForConnectionAsync(give.Token);
+        try
+        {
+            if (await Task.WhenAny(connect, exited).ConfigureAwait(false) == connect)
+            {
+                await connect.ConfigureAwait(false);
+                return;
+            }
+
+            await give.CancelAsync().ConfigureAwait(false);
+            await connect.ConfigureAwait(false); // a connection that won the race after all is fine; a cancelled wait throws below
+            return;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && exited.IsCompleted)
+        {
+            throw new IOException("The pak worker exited before it connected.");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException("The pak worker did not connect in time.");
         }
     }
 

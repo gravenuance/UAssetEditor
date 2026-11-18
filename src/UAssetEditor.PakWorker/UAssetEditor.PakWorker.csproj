@@ -26,8 +26,9 @@
   <!--
     Oodle (the COMPRESS_Custom codec of legacy UE4 paks - Days Gone's 30GB pak is entirely
     None-or-Oodle) is proprietary and is not shipped: the host finds the user's own
-    oo2core_*_win64.dll (OodleLibrary) and sends its path with each OpenReader request. A copy
-    next to this exe would be dropped by the single-file bundle (NETSDK1236) anyway.
+    oo2core_*_win64.dll (OodleLibrary) and starts a worker with its path in REPAK_OODLE_DLL
+    (fixed per worker at spawn; PakWorkerProcess.ForOodleLibrary gives each DLL its own worker).
+    A copy next to this exe would be dropped by the single-file bundle (NETSDK1236) anyway.
     See THIRD_PARTY_NOTICES.md.
   -->
 

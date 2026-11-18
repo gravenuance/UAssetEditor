@@ -35,6 +35,7 @@ public sealed partial class PakReaderHandle : IDisposable
     private OodleLookup? _oodle;
     private long _sessionId;
     private bool _opened;
+    private int _disposed;
 
     /// <summary>The session died with a worker and has not been reopened yet.</summary>
     private bool _sessionLost;
@@ -63,6 +64,7 @@ public sealed partial class PakReaderHandle : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
             await OpenLockedAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -76,7 +78,7 @@ public sealed partial class PakReaderHandle : IDisposable
         var request = new PakWorkerRequest
         {
             Opcode = PakWorkerOpcode.OpenReader,
-            PakPath = _pakPath,
+            PakPath = Path.GetFullPath(_pakPath), // the worker's working folder is its own, so a relative path would resolve there
             AesKeyHex = _aesKey != null ? Convert.ToHexString(_aesKey) : null,
         };
 
@@ -98,6 +100,7 @@ public sealed partial class PakReaderHandle : IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, this);
             if (!_opened) throw new InvalidOperationException("PakReaderHandle.OpenAsync must be called first.");
 
             return await ReadLockedAsync(entryPath, cancellationToken).ConfigureAwait(false);
@@ -173,7 +176,9 @@ public sealed partial class PakReaderHandle : IDisposable
     /// </summary>
     private async Task<RentedBuffer> ReadWithFoundOodleAsync(string entryPath, string? firstError, CancellationToken cancellationToken)
     {
-        var oodle = _oodle ??= _locateOodle(_pakPath);
+        // Only a found DLL is kept: a failed search is repeated by the next read, so a DLL the user adds meanwhile is found (as OodleLibrary promises).
+        var oodle = _oodle ?? _locateOodle(_pakPath);
+        if (oodle.Path != null) _oodle = oodle;
         var error = firstError;
         var worker = oodle.Path != null ? _process.ForOodleLibrary(oodle.Path) : _process;
         if (!ReferenceEquals(worker, _process))
@@ -213,18 +218,28 @@ public sealed partial class PakReaderHandle : IDisposable
         }
     }
 
+    /// <summary>
+    /// Closes the session without blocking on other callers: it waits its turn for this handle and the worker in the
+    /// background, and holds the calling thread (often the UI's) only briefly, see <see cref="PakWorkerClient.FinishSoon"/>.
+    /// Reads and opens that come after it throw <see cref="ObjectDisposedException"/>.
+    /// </summary>
     public void Dispose()
     {
-        _gate.Wait();
-        try
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+
+        PakWorkerClient.FinishSoon(async () =>
         {
-            CloseSessionAsync().GetAwaiter().GetResult();
-            _opened = false; // a second Dispose, or a read after it, has no session to touch
-        }
-        finally
-        {
-            _gate.Release();
-        }
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await CloseSessionAsync().ConfigureAwait(false);
+                _opened = false;
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        });
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Reopening '{Pak}' after a worker crash failed; the next read will try again")]
