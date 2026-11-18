@@ -5,12 +5,12 @@ This project embeds prebuilt third-party binaries in its single-file publish out
 ## retoc
 
 - **Source**: https://github.com/gravenuance/retoc, a fork of https://github.com/trumank/retoc
-- **Vendored version**: built from commit `dbc705e` on branch `feat/game-variant-marvel-rivals`
-  (`cargo build --release`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
+- **Vendored version**: built from commit `4c97820` on branch `deps-2026-11-18` (the dependency pass on top of
+  `feat/game-variant-marvel-rivals`; `cargo build --release --locked`). It adds `--game rivals` (output chunk-identical to retoc-rivals' `pack`, ported from
   natimerry/repak-rivals; see below), `to-zen --compression` and `to-zen --obfuscate`, and reads the
   plaintext directory index of obfuscated containers.
 - **Vendored at**: `src/UAssetEditor.App/vendor/retoc.exe`
-  (SHA-256 `49317bbe185fe776528374fd96445524253327d025a8e74b9a248dc1db35dc5b`)
+  (SHA-256 `ce81e7c21bcaa166c0d7d75735628d8ef0783024838b4e35b267e3240e9307ae`)
 - **License**: MIT (`src/UAssetEditor.App/vendor/retoc-LICENSE.txt`)
 - **Purpose**: Converts between Unreal Engine's IoStore/Zen container format (`.utoc`/`.ucas`)
   and legacy `.pak` format. UAssetEditor shells out to it (see
@@ -71,7 +71,8 @@ SOFTWARE.
 - Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
   by trumank). See https://github.com/trumank/repak for that project's own license/attribution.
   The Windows `repak_bind.dll.gz` is built from https://github.com/gravenuance/repak branch
-  `feat/upstream-read-fixes` @ `3d3fce0` (`cargo build --release -p repak_bind`, SHA-256
-  `791a01824f39a352ac91874fed8943d77435aebc73116e4c1711fceb5d550acf`): upstream's `cs-bindings` line with our
-  legacy-compression fix and upstream master's `1ef2c6f` and `355b5f6` cherry-picked. `repak_bind.so.gz` is
-  upstream's older build.
+  `deps-2026-11-18-bindings` @ `09dc525` (`cargo build --release --locked -p repak_bind`; SHA-256 of the
+  uncompressed DLL `b60f1bdbab9e8ce6688332e51a4e98de66f9a614cf91a290abce255f9c6961fd`): upstream's `cs-bindings`
+  line with our legacy-compression fix and upstream master's `1ef2c6f` and `355b5f6` cherry-picked (previous
+  vendor: `feat/upstream-read-fixes` @ `3d3fce0`), with the dependencies moved to their latest majors (aes 0.9,
+  sha1/sha2 0.11, ureq 3, ...). `repak_bind.so.gz` is upstream's older build.
