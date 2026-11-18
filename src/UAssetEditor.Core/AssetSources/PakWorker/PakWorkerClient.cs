@@ -4,19 +4,29 @@ namespace UAssetEditor.Core.AssetSources.PakWorker;
 /// Sends one request and awaits its response over a <see cref="PakWorkerProcess"/>'s pipe,
 /// translating any I/O failure (broken pipe, unexpected EOF, malformed frame) into a
 /// <see cref="PakWorkerCrashedException"/> and marking the process dead so the next call
-/// spawns a fresh one. Calls are inherently serialized by the pipe itself - see
-/// <see cref="PakWorkerProcess"/>'s remarks on why no request pipelining is needed.
+/// spawns a fresh one. The pipe carries one request at a time: the whole exchange (start the worker if needed,
+/// write, read) holds the process's request turn, because callers run concurrently (the MCP server) and a
+/// second caller's frames in the middle would hand one caller the other's response. A caller cancelled in the
+/// middle of an exchange leaves the pipe mid-frame, so that worker is marked dead rather than reused.
 /// </summary>
 public sealed class PakWorkerClient(PakWorkerProcess process)
 {
     public async Task<(PakWorkerResponse Response, byte[] Payload)> SendAsync(
         PakWorkerRequest request, ReadOnlyMemory<byte> payload = default, string? operation = null, CancellationToken cancellationToken = default)
     {
+        using var turn = await process.AcquireRequestAsync(cancellationToken).ConfigureAwait(false);
+        var exchangeStarted = false;
         try
         {
             var pipe = await process.EnsureAsync(cancellationToken).ConfigureAwait(false);
+            exchangeStarted = true;
             await PakWorkerFraming.WriteMessageAsync(pipe, request, payload, cancellationToken).ConfigureAwait(false);
             return await PakWorkerFraming.ReadMessageAsync<PakWorkerResponse>(pipe, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (exchangeStarted)
+        {
+            process.MarkDead();
+            throw;
         }
         catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException or ObjectDisposedException)
         {
@@ -30,11 +40,19 @@ public sealed class PakWorkerClient(PakWorkerProcess process)
     public async Task<(PakWorkerResponse Response, RentedBuffer Payload)> SendPooledAsync(
         PakWorkerRequest request, string? operation = null, CancellationToken cancellationToken = default)
     {
+        using var turn = await process.AcquireRequestAsync(cancellationToken).ConfigureAwait(false);
+        var exchangeStarted = false;
         try
         {
             var pipe = await process.EnsureAsync(cancellationToken).ConfigureAwait(false);
+            exchangeStarted = true;
             await PakWorkerFraming.WriteMessageAsync(pipe, request, ReadOnlyMemory<byte>.Empty, cancellationToken).ConfigureAwait(false);
             return await PakWorkerFraming.ReadPooledMessageAsync<PakWorkerResponse>(pipe, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (exchangeStarted)
+        {
+            process.MarkDead();
+            throw;
         }
         catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException or ObjectDisposedException)
         {

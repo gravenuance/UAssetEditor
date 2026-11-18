@@ -14,8 +14,10 @@ namespace UAssetEditor.Core.AssetSources.PakWorker;
 /// </summary>
 public sealed class PakWriterHandle : IDisposable
 {
+    private const string SessionLostMessage = "The pak worker restarted while this pak was being written, so the new pak is incomplete.";
+
     private readonly PakWorkerClient _client;
-    private int _sessionId;
+    private long _sessionId;
     private bool _opened;
 
     public PakWriterHandle(PakWorkerProcess process) => _client = new PakWorkerClient(process);
@@ -49,7 +51,7 @@ public sealed class PakWriterHandle : IDisposable
         var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.WriteFile, SessionId = _sessionId, EntryPath = entryPath };
         var (response, _) = await _client.SendAsync(request, bytes, operation: $"writing '{entryPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!response.Success)
-            throw new InvalidOperationException(response.Error ?? $"Failed to write '{entryPath}'.");
+            throw new InvalidOperationException(response.UnknownSession ? SessionLostMessage : response.Error ?? $"Failed to write '{entryPath}'.");
     }
 
     public async Task WriteIndexAsync(CancellationToken cancellationToken = default)
@@ -59,7 +61,7 @@ public sealed class PakWriterHandle : IDisposable
         var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.WriteIndex, SessionId = _sessionId };
         var (response, _) = await _client.SendAsync(request, operation: "finalizing pak index", cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!response.Success)
-            throw new InvalidOperationException(response.Error ?? "Failed to finalize pak index.");
+            throw new InvalidOperationException(response.UnknownSession ? SessionLostMessage : response.Error ?? "Failed to finalize pak index.");
     }
 
     public void Dispose()

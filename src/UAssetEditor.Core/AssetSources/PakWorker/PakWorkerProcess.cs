@@ -68,6 +68,41 @@ public sealed class PakWorkerProcess : IDisposable
     /// </summary>
     private readonly SemaphoreSlim _ensureLock = new(1, 1);
 
+    /// <summary>
+    /// One request at a time on the pipe: a request's frames and its response must not interleave with another caller's
+    /// (the MCP server runs tool calls concurrently), or one caller would read the other's response. Held by
+    /// <see cref="PakWorkerClient"/> across <see cref="EnsureAsync"/>, the write and the read.
+    /// </summary>
+    private readonly SemaphoreSlim _requestLock = new(1, 1);
+
+    private volatile bool _disposed;
+
+    /// <summary>Waits for the pipe; dispose the result to let the next request through.</summary>
+    internal async Task<IDisposable> AcquireRequestAsync(CancellationToken cancellationToken)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return new RequestTurn(() => _requestLock.Release());
+    }
+
+    private sealed class RequestTurn(Action release) : IDisposable
+    {
+        private Action? _release = release;
+
+        public void Dispose()
+        {
+            try
+            {
+                Interlocked.Exchange(ref _release, null)?.Invoke();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The worker was disposed while this request held the turn: nobody is left to wake.
+            }
+        }
+    }
+
     /// <summary>True once this instance's worker process has exited or its pipe has broken - the next <see cref="EnsureAsync"/> call spawns a fresh one.</summary>
     public bool IsDead { get; private set; }
 
@@ -76,21 +111,32 @@ public sealed class PakWorkerProcess : IDisposable
     public PakWorkerProcess ForOodleLibrary(string oodlePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(oodlePath);
+        ObjectDisposedException.ThrowIf(_root._disposed, this);
 
         if (string.Equals(OodleLibraryPath, oodlePath, StringComparison.OrdinalIgnoreCase)) return this;
         if (string.Equals(_root.OodleLibraryPath, oodlePath, StringComparison.OrdinalIgnoreCase)) return _root;
 
-        return _root._byOodlePath.GetOrAdd(oodlePath, static (path, root) => new PakWorkerProcess(root, path), _root);
+        var worker = _root._byOodlePath.GetOrAdd(oodlePath, static (path, root) => new PakWorkerProcess(root, path), _root);
+        if (_root._disposed)
+        {
+            // Disposed between the check and the add: the root's Dispose may have missed this worker, so stop it here.
+            worker.Dispose();
+            throw new ObjectDisposedException(nameof(PakWorkerProcess));
+        }
+
+        return worker;
     }
 
     /// <summary>The connected pipe to the live worker, spawning one first if none is currently alive.</summary>
     public async Task<NamedPipeServerStream> EnsureAsync(CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (_pipe != null && !IsDead) return _pipe;
 
         await _ensureLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this); // disposed while this caller waited: never start a worker nobody will stop
             if (_pipe != null && !IsDead) return _pipe; // a concurrent caller may have already respawned it while this one waited
 
             Cleanup(); // leaves IsDead set: it stays so unless a worker starts and connects
@@ -200,9 +246,13 @@ public sealed class PakWorkerProcess : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+
         foreach (var worker in _byOodlePath.Values)
             worker.Dispose();
         Cleanup();
         _ensureLock.Dispose();
+        _requestLock.Dispose();
     }
 }

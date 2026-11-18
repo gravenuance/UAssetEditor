@@ -75,7 +75,9 @@ public enum PakWorkerOpcode
 public sealed class PakWorkerRequest
 {
     public required PakWorkerOpcode Opcode { get; init; }
-    public int SessionId { get; init; }
+
+    /// <summary>A session id the worker handed out; random per worker, so an id from another worker or from before a restart is refused.</summary>
+    public long SessionId { get; init; }
     public string? PakPath { get; init; }
     public string? AesKeyHex { get; init; }
 
@@ -105,7 +107,10 @@ public sealed class PakWorkerResponse
 {
     public required bool Success { get; init; }
     public string? Error { get; init; }
-    public int SessionId { get; init; }
+    public long SessionId { get; init; }
+
+    /// <summary>The request named a session this worker does not have (it restarted, or the id came from elsewhere).</summary>
+    public bool UnknownSession { get; init; }
     public string? MountPoint { get; init; }
     public PakVersion? Version { get; init; }
     public IReadOnlyList<string>? Entries { get; init; }

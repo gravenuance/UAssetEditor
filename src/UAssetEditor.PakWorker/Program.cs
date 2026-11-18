@@ -16,9 +16,12 @@ if (args.Length == 0)
 using var pipe = new NamedPipeClientStream(".", args[0], PipeDirection.InOut, PipeOptions.Asynchronous);
 await pipe.ConnectAsync(10_000).ConfigureAwait(false);
 
-var readerSessions = new Dictionary<int, (FileStream Stream, PakReader Reader)>();
-var writerSessions = new Dictionary<int, (FileStream Stream, PakWriter Writer)>();
-var nextSessionId = 1;
+var readerSessions = new Dictionary<long, (FileStream Stream, PakReader Reader)>();
+var writerSessions = new Dictionary<long, (FileStream Stream, PakWriter Writer)>();
+
+// Session ids start at a random point so that an id from another worker (or from this one before a crash) is never
+// valid here: a stale handle gets "unknown session" instead of silently addressing someone else's session.
+long nextSessionId = (BitConverter.ToInt64(System.Security.Cryptography.RandomNumberGenerator.GetBytes(8)) & ((1L << 62) - 1)) + 1;
 
 // The test-only entries below answer only a worker the tests started with this variable; read once, at start.
 var testHooks = Environment.GetEnvironmentVariable(PakWorkerProcess.TestHooksEnvironmentVariable) == "1";
@@ -88,7 +91,7 @@ try
 
                     if (!readerSessions.TryGetValue(request.SessionId, out var session))
                     {
-                        response = new PakWorkerResponse { Success = false, Error = $"Unknown reader session {request.SessionId}." };
+                        response = new PakWorkerResponse { Success = false, UnknownSession = true, Error = $"Unknown reader session {request.SessionId}." };
                         break;
                     }
 
@@ -134,7 +137,7 @@ try
                 {
                     if (!writerSessions.TryGetValue(request.SessionId, out var wsession))
                     {
-                        response = new PakWorkerResponse { Success = false, Error = $"Unknown writer session {request.SessionId}." };
+                        response = new PakWorkerResponse { Success = false, UnknownSession = true, Error = $"Unknown writer session {request.SessionId}." };
                         break;
                     }
 
@@ -147,7 +150,7 @@ try
                 {
                     if (!writerSessions.TryGetValue(request.SessionId, out var wsession))
                     {
-                        response = new PakWorkerResponse { Success = false, Error = $"Unknown writer session {request.SessionId}." };
+                        response = new PakWorkerResponse { Success = false, UnknownSession = true, Error = $"Unknown writer session {request.SessionId}." };
                         break;
                     }
 
