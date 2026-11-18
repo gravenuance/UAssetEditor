@@ -47,7 +47,7 @@
 
   <!--
     Pak reads and IoStore conversion run in two bundled helpers, found through EmbeddedToolLocator: the pak worker
-    (built from this repo) and retoc.exe (vendored). A single-file publish embeds both, plus the Oodle DLL the worker loads, as resources of this exe, as
+    (built from this repo) and retoc.exe (vendored). A single-file publish embeds both as resources of this exe, as
     UAssetEditor.App does, and they are extracted into the cache folder on first use. A plain build embeds nothing:
     the locator then finds the worker's build output and the vendored retoc.exe beside the sources.
     The worker is published by an out-of-process `dotnet publish` so this project's own global properties
@@ -71,10 +71,6 @@
     </EmbeddedResource>
     <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\UAssetEditor.App\vendor\retoc.exe">
       <LogicalName>retoc.exe</LogicalName>
-      <Visible>false</Visible>
-    </EmbeddedResource>
-    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\UAssetEditor.App\vendor\oo2core_9_win64.dll">
-      <LogicalName>oo2core_9_win64.dll</LogicalName>
       <Visible>false</Visible>
     </EmbeddedResource>
   </ItemGroup>

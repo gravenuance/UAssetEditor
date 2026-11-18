@@ -10,6 +10,9 @@ src/UAssetEditor.Mcp/publish/
 # Scratch pak produced by manual pack/repack testing
 custom.pak
 
+# Oodle is Epic/RAD's proprietary library: a local copy for testing must never be committed (docs/adr/0001)
+oo2core_*_win64.dll
+
 # Agent instructions and settings: local to this machine, not published
 CLAUDE.md
 CLAUDE.local.md

@@ -25,10 +25,10 @@
 
   <!--
     Oodle (the COMPRESS_Custom codec of legacy UE4 paks - Days Gone's 30GB pak is entirely
-    None-or-Oodle) is not shipped with this exe: the host app embeds oo2core_9_win64.dll and
-    PakWorkerProcess hands this process its path in REPAK_OODLE_DLL. A copy next to the exe
-    would be dropped by the single-file bundle (NETSDK1236) and was never part of the embedded
-    resource anyway. See THIRD_PARTY_NOTICES.md.
+    None-or-Oodle) is proprietary and is not shipped: the host finds the user's own
+    oo2core_*_win64.dll (OodleLibrary) and sends its path with each OpenReader request. A copy
+    next to this exe would be dropped by the single-file bundle (NETSDK1236) anyway.
+    See THIRD_PARTY_NOTICES.md.
   -->
 
   <!-- Same stray-pdb fix as UAssetEditor.App.csproj: Core's own conditional
