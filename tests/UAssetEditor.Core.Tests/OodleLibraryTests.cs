@@ -27,6 +27,10 @@ public sealed class OodleLibraryTests : IDisposable
     /// <summary>A pak file at <c>&lt;root&gt;/&lt;relative folder&gt;/game.pak</c>; the folder is created, the pak itself is not read.</summary>
     private string PakIn(params string[] relativeFolder) => Touch([.. relativeFolder, "game.pak"]);
 
+    /// <summary>Marks <c>&lt;root&gt;/&lt;relative folder&gt;</c> as an Unreal install the way a shipped game looks: it has an Engine folder.</summary>
+    private void MarkInstall(params string[] relativeFolder) =>
+        Directory.CreateDirectory(Path.Combine([_root, .. relativeFolder, "Engine"]));
+
     private static Func<string, string?> EnvWith(string? value) =>
         name => name == OodleLibrary.EnvironmentVariable ? value : null;
 
@@ -40,6 +44,7 @@ public sealed class OodleLibraryTests : IDisposable
     public void Locate_WithAUsableEnvironmentVariable_UsesItEvenWhenTheGameHasADll()
     {
         var configured = Touch("elsewhere", "oo2core_8_win64.dll");
+        MarkInstall("Days Gone");
         Touch("Days Gone", "oo2core_9_win64.dll");
         var pak = PakIn("Days Gone", "BendGame", "Content", "Paks");
 
@@ -54,6 +59,7 @@ public sealed class OodleLibraryTests : IDisposable
     [InlineData("   ")]
     public void Locate_WithABlankEnvironmentVariable_FallsBackToTheGameInstall(string blank)
     {
+        MarkInstall("Days Gone");
         var dll = Touch("Days Gone", "oo2core_9_win64.dll");
         var pak = PakIn("Days Gone", "BendGame", "Content", "Paks");
 
@@ -64,6 +70,7 @@ public sealed class OodleLibraryTests : IDisposable
     public void Locate_WithAMisnamedEnvironmentFile_RejectsItAndDoesNotSearchTheGame()
     {
         var misnamed = Touch("elsewhere", "payload.dll");
+        MarkInstall("Days Gone");
         Touch("Days Gone", "oo2core_9_win64.dll");
         var pak = PakIn("Days Gone", "BendGame", "Content", "Paks");
 
@@ -113,6 +120,7 @@ public sealed class OodleLibraryTests : IDisposable
     [Fact]
     public void Locate_FindsADllInTheGameRoot()
     {
+        MarkInstall("Game");
         var dll = Touch("Game", "oo2core_9_win64.dll");
         var pak = PakIn("Game", "Project", "Content", "Paks");
 
@@ -129,7 +137,7 @@ public sealed class OodleLibraryTests : IDisposable
     }
 
     [Fact]
-    public void Locate_FindsADllInAProjectsWin64BinariesFolder()
+    public void Locate_FindsADllInAProjectsWin64BinariesFolder_WhenNoEngineFolderMarksTheRoot()
     {
         var dll = Touch("Game", "Marvel", "Binaries", "Win64", "oo2core_9_win64.dll");
         var pak = PakIn("Game", "Marvel", "Content", "Paks");
@@ -138,8 +146,19 @@ public sealed class OodleLibraryTests : IDisposable
     }
 
     [Fact]
+    public void Locate_TreatsAFolderWithAUprojectAsTheRoot()
+    {
+        Touch("Game", "Game.uproject");
+        var dll = Touch("Game", "oo2core_9_win64.dll");
+        var pak = PakIn("Game", "Content", "Paks");
+
+        Assert.Equal(dll, OodleLibrary.Locate(pak, NoEnvironment).Path);
+    }
+
+    [Fact]
     public void Locate_FromAPakInAModsSubfolder_StillReachesTheGameRoot()
     {
+        MarkInstall("Game");
         var dll = Touch("Game", "oo2core_9_win64.dll");
         var pak = PakIn("Game", "Project", "Content", "Paks", "~mods", "Hero");
 
@@ -160,6 +179,7 @@ public sealed class OodleLibraryTests : IDisposable
     [Fact]
     public void Locate_ComparesVersionsAsNumbersNotText()
     {
+        MarkInstall("Game");
         Touch("Game", "oo2core_9_win64.dll");
         var ten = Touch("Game", "Project", "Binaries", "Win64", "oo2core_10_win64.dll");
         var pak = PakIn("Game", "Project", "Content", "Paks");
@@ -168,18 +188,44 @@ public sealed class OodleLibraryTests : IDisposable
     }
 
     [Fact]
-    public void Locate_PrefersTheNearestInstallOverAHigherVersionFurtherUp()
+    public void Locate_StopsAtTheNearestRoot_SoADllInAFolderAboveItIsNeverTaken()
     {
+        MarkInstall("Library", "Game");
         Touch("Library", "oo2core_9_win64.dll");
-        var inner = Touch("Library", "Game", "oo2core_7_win64.dll");
+        MarkInstall("Library");
         var pak = PakIn("Library", "Game", "Project", "Content", "Paks");
 
-        Assert.Equal(inner, OodleLibrary.Locate(pak, NoEnvironment).Path);
+        Assert.Null(OodleLibrary.Locate(pak, NoEnvironment).Path);
+    }
+
+    [Fact]
+    public void Locate_NeverLooksIntoASiblingGameAboveTheRoot()
+    {
+        MarkInstall("steamapps", "common", "GameA");
+        MarkInstall("steamapps", "common", "GameB");
+        Touch("steamapps", "common", "GameB", "oo2core_9_win64.dll");
+        Touch("steamapps", "common", "Other", "Binaries", "Win64", "oo2core_9_win64.dll");
+        var pak = PakIn("steamapps", "common", "GameA", "Project", "Content", "Paks");
+
+        Assert.Null(OodleLibrary.Locate(pak, NoEnvironment).Path);
+    }
+
+    [Fact]
+    public void Locate_WithNoGameRootAbove_IgnoresADllPlantedInAnyAncestorOrSibling()
+    {
+        Touch("Downloads", "Binaries", "Win64", "oo2core_9_win64.dll");
+        Touch("Downloads", "Other", "Binaries", "Win64", "oo2core_9_win64.dll");
+        Touch("Downloads", "oo2core_9_win64.dll");
+        Touch("Downloads", "mod", "oo2core_9_win64.dll");
+        var pak = PakIn("Downloads", "mod");
+
+        Assert.Null(OodleLibrary.Locate(pak, NoEnvironment).Path);
     }
 
     [Fact]
     public void Locate_StopsAfterTheParentLimit()
     {
+        MarkInstall("Game");
         var dll = Touch("Game", "oo2core_9_win64.dll");
         var atLimit = PakIn("Game", "a", "b", "c", "d", "e");
         var pastLimit = PakIn("Game", "a", "b", "c", "d", "e", "f");
@@ -202,6 +248,7 @@ public sealed class OodleLibraryTests : IDisposable
     [Fact]
     public void Locate_IgnoresFilesThatAreNotExactlyTheDllName()
     {
+        MarkInstall("Game");
         Touch("Game", "oo2core_x_win64.dll");
         Touch("Game", "oo2core_9_win64.dll.bak");
         Touch("Game", "oo2core_9_win32.dll");
@@ -213,12 +260,20 @@ public sealed class OodleLibraryTests : IDisposable
     }
 
     [Fact]
-    public void Locate_IgnoresADllInAnUnrelatedFolderBesideTheInstall()
+    public void Locate_WhenTheSearchFails_FindsNothingInsteadOfThrowing()
     {
-        Touch("Game", "Other", "Plugins", "oo2core_9_win64.dll");
-        var pak = PakIn("Game", "Project", "Content", "Paks");
+        // A path past the 32,767-character limit makes the file system throw PathTooLongException (an IOException).
+        var tooLong = Path.Combine(_root, new string('a', 40_000), "game.pak");
 
-        Assert.Null(OodleLibrary.Locate(pak, NoEnvironment).Path);
+        Assert.Equal(OodleLibrary.NotFound, OodleLibrary.Locate(tooLong, NoEnvironment));
+    }
+
+    [Fact]
+    public void IsMissingError_RecognisesOnlyRepaksOodleFailure()
+    {
+        Assert.True(OodleLibrary.IsMissingError(RepakError));
+        Assert.False(OodleLibrary.IsMissingError("No entry found at Game/x.uasset"));
+        Assert.False(OodleLibrary.IsMissingError(null));
     }
 
     [Fact]

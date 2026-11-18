@@ -44,10 +44,6 @@ try
             {
                 case PakWorkerOpcode.OpenReader:
                 {
-                    // repak_bind reads the variable when it first needs Oodle and keeps that result for the process's life.
-                    if (!string.IsNullOrEmpty(request.OodleLibraryPath))
-                        Environment.SetEnvironmentVariable(OodleLibrary.EnvironmentVariable, request.OodleLibraryPath);
-
                     var stream = File.Open(request.PakPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
                     using var builder = new PakBuilder();
                     if (!string.IsNullOrEmpty(request.AesKeyHex))
@@ -76,6 +72,16 @@ try
                     // PakWorkerCrashRecoveryTests. Never matches a real pak entry path.
                     if (request.EntryPath == "__TEST_CRASH__")
                         Environment.FailFast("Simulated pak worker crash for testing.");
+
+                    // Test-only: reports which process this is and the Oodle path it was started with
+                    // (PakWorkerOodleTests); never matches a real pak entry path.
+                    if (request.EntryPath == "__TEST_STATE__")
+                    {
+                        responsePayload = System.Text.Encoding.UTF8.GetBytes(
+                            $"{Environment.ProcessId}|{Environment.GetEnvironmentVariable(OodleLibrary.EnvironmentVariable)}");
+                        response = new PakWorkerResponse { Success = true };
+                        break;
+                    }
 
                     if (!readerSessions.TryGetValue(request.SessionId, out var session))
                     {

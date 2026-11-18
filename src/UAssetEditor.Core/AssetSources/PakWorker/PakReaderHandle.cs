@@ -18,8 +18,8 @@ public sealed class PakReaderHandle : IDisposable
     private readonly string _pakPath;
     private readonly byte[]? _aesKey;
     private readonly Func<string, OodleLookup> _locateOodle;
-    private OodleLookup _oodle = OodleLibrary.NotFound;
     private int _sessionId;
+    private int _generation;
     private bool _opened;
 
     public string MountPoint { get; private set; } = "";
@@ -31,7 +31,7 @@ public sealed class PakReaderHandle : IDisposable
     {
     }
 
-    /// <summary><paramref name="locateOodle"/> is how the pak's Oodle DLL is found (a test seam: the real lookup depends on the machine).</summary>
+    /// <summary><paramref name="locateOodle"/> finds the pak's Oodle DLL, only once a read has failed for want of one (a test seam: the real lookup depends on the machine).</summary>
     internal PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey, Func<string, OodleLookup> locateOodle)
     {
         _process = process;
@@ -43,13 +43,11 @@ public sealed class PakReaderHandle : IDisposable
 
     public async Task OpenAsync(CancellationToken cancellationToken = default)
     {
-        _oodle = _locateOodle(_pakPath);
         var request = new PakWorkerRequest
         {
             Opcode = PakWorkerOpcode.OpenReader,
             PakPath = _pakPath,
             AesKeyHex = _aesKey != null ? Convert.ToHexString(_aesKey) : null,
-            OodleLibraryPath = _oodle.Path,
         };
 
         var (response, _) = await _client.SendAsync(request, operation: $"opening '{_pakPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -57,6 +55,7 @@ public sealed class PakReaderHandle : IDisposable
             throw new InvalidOperationException(response.Error ?? $"Failed to open '{_pakPath}'.");
 
         _sessionId = response.SessionId;
+        _generation = _process.Generation;
         MountPoint = response.MountPoint ?? "";
         Version = response.Version ?? PakVersion.V11;
         Entries = response.Entries ?? Array.Empty<string>();
@@ -70,16 +69,17 @@ public sealed class PakReaderHandle : IDisposable
 
         try
         {
-            var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, SessionId = _sessionId, EntryPath = entryPath };
-            var (response, payload) = await _client.SendPooledAsync(request, operation: $"reading '{entryPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (!response.Success)
-            {
-                // A failure response never actually carries a payload today, but don't rely
-                // on that staying true - whatever was rented here still needs to go back.
-                payload.Dispose();
-                throw new InvalidOperationException(OodleLibrary.Explain(response.Error, _oodle) ?? response.Error ?? $"Failed to read '{entryPath}'.");
-            }
-            return payload;
+            // A worker replaced for another reader (or after a crash) has no trace of this session.
+            await _process.EnsureAsync(cancellationToken).ConfigureAwait(false);
+            if (_process.Generation != _generation)
+                await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            var (response, payload) = await ReadOnceAsync(entryPath, cancellationToken).ConfigureAwait(false);
+            if (response.Success) return payload;
+            if (!OodleLibrary.IsMissingError(response.Error))
+                throw new InvalidOperationException(response.Error ?? $"Failed to read '{entryPath}'.");
+
+            return await ReadWithFoundOodleAsync(entryPath, response.Error, cancellationToken).ConfigureAwait(false);
         }
         catch (PakWorkerCrashedException)
         {
@@ -88,6 +88,43 @@ public sealed class PakReaderHandle : IDisposable
             await OpenAsync(cancellationToken).ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>One read; on failure the response carries the error and the buffer is already returned to the pool.</summary>
+    private async Task<(PakWorkerResponse Response, RentedBuffer Payload)> ReadOnceAsync(string entryPath, CancellationToken cancellationToken)
+    {
+        var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, SessionId = _sessionId, EntryPath = entryPath };
+        var (response, payload) = await _client.SendPooledAsync(request, operation: $"reading '{entryPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (!response.Success)
+        {
+            // A failure response never actually carries a payload today, but don't rely
+            // on that staying true - whatever was rented here still needs to go back.
+            payload.Dispose();
+        }
+
+        return (response, payload);
+    }
+
+    /// <summary>
+    /// The worker has no usable Oodle DLL, so look for one near the pak now (not on every open: most paks never need it).
+    /// A DLL the worker does not hold yet goes to a replacement worker and the read is made once more; otherwise
+    /// the failure is explained.
+    /// </summary>
+    private async Task<RentedBuffer> ReadWithFoundOodleAsync(string entryPath, string? firstError, CancellationToken cancellationToken)
+    {
+        var oodle = _locateOodle(_pakPath);
+        var error = firstError;
+        if (oodle.Path != null && await _process.UseOodleLibraryAsync(oodle.Path, _generation, cancellationToken).ConfigureAwait(false))
+        {
+            await _process.EnsureAsync(cancellationToken).ConfigureAwait(false);
+            await OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            var (response, payload) = await ReadOnceAsync(entryPath, cancellationToken).ConfigureAwait(false);
+            if (response.Success) return payload;
+            error = response.Error;
+        }
+
+        throw new InvalidOperationException(OodleLibrary.Explain(error, oodle) ?? error ?? $"Failed to read '{entryPath}'.");
     }
 
     public void Dispose()

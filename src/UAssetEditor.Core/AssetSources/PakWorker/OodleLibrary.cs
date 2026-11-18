@@ -1,4 +1,7 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.Core.AssetSources.PakWorker;
 
@@ -9,7 +12,7 @@ public sealed record OodleLookup(string? Path, string? RejectedEnvironmentValue 
 
 /// <summary>
 /// Finds the user's own Oodle DLL for legacy paks that use it (Days Gone). Oodle is Epic/RAD's proprietary library,
-/// so it is never bundled: the order is <c>REPAK_OODLE_DLL</c>, else a copy in the install of the game the pak sits in.
+/// so it is never bundled: the order is <c>REPAK_OODLE_DLL</c>, else a copy inside the install of the game the pak is in.
 /// Only a regular file named <c>oo2core_&lt;n&gt;_win64.dll</c> is accepted, and neither PATH nor the working folder is searched.
 /// </summary>
 public static partial class OodleLibrary
@@ -17,7 +20,7 @@ public static partial class OodleLibrary
     public const string EnvironmentVariable = "REPAK_OODLE_DLL";
     public const string FilePattern = "oo2core_*_win64.dll";
 
-    /// <summary>The pak's own folder and this many parents: enough for <c>&lt;root&gt;/&lt;Game&gt;/Content/Paks/~mods</c> and the Rivals layout.</summary>
+    /// <summary>The pak's own folder and this many parents are examined for the game's root: enough for <c>&lt;root&gt;/&lt;Game&gt;/Content/Paks/~mods</c> and the Rivals layout.</summary>
     internal const int MaxParentLevels = 5;
 
     /// <summary>How deep under <c>Engine/Binaries/ThirdParty/Oodle</c> to look (Unreal's own layout is <c>Win64/</c>).</summary>
@@ -34,7 +37,10 @@ public static partial class OodleLibrary
     [GeneratedRegex(@"^oo2core_(?<version>\d{1,3})_win64\.dll$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex FileNameRegex();
 
-    /// <summary>The DLL for <paramref name="pakPath"/>: the environment variable when set (and used as is, or rejected), else the best copy found walking up from the pak's folder.</summary>
+    /// <summary>
+    /// The DLL for <paramref name="pakPath"/>: the environment variable when set (used as is, or rejected), else the best
+    /// copy inside the game's root. Without a pak only the variable is consulted, which costs no file-system walk.
+    /// </summary>
     public static OodleLookup Locate(string? pakPath, Func<string, string?>? getEnvironmentVariable = null)
     {
         getEnvironmentVariable ??= Environment.GetEnvironmentVariable;
@@ -43,14 +49,18 @@ public static partial class OodleLibrary
         if (!string.IsNullOrEmpty(configured))
             return IsUsableDll(configured) ? new OodleLookup(Path.GetFullPath(configured)) : new OodleLookup(null, configured);
 
-        return string.IsNullOrWhiteSpace(pakPath) ? NotFound : new OodleLookup(FindBeside(pakPath));
+        return string.IsNullOrWhiteSpace(pakPath) ? NotFound : new OodleLookup(FindInGameRoot(pakPath));
     }
+
+    /// <summary>True for repak's failure to reach Oodle: no DLL was given, or the one given would not load.</summary>
+    public static bool IsMissingError(string? repakError) =>
+        repakError != null && repakError.Contains(RepakMissingText, StringComparison.Ordinal);
 
     /// <summary>The message for a pak read that failed in repak, when the failure is the missing Oodle library; null for any other error.</summary>
     public static string? Explain(string? repakError, OodleLookup lookup)
     {
         ArgumentNullException.ThrowIfNull(lookup);
-        if (repakError == null || !repakError.Contains(RepakMissingText, StringComparison.Ordinal)) return null;
+        if (!IsMissingError(repakError)) return null;
 
         if (lookup.Path != null) return $"Could not load {lookup.Path}. Use a 64-bit {FilePattern}.";
         if (lookup.RejectedEnvironmentValue != null) return $"{EnvironmentVariable} is not an existing {FilePattern} file. Fix or unset it.";
@@ -60,16 +70,45 @@ public static partial class OodleLibrary
     private static bool IsUsableDll(string path) =>
         Path.IsPathFullyQualified(path) && FileNameRegex().IsMatch(Path.GetFileName(path)) && File.Exists(path);
 
-    private static string? FindBeside(string pakPath)
+    /// <summary>
+    /// The best DLL inside the nearest game root above the pak, if any. The search stops at the first root, so it never
+    /// lists folders above one, and a drive or share root is never a game root. A search that fails (offline share,
+    /// broken link, path too long) finds nothing rather than stopping the pak from opening.
+    /// </summary>
+    private static string? FindInGameRoot(string pakPath)
     {
-        var folder = Path.GetDirectoryName(Path.GetFullPath(pakPath));
-        for (var level = 0; folder != null && level <= MaxParentLevels; level++, folder = Path.GetDirectoryName(folder))
+        try
         {
-            if (BestIn(folder) is { } found) return found;
-        }
+            var folder = Path.GetDirectoryName(Path.GetFullPath(pakPath));
+            for (var level = 0; folder != null && level <= MaxParentLevels; level++, folder = Path.GetDirectoryName(folder))
+            {
+                if (Path.GetDirectoryName(folder) == null) return null; // a drive or share root
+                if (LooksLikeGameRoot(folder)) return BestIn(folder);
+            }
 
-        return null;
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            LogSearchFailed(AppLog.For<OodleLookup>(), pakPath, ex);
+            return null;
+        }
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Looking for an Oodle DLL near {Pak} failed")]
+    private static partial void LogSearchFailed(ILogger logger, string pak, Exception exception);
+
+    /// <summary>An Unreal install's top folder: it has <c>Engine</c> or a <c>.uproject</c>, or holds a project folder with both <c>Content</c> and <c>Binaries/Win64</c>.</summary>
+    private static bool LooksLikeGameRoot(string folder)
+    {
+        var options = new EnumerationOptions { IgnoreInaccessible = true };
+        return Directory.Exists(Path.Combine(folder, "Engine"))
+            || Directory.EnumerateFiles(folder, "*.uproject", options).Any()
+            || Directory.EnumerateDirectories(folder, "*", options).Any(IsProjectFolder);
+    }
+
+    private static bool IsProjectFolder(string folder) =>
+        Directory.Exists(Path.Combine(folder, "Content")) && Directory.Exists(Path.Combine([folder, .. ProjectBinaries]));
 
     /// <summary>The highest-numbered DLL in the usual Unreal spots under <paramref name="root"/>, if any.</summary>
     private static string? BestIn(string root)
@@ -79,11 +118,8 @@ public static partial class OodleLibrary
 
         var candidates = Files(root, flat)
             .Concat(Files(Path.Combine([root, .. OodleFolder]), deep));
-        if (Directory.Exists(root))
-        {
-            foreach (var project in Directory.EnumerateDirectories(root, "*", flat))
-                candidates = candidates.Concat(Files(Path.Combine([project, .. ProjectBinaries]), flat));
-        }
+        foreach (var project in Directory.EnumerateDirectories(root, "*", flat))
+            candidates = candidates.Concat(Files(Path.Combine([project, .. ProjectBinaries]), flat));
 
         return candidates
             .Select(path => (Path: path, Version: VersionOf(path)))
@@ -101,6 +137,6 @@ public static partial class OodleLibrary
     private static int VersionOf(string path)
     {
         var match = FileNameRegex().Match(Path.GetFileName(path));
-        return match.Success ? int.Parse(match.Groups["version"].Value, System.Globalization.CultureInfo.InvariantCulture) : -1;
+        return match.Success ? int.Parse(match.Groups["version"].Value, CultureInfo.InvariantCulture) : -1;
     }
 }
