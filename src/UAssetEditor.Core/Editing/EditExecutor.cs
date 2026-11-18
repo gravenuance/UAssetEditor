@@ -355,7 +355,7 @@ public static class EditExecutor
             if (!isMatch) continue;
 
             var newFull = rule.IsRegex ? Regex.Replace(full, rule.OldReference, rule.NewReference) : rule.NewReference;
-            var dot = newFull.LastIndexOf('.');
+            var dot = newFull.LastIndexOf('.', StringComparison.Ordinal);
             var newLeaf = dot >= 0 ? newFull[(dot + 1)..] : newFull;
 
             var oldName = import.ObjectName.Value?.Value ?? "";

@@ -31,7 +31,7 @@ public static class PakUnpacker
         // Resolving destinationFolder once, up front, to its full form is what makes the
         // per-entry containment check below a plain string-prefix comparison.
         var destinationRoot = Path.GetFullPath(destinationFolder);
-        var destinationRootWithSeparator = destinationRoot.EndsWith(Path.DirectorySeparatorChar)
+        var destinationRootWithSeparator = destinationRoot.EndsWith(Path.DirectorySeparatorChar, StringComparison.Ordinal)
             ? destinationRoot
             : destinationRoot + Path.DirectorySeparatorChar;
 
@@ -54,7 +54,7 @@ public static class PakUnpacker
                 if (!outputPath.StartsWith(destinationRootWithSeparator, StringComparison.Ordinal))
                     throw new InvalidOperationException($"Entry path '{entry}' escapes the destination folder.");
                 // On Windows a ':' names an alternate data stream: the bytes would land hidden inside another file.
-                if (OperatingSystem.IsWindows() && outputPath.IndexOf(':', destinationRootWithSeparator.Length) >= 0)
+                if (OperatingSystem.IsWindows() && outputPath.IndexOf(':', destinationRootWithSeparator.Length, StringComparison.Ordinal) >= 0)
                     throw new InvalidOperationException($"Entry path '{entry}' contains ':', which names a hidden data stream on Windows.");
 
                 var folder = Path.GetDirectoryName(outputPath)!;

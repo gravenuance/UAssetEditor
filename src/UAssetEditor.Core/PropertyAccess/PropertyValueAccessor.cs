@@ -152,8 +152,8 @@ public static class PropertyValueAccessor
         path = default;
         var colon = text.IndexOf(':', StringComparison.Ordinal);
         var assetPart = colon < 0 ? text : text[..colon];
-        var dot = assetPart.LastIndexOf('.');
-        if (!assetPart.StartsWith('/') || dot <= 1 || dot == assetPart.Length - 1) return false;
+        var dot = assetPart.LastIndexOf('.', StringComparison.Ordinal);
+        if (!assetPart.StartsWith('/', StringComparison.Ordinal) || dot <= 1 || dot == assetPart.Length - 1) return false;
 
         var sub = colon < 0 ? null : new FString(text[(colon + 1)..]);
         path = new FSoftObjectPath(new FName(asset, assetPart[..dot]), new FName(asset, assetPart[(dot + 1)..]), sub);

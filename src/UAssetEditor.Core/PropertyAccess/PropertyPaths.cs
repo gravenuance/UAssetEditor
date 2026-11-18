@@ -39,7 +39,7 @@ internal static class PropertyPaths
     /// </summary>
     public static bool TrySplitTrailingIndex(string path, out string parentPath, out int index)
     {
-        var openBracket = path.LastIndexOf('[');
+        var openBracket = path.LastIndexOf('[', StringComparison.Ordinal);
         if (openBracket < 0 || path[^1] != ']' ||
             !int.TryParse(path.AsSpan(openBracket + 1, path.Length - openBracket - 2), out index))
         {

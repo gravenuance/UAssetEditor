@@ -6,7 +6,7 @@ An editor for .pak and .uasset files.
 
 ## Build
 
-Requires the exact .NET SDK pinned in `global.json` (10.0.404; no roll-forward, because each SDK patch changes the trimmer package recorded in the lock files).
+Requires the exact .NET SDK pinned in `global.json` (11.0.100; no roll-forward, because each SDK patch changes the trimmer package recorded in the lock files).
 
 ```
 dotnet build UAssetEditor.slnx
@@ -34,7 +34,7 @@ For a standalone build, publish the single-file executable:
 dotnet publish src/UAssetEditor.App/UAssetEditor.App.csproj -p:PublishProfile=SingleFileRelease
 ```
 
-The result is a single self-contained `UAssetEditor.App.exe` under `src/UAssetEditor.App/bin/Release/net10.0-windows/publish/win-x64/` - no separate .NET runtime install needed on the target machine.
+The result is a single self-contained `UAssetEditor.App.exe` under `src/UAssetEditor.App/bin/Release/net11.0-windows/publish/win-x64/` - no separate .NET runtime install needed on the target machine.
 
 ### Where files go
 

@@ -3,7 +3,7 @@
   <!-- Glue both front ends (uacli and the MCP server) run on: argument/open-setting resolution, the script-op
        interpreter and the pack pipeline. Internal on purpose; only the listed assemblies see it. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>UAssetEditor.Tooling</RootNamespace>
     <!-- Both front ends reference this project; publishing the MCP server for win-x64 restores it with that runtime,
          so its lock file lists it and a locked restore agrees however the solution is restored. -->

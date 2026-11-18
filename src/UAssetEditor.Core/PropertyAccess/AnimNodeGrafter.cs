@@ -148,7 +148,7 @@ public static class AnimNodeGrafter
 
     private static string StripNumber(string name)
     {
-        var underscore = name.LastIndexOf('_');
+        var underscore = name.LastIndexOf('_', StringComparison.Ordinal);
         return underscore > 0 && int.TryParse(name.AsSpan(underscore + 1), out _) ? name[..underscore] : name;
     }
 }

@@ -57,7 +57,7 @@ internal static class ScriptOps
         {
             lineNumber++;
             var line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#')) continue;
+            if (line.Length == 0 || line.StartsWith('#', StringComparison.Ordinal)) continue;
 
             var tokens = Tokenize(line);
             if (!Ops.ContainsKey(tokens[0]))

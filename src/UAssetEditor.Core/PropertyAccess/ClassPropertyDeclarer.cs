@@ -113,7 +113,7 @@ public static class ClassPropertyDeclarer
     /// </summary>
     internal static (string BaseName, int NextNumber) NextAvailableName(string templateName, IEnumerable<string> existingDisplayNames)
     {
-        var underscoreIndex = templateName.LastIndexOf('_');
+        var underscoreIndex = templateName.LastIndexOf('_', StringComparison.Ordinal);
         var baseName = underscoreIndex >= 0 && int.TryParse(templateName[(underscoreIndex + 1)..], out _)
             ? templateName[..underscoreIndex]
             : templateName;

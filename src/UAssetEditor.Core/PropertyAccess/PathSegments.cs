@@ -14,7 +14,7 @@ internal static class PathSegments
         {
             if (path[i] == '[')
             {
-                var close = path.IndexOf(']', i + 1);
+                var close = path.IndexOf(']', i + 1, StringComparison.Ordinal);
                 if (close < 0) return false;
                 var key = path.AsSpan(i + 1, close - i - 1);
                 segments.Add(new PathSegment(null, int.TryParse(key, out var index) ? index : null));

@@ -42,7 +42,7 @@ public static class FinalPaths
         else throw PathNotPlaceableException.Unplaceable(path, "it names a device or volume, not a drive or network path");
 
         // \\?\ takes names literally, but GetFullPath would drop a trailing dot or space and land in another folder.
-        if (path[2] != '.' && plain.Split('\\').Any(segment => segment is not ("." or "..") && (segment.EndsWith('.') || segment.EndsWith(' '))))
+        if (path[2] != '.' && plain.Split('\\').Any(segment => segment is not ("." or "..") && (segment.EndsWith('.', StringComparison.Ordinal) || segment.EndsWith(' ', StringComparison.Ordinal))))
             throw PathNotPlaceableException.Unplaceable(path, "a name in it ends in a dot or a space, which Windows cannot name");
         return plain;
     }
@@ -60,7 +60,7 @@ public static class FinalPaths
         }
         else
         {
-            plain = resolved.StartsWith('/');
+            plain = resolved.StartsWith('/', StringComparison.Ordinal);
         }
 
         if (plain && !resolved.Split(separator).Any(segment => segment is "." or "..")) return resolved;

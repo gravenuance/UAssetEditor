@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <RootNamespace>UAssetEditor.Mcp</RootNamespace>
     <AssemblyName>UAssetEditor.Mcp</AssemblyName>
@@ -56,7 +56,7 @@
   -->
   <PropertyGroup>
     <_PakWorkerProject>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj</_PakWorkerProject>
-    <_PakWorkerPublishExe>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net10.0\publish\win-x64\UAssetEditor.PakWorker.exe</_PakWorkerPublishExe>
+    <_PakWorkerPublishExe>$(MSBuildThisFileDirectory)..\UAssetEditor.PakWorker\bin\Release\net11.0\publish\win-x64\UAssetEditor.PakWorker.exe</_PakWorkerPublishExe>
   </PropertyGroup>
 
   <Target Name="PublishPakWorker" BeforeTargets="CoreCompile" Condition="'$(PublishSingleFile)' == 'true'">

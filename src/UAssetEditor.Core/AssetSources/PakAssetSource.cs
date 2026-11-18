@@ -130,7 +130,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
             var tempPath = ToTempPath(internalPath);
             WriteEntry(internalPath, tempPath);
 
-            var baseNoExt = internalPath[..internalPath.LastIndexOf('.')];
+            var baseNoExt = internalPath[..internalPath.LastIndexOf('.', StringComparison.Ordinal)];
             foreach (var companionExt in CompanionExtensions)
             {
                 var companionInternal = baseNoExt + companionExt;

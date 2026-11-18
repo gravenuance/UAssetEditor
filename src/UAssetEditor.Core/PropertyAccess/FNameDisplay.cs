@@ -35,7 +35,7 @@ public static class FNameDisplay
         if (asset.ContainsNameReference(new FString(text)))
             return new FName(asset, text);
 
-        var underscore = text.LastIndexOf('_');
+        var underscore = text.LastIndexOf('_', StringComparison.Ordinal);
         var digits = underscore < 0 ? "" : text[(underscore + 1)..];
         if (underscore > 0
             && digits.Length is > 0 and <= 9

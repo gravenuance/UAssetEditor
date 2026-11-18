@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <ProjectGuid>{178417EC-1177-413E-BE85-C83AECD64279}</ProjectGuid>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <AssemblyTitle>UAssetAPI</AssemblyTitle>
     <Product>UAssetAPI</Product>
     <Copyright>Copyright (c) 2020 - 2026 atenfyr</Copyright>
