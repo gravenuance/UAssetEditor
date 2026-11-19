@@ -50,25 +50,43 @@ try
             {
                 case PakWorkerOpcode.OpenReader:
                 {
+                    // The error reply carries no session id, so whatever a failed open created is released here, and the session is only stored once it is complete.
                     var stream = File.Open(request.PakPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
-                    using var builder = new PakBuilder();
-                    if (!string.IsNullOrEmpty(request.AesKeyHex))
-                        builder.Key(Convert.FromHexString(request.AesKeyHex));
-                    if (request.Variant is { } variant)
-                        builder.Variant(variant);
-                    var reader = builder.Reader(stream);
+                    PakReader reader;
+                    try
+                    {
+                        using var builder = new PakBuilder();
+                        if (!string.IsNullOrEmpty(request.AesKeyHex))
+                            builder.Key(Convert.FromHexString(request.AesKeyHex));
+                        if (request.Variant is { } variant)
+                            builder.Variant(variant);
+                        reader = builder.Reader(stream);
+                    }
+                    catch
+                    {
+                        await stream.DisposeAsync().ConfigureAwait(false);
+                        throw;
+                    }
+
+                    string mountPoint;
+                    PakVersion version;
+                    List<string> entries;
+                    try
+                    {
+                        mountPoint = reader.GetMountPoint();
+                        version = reader.GetVersion();
+                        entries = reader.Files().ToList();
+                    }
+                    catch
+                    {
+                        reader.Dispose();
+                        await stream.DisposeAsync().ConfigureAwait(false);
+                        throw;
+                    }
 
                     var sessionId = nextSessionId++;
                     readerSessions[sessionId] = (stream, reader);
-
-                    response = new PakWorkerResponse
-                    {
-                        Success = true,
-                        SessionId = sessionId,
-                        MountPoint = reader.GetMountPoint(),
-                        Version = reader.GetVersion(),
-                        Entries = reader.Files().ToList(),
-                    };
+                    response = new PakWorkerResponse { Success = true, SessionId = sessionId, MountPoint = mountPoint, Version = version, Entries = entries };
                     break;
                 }
 
@@ -118,14 +136,23 @@ try
                 case PakWorkerOpcode.OpenWriter:
                 {
                     var stream = File.Create(request.PakPath!);
-                    using var builder = new PakBuilder();
-                    if (!string.IsNullOrEmpty(request.AesKeyHex))
-                        builder.Key(Convert.FromHexString(request.AesKeyHex));
-                    if (request.Compression != null)
-                        builder.Compression(request.Compression);
-                    if (request.Variant is { } variant)
-                        builder.Variant(variant);
-                    var writer = builder.Writer(stream, request.Version ?? PakVersion.V11, request.MountPoint ?? "", pathHashSeed: 0);
+                    PakWriter writer;
+                    try
+                    {
+                        using var builder = new PakBuilder();
+                        if (!string.IsNullOrEmpty(request.AesKeyHex))
+                            builder.Key(Convert.FromHexString(request.AesKeyHex));
+                        if (request.Compression != null)
+                            builder.Compression(request.Compression);
+                        if (request.Variant is { } variant)
+                            builder.Variant(variant);
+                        writer = builder.Writer(stream, request.Version ?? PakVersion.V11, request.MountPoint ?? "", pathHashSeed: 0);
+                    }
+                    catch
+                    {
+                        await stream.DisposeAsync().ConfigureAwait(false); // the error reply carries no session id, so nobody could close it
+                        throw;
+                    }
 
                     var sessionId = nextSessionId++;
                     writerSessions[sessionId] = (stream, writer);
@@ -177,7 +204,7 @@ try
         }
         catch (Exception ex)
         {
-            response = new PakWorkerResponse { Success = false, Error = ex.Message, SessionId = request.SessionId };
+            response = new PakWorkerResponse { Success = false, Error = PakWorkerError.Describe(ex), SessionId = request.SessionId };
         }
 
         await PakWorkerFraming.WriteMessageAsync(pipe, response, responsePayload).ConfigureAwait(false);

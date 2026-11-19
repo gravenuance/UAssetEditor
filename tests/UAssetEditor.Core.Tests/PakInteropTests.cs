@@ -202,7 +202,7 @@ public sealed class PakInteropTests
     {
         using var builder = new PakBuilder();
 
-        var error = Assert.Throws<RePakException>(() => builder.Variant((PakVariant)99));
+        var error = Assert.Throws<IOException>(() => builder.Variant((PakVariant)99));
 
         Assert.Contains("99 is not a pak variant", error.Message, StringComparison.Ordinal);
     }
