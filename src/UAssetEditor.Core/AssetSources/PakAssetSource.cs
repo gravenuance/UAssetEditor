@@ -40,9 +40,10 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     private readonly Lock _lock = new();
     private bool _disposed;
 
-    public PakAssetSource(string pakPath, byte[]? aesKey = null, long largePakThresholdBytes = LargePakThresholdBytes, string? tempRoot = null)
+    public PakAssetSource(string pakPath, byte[]? aesKey = null, long largePakThresholdBytes = LargePakThresholdBytes, string? tempRoot = null, PakVariant variant = PakVariant.Standard)
     {
         PakPath = pakPath;
+        Variant = variant;
         IsLargePak = new FileInfo(pakPath).Length >= largePakThresholdBytes;
         TempExtractionDirectory = Path.Combine(tempRoot ?? Path.GetTempPath(), "UAssetEditor_Pak_" + Guid.NewGuid());
         Directory.CreateDirectory(TempExtractionDirectory);
@@ -50,7 +51,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
         // Blocking on the async open is safe here: every current caller already constructs
         // a PakAssetSource from inside Task.Run (never the UI thread), and this constructor
         // must stay synchronous - it's part of this class's public surface.
-        _reader = new PakReaderHandle(PakWorkerProcess.Shared, pakPath, aesKey);
+        _reader = new PakReaderHandle(PakWorkerProcess.Shared, pakPath, aesKey, variant);
         try
         {
             _reader.OpenAsync().GetAwaiter().GetResult();
@@ -79,6 +80,9 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
 
     /// <summary>The pak's own format version, as read from its header - <see cref="PakRepacker"/> defaults to writing the new pak back out at this same version rather than an unrelated hardcoded one, since the game the original pak came from expects its own version, not whatever this tool's own default happens to be.</summary>
     public PakVersion Version { get; }
+
+    /// <summary>The pak format the pak was opened as; <see cref="PakRepacker"/> can only write <see cref="PakVariant.Standard"/>.</summary>
+    public PakVariant Variant { get; }
 
     public string TempExtractionDirectory { get; }
     public bool IsLargePak { get; }

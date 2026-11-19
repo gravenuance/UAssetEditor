@@ -27,7 +27,7 @@ internal static class PakCommands
         var pakPath = args.Positional(0, "pak");
         if (!File.Exists(pakPath)) throw new ArgException($"File not found: {pakPath}");
 
-        var info = PakMountPointReader.Read(pakPath, AssetIo.ResolveAesKey(args));
+        var info = PakMountPointReader.Read(pakPath, AssetIo.ResolveAesKey(args), AssetIo.ResolvePakVariant(args));
         Console.WriteLine($"MountPoint: {info.MountPoint}");
         Console.WriteLine($"Version: {info.Version}");
         return 0;
@@ -39,7 +39,7 @@ internal static class PakCommands
         if (!File.Exists(pakPath)) throw new ArgException($"File not found: {pakPath}");
         var filter = args.Option("filter");
 
-        using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args));
+        using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args), variant: AssetIo.ResolvePakVariant(args));
         var uassetEntries = new HashSet<string>(source.EnumerateAssetPaths(), StringComparer.OrdinalIgnoreCase);
 
         var count = 0;
@@ -64,7 +64,7 @@ internal static class PakCommands
         // 30GB / 216k entries) means a multi-minute run and a full-disk extraction when all
         // the caller wanted was one asset.
         var filter = args.Option("filter");
-        using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args));
+        using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args), variant: AssetIo.ResolvePakVariant(args));
         var result = PakUnpacker.Unpack(
             source,
             destination,
@@ -258,7 +258,7 @@ internal static class PakCommands
         if (!File.Exists(pakPath)) throw new ArgException($"File not found: {pakPath}");
 
         var aesKey = AssetIo.ResolveAesKey(args);
-        using var source = new PakAssetSource(pakPath, aesKey);
+        using var source = new PakAssetSource(pakPath, aesKey, variant: AssetIo.ResolvePakVariant(args));
 
         var rulesetPath = args.Option("ruleset");
         if (rulesetPath != null)

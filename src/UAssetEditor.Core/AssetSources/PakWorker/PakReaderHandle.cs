@@ -26,6 +26,7 @@ public sealed partial class PakReaderHandle : IDisposable
 {
     private readonly string _pakPath;
     private readonly byte[]? _aesKey;
+    private readonly PakVariant _variant;
     private readonly Func<string, OodleLookup> _locateOodle;
 #pragma warning disable CA2213 // holds no OS handle (AvailableWaitHandle is never used); disposing it would break a caller still waiting on it
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -44,19 +45,21 @@ public sealed partial class PakReaderHandle : IDisposable
     public PakVersion Version { get; private set; }
     public IReadOnlyList<string> Entries { get; private set; } = Array.Empty<string>();
 
-    public PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey)
-        : this(process, pakPath, aesKey, static path => OodleLibrary.Locate(path))
+    /// <param name="variant">The pak format of the game the pak comes from; a Marvel Rivals pak is unreadable as <see cref="PakVariant.Standard"/>.</param>
+    public PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey, PakVariant variant = PakVariant.Standard)
+        : this(process, pakPath, aesKey, static path => OodleLibrary.Locate(path), variant)
     {
     }
 
     /// <summary><paramref name="locateOodle"/> finds the pak's Oodle DLL, only once a read has failed for want of one (a test seam: the real lookup depends on the machine).</summary>
-    internal PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey, Func<string, OodleLookup> locateOodle)
+    internal PakReaderHandle(PakWorkerProcess process, string pakPath, byte[]? aesKey, Func<string, OodleLookup> locateOodle, PakVariant variant = PakVariant.Standard)
     {
         _process = process;
         _client = new PakWorkerClient(process);
         _pakPath = pakPath;
         _aesKey = aesKey;
         _locateOodle = locateOodle;
+        _variant = variant;
     }
 
     public async Task OpenAsync(CancellationToken cancellationToken = default)
@@ -80,6 +83,7 @@ public sealed partial class PakReaderHandle : IDisposable
             Opcode = PakWorkerOpcode.OpenReader,
             PakPath = Path.GetFullPath(_pakPath), // the worker's working folder is its own, so a relative path would resolve there
             AesKeyHex = _aesKey != null ? Convert.ToHexString(_aesKey) : null,
+            Variant = _variant,
         };
 
         var (response, _) = await _client.SendAsync(request, operation: $"opening '{_pakPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);

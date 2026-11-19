@@ -54,6 +54,8 @@ try
                     using var builder = new PakBuilder();
                     if (!string.IsNullOrEmpty(request.AesKeyHex))
                         builder.Key(Convert.FromHexString(request.AesKeyHex));
+                    if (request.Variant is { } variant)
+                        builder.Variant(variant);
                     var reader = builder.Reader(stream);
 
                     var sessionId = nextSessionId++;

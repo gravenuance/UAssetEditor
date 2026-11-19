@@ -200,6 +200,9 @@ internal static class AssetIo
     /// <summary>--aes if given, else the --game profile's key, else none.</summary>
     public static byte[]? ResolveAesKey(ArgReader args) => PakAesKey.Parse(GameProfile.ResolveAesKeyHex(ResolveProfile(args), args.Option("aes")));
 
+    /// <summary>The --game profile's pak format, else the standard one.</summary>
+    public static PakVariant ResolvePakVariant(ArgReader args) => GameProfile.ResolvePakVariant(ResolveProfile(args));
+
     public static PakVersion ResolvePakVersion(ArgReader args)
     {
         var text = args.Option("pak-version") ?? "V11";

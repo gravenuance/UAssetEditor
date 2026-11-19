@@ -39,6 +39,10 @@ public static class PakRepacker
     {
         ArgumentNullException.ThrowIfNull(source);
 
+        // The writer has no variant: a pak written here would be standard, which the game of a variant pak cannot read.
+        if (source.Variant != PakVariant.Standard)
+            return new PakBulkResult { FailedEntries = [(outputPakPath, $"Repacking a {source.Variant} pak is not supported: only the standard pak format can be written.")] };
+
         using var writer = new PakWriterHandle(PakWorkerProcess.Shared);
         try
         {

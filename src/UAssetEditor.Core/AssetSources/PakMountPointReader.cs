@@ -17,9 +17,9 @@ public sealed record PakHeaderInfo(string MountPoint, PakVersion Version);
 /// </summary>
 public static class PakMountPointReader
 {
-    public static PakHeaderInfo Read(string pakPath, byte[]? aesKey = null)
+    public static PakHeaderInfo Read(string pakPath, byte[]? aesKey = null, PakVariant variant = PakVariant.Standard)
     {
-        using var reader = new PakReaderHandle(PakWorkerProcess.Shared, pakPath, aesKey);
+        using var reader = new PakReaderHandle(PakWorkerProcess.Shared, pakPath, aesKey, variant);
         reader.OpenAsync().GetAwaiter().GetResult();
         return new PakHeaderInfo(reader.MountPoint, reader.Version);
     }

@@ -125,7 +125,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         try
         {
             var aesKey = PakAesKey.Parse(AesKeyHex);
-            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey));
+            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey, GameProfile.ResolvePakVariant(GameProfile.For(_game))));
             MountPoint = header.MountPoint;
             Version = header.Version;
             Status = $"Mount point and version ({header.Version}) read from '{System.IO.Path.GetFileName(dialog.FileName)}'.";

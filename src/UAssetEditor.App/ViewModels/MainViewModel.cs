@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using UAssetAPI;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
@@ -390,8 +391,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        ScheduleDebouncedReload(aesKeyChanged: keyChanged);
+        // An open pak was read in the format of the game it was opened under, so a game with another format reopens it too.
+        var formatChanged = _currentPakSource != null && _currentPakSource.Variant != CurrentPakVariant;
+        ScheduleDebouncedReload(aesKeyChanged: keyChanged || formatChanged);
     }
+
+    /// <summary>The pak format of the selected game, which every pak this window opens is read in.</summary>
+    private PakVariant CurrentPakVariant => GameProfile.ResolvePakVariant(GameProfile.For(Game));
 
     partial void OnUsmapPathChanged(string? value)
     {
@@ -449,7 +455,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
                 DisposeCurrentSource();
 
-                var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey));
+                var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey, variant: CurrentPakVariant));
                 _currentSource = pakSource;
                 _currentPakSource = pakSource;
                 _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
@@ -634,7 +640,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _ioStoreContainerPath = null;
 
             var aesKey = ParseAesKey(PakAesKeyHex);
-            var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey));
+            var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey, variant: CurrentPakVariant));
             _currentSource = pakSource;
             _currentPakSource = pakSource;
             _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
@@ -1591,7 +1597,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void UnpackPak()
     {
-        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex);
+        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex, CurrentPakVariant);
         new UnpackPakWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 

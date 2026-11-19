@@ -42,13 +42,15 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         ToolInput.InRange(maxFiles, 1, MaxUnpackFiles, nameof(maxFiles));
         var folder = ToolPaths.Absolute(destination, nameof(destination));
         if (File.Exists(folder)) throw new McpException($"destination is a file: {folder}");
-        var key = OpenSettings.Create(store, game, null, null, aesKey: aesKey).AesKey;
+        var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
+        var key = settings.AesKey;
+        var variant = settings.PakVariant;
         var sink = new ProgressSink(progress, "Unpacked entries");
 
         return await ToolRuntime.UsePakWorkerBlockingAsync(() =>
         {
             // A threshold of zero keeps the source from extracting every asset up front: only the filtered entries are read.
-            using var source = new PakAssetSource(path, key, largePakThresholdBytes: 0);
+            using var source = new PakAssetSource(path, key, largePakThresholdBytes: 0, variant: variant);
             bool Matches(string entry) => entry.Contains(contains, StringComparison.OrdinalIgnoreCase);
 
             var entries = source.ListAllEntries().Where(Matches).ToList();
@@ -302,7 +304,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
 
         return await ToolRuntime.UsePakWorkerAsync(async () =>
         {
-            using var source = await Task.Run(() => new PakAssetSource(path, key), cancellationToken).ConfigureAwait(false);
+            using var source = await Task.Run(() => new PakAssetSource(path, key, variant: settings.PakVariant), cancellationToken).ConfigureAwait(false);
             var log = new LogLines(MaxLogLines);
             var edited = 0;
             var changes = 0;
