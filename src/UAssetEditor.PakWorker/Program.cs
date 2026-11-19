@@ -123,6 +123,8 @@ try
                         builder.Key(Convert.FromHexString(request.AesKeyHex));
                     if (request.Compression != null)
                         builder.Compression(request.Compression);
+                    if (request.Variant is { } variant)
+                        builder.Variant(variant);
                     var writer = builder.Writer(stream, request.Version ?? PakVersion.V11, request.MountPoint ?? "", pathHashSeed: 0);
 
                     var sessionId = nextSessionId++;

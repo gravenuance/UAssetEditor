@@ -249,7 +249,7 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
             using var plainReader = new PakReaderHandle(_worker, plain.Path, null, _ => OodleLibrary.NotFound);
             await plainReader.OpenAsync(TestContext.Current.CancellationToken);
             using var writer = new PakWriterHandle(_worker);
-            await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, TestContext.Current.CancellationToken);
+            await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, cancellationToken: TestContext.Current.CancellationToken);
             await writer.WriteFileAsync("Bar.uasset", Encoding.UTF8.GetBytes("bar"), TestContext.Current.CancellationToken);
             var before = await StateAsync(_worker);
 

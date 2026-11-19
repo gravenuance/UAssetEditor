@@ -81,7 +81,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     /// <summary>The pak's own format version, as read from its header - <see cref="PakRepacker"/> defaults to writing the new pak back out at this same version rather than an unrelated hardcoded one, since the game the original pak came from expects its own version, not whatever this tool's own default happens to be.</summary>
     public PakVersion Version { get; }
 
-    /// <summary>The pak format the pak was opened as; <see cref="PakRepacker"/> can only write <see cref="PakVariant.Standard"/>.</summary>
+    /// <summary>The pak format the pak was opened as; <see cref="PakRepacker"/> writes the new pak in the same one.</summary>
     public PakVariant Variant { get; }
 
     public string TempExtractionDirectory { get; }

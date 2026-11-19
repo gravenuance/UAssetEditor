@@ -101,17 +101,43 @@ public sealed class PakVariantTests : IDisposable
     }
 
     [Fact]
-    public void ARepackOfAMarvelRivalsPak_IsRefused_NotWrittenInTheStandardFormat()
+    public void ARepackOfAMarvelRivalsPak_IsWrittenInTheMarvelRivalsFormat()
     {
         var pak = MarvelRivalsPak();
         var output = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
         _files.Add(output);
-        using var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals);
+        using (var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals))
+        {
+            var result = PakRepacker.Build(source, output, compression: [PakCompression.Zlib], aesKey: Key);
+            Assert.False(result.HasFailures);
+            Assert.Equal(1, result.SucceededCount);
+        }
 
-        var result = PakRepacker.Build(source, output, aesKey: Key);
+        using var repacked = new PakAssetSource(output, Key, variant: PakVariant.MarvelRivals);
+        using var bytes = repacked.ReadOriginalBytes("Marvel/Content/Foo.uasset");
+        Assert.Equal(Contents, bytes.Memory.ToArray());
+    }
 
-        Assert.Equal(0, result.SucceededCount);
-        Assert.Contains("MarvelRivals", Assert.Single(result.FailedEntries).Reason, StringComparison.Ordinal);
-        Assert.False(File.Exists(output));
+    [Fact]
+    public async Task ARepackOfAMarvelRivalsPak_IsNotReadAsAStandardOne()
+    {
+        var pak = MarvelRivalsPak();
+        var output = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
+        _files.Add(output);
+        using (var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals))
+            Assert.False(PakRepacker.Build(source, output, compression: [PakCompression.Zlib], aesKey: Key).HasFailures);
+        using var worker = new PakWorkerProcess();
+
+        byte[]? read = null;
+        var failure = await Record.ExceptionAsync(async () =>
+        {
+            using var reader = new PakReaderHandle(worker, output, Key);
+            await reader.OpenAsync(TestContext.Current.CancellationToken);
+            using var bytes = await reader.ReadEntryAsync("Marvel/Content/Foo.uasset", TestContext.Current.CancellationToken);
+            read = bytes.Memory.ToArray();
+        });
+
+        // The repack kept the variant: it is not a standard pak that merely happens to be encrypted.
+        Assert.True(failure != null || !Contents.AsSpan().SequenceEqual(read));
     }
 }

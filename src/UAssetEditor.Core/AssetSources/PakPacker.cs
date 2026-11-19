@@ -29,7 +29,7 @@ public static class PakPacker
         using var writer = new PakWriterHandle(PakWorkerProcess.Shared);
         try
         {
-            writer.OpenAsync(outputPakPath, mountPoint, version, compression, aesKey, cancellationToken).GetAwaiter().GetResult();
+            writer.OpenAsync(outputPakPath, mountPoint, version, compression, aesKey, cancellationToken: cancellationToken).GetAwaiter().GetResult();
 
             for (var i = 0; i < files.Count; i++)
             {
