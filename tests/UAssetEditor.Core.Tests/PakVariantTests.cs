@@ -53,6 +53,16 @@ public sealed class PakVariantTests : IDisposable
     }
 
     [Fact]
+    public void AnUnknownCompression_IsRefusedWithEveryCodecTheLibraryKnows()
+    {
+        var error = Assert.Throws<ArgException>(() => AssetIo.ResolveCompression(new ArgReader(["--compression", "rot13"])));
+
+        foreach (var codec in Enum.GetNames<PakCompression>())
+            Assert.Contains(codec, error.Message, StringComparison.Ordinal);
+        Assert.Equal([PakCompression.LZ4], AssetIo.ResolveCompression(new ArgReader(["--compression", "lz4"])));
+    }
+
+    [Fact]
     public async Task AMarvelRivalsPak_ReadsThroughTheWorker_AsMarvelRivals()
     {
         var pak = MarvelRivalsPak();
@@ -108,7 +118,7 @@ public sealed class PakVariantTests : IDisposable
         _files.Add(output);
         using (var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals))
         {
-            var result = PakRepacker.Build(source, output, compression: [PakCompression.Zlib], aesKey: Key);
+            var result = PakRepacker.Build(source, output, compression: [PakCompression.Zlib]);
             Assert.False(result.HasFailures);
             Assert.Equal(1, result.SucceededCount);
         }
@@ -119,13 +129,49 @@ public sealed class PakVariantTests : IDisposable
     }
 
     [Fact]
+    public void AnOpenSource_KnowsTheFormatItWasOpenedWith_ToCompareWithTheCurrentSettings()
+    {
+        var pak = MarvelRivalsPak();
+        using var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals);
+
+        Assert.Equal(PakFormat.Of(Key, PakVariant.MarvelRivals), source.Format);
+        Assert.Equal(source.Format, PakFormat.Resolve(GameProfile.For(Game.MarvelRivals), GameProfile.For(Game.MarvelRivals)!.AesKeyHex));
+        Assert.Equal(source.Format, PakFormat.Resolve(null, GameProfile.For(Game.MarvelRivals)!.AesKeyHex, source.Variant));
+        Assert.NotEqual(source.Format, PakFormat.Resolve(GameProfile.For(Game.FinalFantasy7Remake), GameProfile.For(Game.FinalFantasy7Remake)!.AesKeyHex));
+        Assert.NotEqual(source.Format, PakFormat.Resolve(GameProfile.For(Game.MarvelRivals), "00"));
+    }
+
+    [Fact]
+    public void ARepack_IsWrittenWithTheKeyTheSourceWasOpenedWith_WithoutTheCallerPassingItAgain()
+    {
+        var pak = MarvelRivalsPak();
+        var output = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
+        _files.Add(output);
+        using (var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals))
+            Assert.False(PakRepacker.Build(source, output, compression: [PakCompression.Zlib]).HasFailures);
+
+        byte[]? readWithoutKey = null;
+        var withoutKey = Record.Exception(() =>
+        {
+            using var unkeyed = new PakAssetSource(output, null, variant: PakVariant.MarvelRivals);
+            using var bytes = unkeyed.ReadOriginalBytes("Marvel/Content/Foo.uasset");
+            readWithoutKey = bytes.Memory.ToArray();
+        });
+        using var keyed = new PakAssetSource(output, Key, variant: PakVariant.MarvelRivals);
+        using var read = keyed.ReadOriginalBytes("Marvel/Content/Foo.uasset");
+
+        Assert.True(withoutKey != null || !Contents.AsSpan().SequenceEqual(readWithoutKey), "the repack is readable without the key, so it was not encrypted");
+        Assert.Equal(Contents, read.Memory.ToArray());
+    }
+
+    [Fact]
     public async Task ARepackOfAMarvelRivalsPak_IsNotReadAsAStandardOne()
     {
         var pak = MarvelRivalsPak();
         var output = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
         _files.Add(output);
         using (var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals))
-            Assert.False(PakRepacker.Build(source, output, compression: [PakCompression.Zlib], aesKey: Key).HasFailures);
+            Assert.False(PakRepacker.Build(source, output, compression: [PakCompression.Zlib]).HasFailures);
         using var worker = new PakWorkerProcess();
 
         byte[]? read = null;

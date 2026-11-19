@@ -1,5 +1,8 @@
+using System.ComponentModel;
+using System.Reflection;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using UAssetAPI;
 using ModelContextProtocol;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Tests;
@@ -160,6 +163,28 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var info = await _rig.ArchiveReads.PakInfoAsync(output, cancellationToken: _ct);
         Assert.Equal("../../../Marvel/", info.MountPoint);
         Assert.Equal("V9", info.Version);
+    }
+
+    [Fact]
+    public async Task Pack_ToPak_ForARivalsGame_WritesThePakInThatGamesFormat()
+    {
+        var source = SourceFolder("Content/A.txt");
+        var output = _rig.Folder.Combine("out", "mod.pak");
+
+        await _rig.ArchiveWrites.PackAsync(source, output, game: "rivals", cancellationToken: _ct);
+
+        var listed = await _rig.ArchiveReads.PakListAsync(output, game: "rivals", cancellationToken: _ct);
+        Assert.Equal(["Content/A.txt"], listed.Entries.Select(e => e.Path));
+    }
+
+    [Fact]
+    public void Pack_DescribesEveryCompressionCodecTheLibraryKnows()
+    {
+        var parameter = typeof(ArchiveWriteTools).GetMethod(nameof(ArchiveWriteTools.PackAsync))!.GetParameters().Single(p => p.Name == "compression");
+        var description = parameter.GetCustomAttribute<DescriptionAttribute>()!.Description;
+
+        foreach (var codec in Enum.GetNames<PakCompression>())
+            Assert.Contains(codec, description, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

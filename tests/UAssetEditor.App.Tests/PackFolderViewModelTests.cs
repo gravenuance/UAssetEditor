@@ -1,5 +1,8 @@
+using System.IO;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.App.ViewModels;
+using UAssetEditor.Core.AssetSources;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.App.Tests;
 
@@ -59,6 +62,31 @@ public class PackFolderViewModelTests
 
         Assert.Equal(expectedIsPak, viewModel.IsPakFormat);
         Assert.Equal(expectedIsIoStore, viewModel.IsIoStoreFormat);
+    }
+
+    [Fact]
+    public async Task RunningAPakPack_ForMarvelRivals_WritesThePakInTheGamesFormat()
+    {
+        var rivals = GameProfile.For(Game.MarvelRivals)!;
+        var folder = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_PackVm_" + Guid.NewGuid());
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "A.txt"), "a", TestContext.Current.CancellationToken);
+        var output = folder + ".pak";
+        try
+        {
+            using var viewModel = new PackFolderViewModel(folder, "../../../Mod/", rivals.AesKeyHex, EngineVersion.VER_UE5_3, game: Game.MarvelRivals) { OutputPath = output };
+
+            await viewModel.RunCommand.ExecuteAsync(null);
+
+            var readAsRivals = await Record.ExceptionAsync(() => Task.Run(() => PakMountPointReader.Read(output, PakAesKey.Parse(rivals.AesKeyHex), rivals.PakVariant)));
+            Assert.Null(readAsRivals);
+            Assert.True(viewModel.IsDone, viewModel.Status);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+            if (File.Exists(output)) File.Delete(output);
+        }
     }
 
     [Fact]

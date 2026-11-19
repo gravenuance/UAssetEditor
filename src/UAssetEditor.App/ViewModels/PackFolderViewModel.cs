@@ -70,6 +70,9 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     public IReadOnlyList<PackOutputFormatOption> OutputFormats { get; } =
         [new PackOutputFormatOption(PackOutputFormat.Pak, "Legacy .pak"), new PackOutputFormatOption(PackOutputFormat.IoStore, "IoStore (.utoc)")];
 
+    /// <summary>The pak format of the game the dialog was opened for: the one it reads headers in and writes new paks in.</summary>
+    private PakVariant GamePakVariant => GameProfile.ResolvePakVariant(GameProfile.For(_game));
+
     public bool IsNotRunning => !IsRunning;
     public bool IsPakFormat => OutputFormat == PackOutputFormat.Pak;
     public bool IsIoStoreFormat => OutputFormat == PackOutputFormat.IoStore;
@@ -125,7 +128,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         try
         {
             var aesKey = PakAesKey.Parse(AesKeyHex);
-            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey, GameProfile.ResolvePakVariant(GameProfile.For(_game))));
+            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey, GamePakVariant));
             MountPoint = header.MountPoint;
             Version = header.Version;
             Status = $"Mount point and version ({header.Version}) read from '{System.IO.Path.GetFileName(dialog.FileName)}'.";
@@ -177,7 +180,8 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         var compression = Compression is { } c ? new[] { c } : null;
         var progress = new Progress<(int Done, int Total)>(p => { ProgressDone = p.Done; ProgressTotal = p.Total; });
 
-        var result = await Task.Run(() => PakPacker.Build(sourceFolder, outputPath, mountPoint, version, compression, aesKey, progress, cancellationToken), cancellationToken);
+        var variant = GamePakVariant;
+        var result = await Task.Run(() => PakPacker.Build(sourceFolder, outputPath, mountPoint, version, compression, aesKey, variant, progress, cancellationToken), cancellationToken);
 
         Status = result.HasFailures
             ? $"Pack failed: {result.FailedEntries[0].Reason}"

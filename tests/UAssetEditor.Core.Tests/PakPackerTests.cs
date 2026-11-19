@@ -1,5 +1,7 @@
 using System.Text;
+using UAssetAPI;
 using UAssetEditor.Core.AssetSources;
+using UAssetEditor.Core.Games;
 
 namespace UAssetEditor.Core.Tests;
 
@@ -76,6 +78,31 @@ public class PakPackerTests
             using var check = new PakAssetSource(outputPath);
             Assert.Equal("", check.MountPoint);
             Assert.Equal(new[] { "BendGame/Content/Foo.uasset" }, check.ListAllEntries());
+        }
+        finally
+        {
+            Directory.Delete(sourceFolder, recursive: true);
+            if (File.Exists(outputPath)) File.Delete(outputPath);
+        }
+    }
+
+    [Fact]
+    public void Build_InAGamesVariant_WritesAPakThatGamesReadersOpen()
+    {
+        var key = PakAesKey.Parse(GameProfile.For(Game.MarvelRivals)!.AesKeyHex);
+        var sourceFolder = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Pack_" + Guid.NewGuid());
+        Directory.CreateDirectory(sourceFolder);
+        File.WriteAllBytes(Path.Combine(sourceFolder, "Foo.uasset"), Encoding.UTF8.GetBytes("foo"));
+        var outputPath = sourceFolder + ".pak";
+
+        try
+        {
+            var result = PakPacker.Build(sourceFolder, outputPath, aesKey: key, variant: PakVariant.MarvelRivals, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.False(result.HasFailures);
+            using var check = new PakAssetSource(outputPath, key, variant: PakVariant.MarvelRivals);
+            using var rented = check.ReadOriginalBytes("Foo.uasset");
+            Assert.Equal(Encoding.UTF8.GetBytes("foo"), rented.ToArray());
         }
         finally
         {

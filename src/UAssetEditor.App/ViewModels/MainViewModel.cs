@@ -132,7 +132,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // fire (and pop a discard-changes prompt) mid-typing. Engine version is a discrete
     // ComboBox selection and reloads immediately, no debounce needed.
     private readonly DispatcherTimer _reloadDebounceTimer;
-    private bool _pendingAesReload;
 
     /// <summary>
     /// Set while <see cref="OpenRecentAsync"/> is applying a Recent entry's saved engine
@@ -359,7 +358,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnDefaultEngineVersionChanged(EngineVersion value)
     {
-        if (!_suppressReloadOnSettingsChange) _ = ReloadContextAsync(aesKeyChanged: false);
+        if (!_suppressReloadOnSettingsChange) _ = ReloadContextAsync();
     }
 
     private void SyncGameOptions(Game selected)
@@ -375,10 +374,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         // Choosing a game fills in its engine version and key; the two fields stay editable afterwards. "None" leaves them as they are.
         var profile = GameProfile.For(value);
-        var keyChanged = false;
         if (profile != null)
         {
-            keyChanged = !string.Equals(PakAesKeyHex, profile.AesKeyHex, StringComparison.Ordinal);
             _suppressReloadOnSettingsChange = true;
             try
             {
@@ -391,27 +388,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        // An open pak was read in the format of the game it was opened under, so a game with another format reopens it too.
-        var formatChanged = _currentPakSource != null && _currentPakSource.Variant != CurrentPakVariant;
-        ScheduleDebouncedReload(aesKeyChanged: keyChanged || formatChanged);
+        ScheduleDebouncedReload();
     }
 
-    /// <summary>The pak format of the selected game, which every pak this window opens is read in.</summary>
-    private PakVariant CurrentPakVariant => GameProfile.ResolvePakVariant(GameProfile.For(Game));
+    /// <summary>The format a pak opened now is read in: the key field, and the selected game's variant (standard with no game).</summary>
+    private PakFormat OpenFormat => PakFormat.Resolve(GameProfile.For(Game), PakAesKeyHex);
+
+    /// <summary>The format the open <paramref name="source"/> should be in under the current settings; with no game selected it keeps its own variant, as the key field keeps its key.</summary>
+    private PakFormat WantedFormatFor(PakAssetSource source) => PakFormat.Resolve(GameProfile.For(Game), PakAesKeyHex, source.Variant);
+
+    /// <summary>The variant the pak dialogs read in: the selected game's, else the open pak's, else the standard one.</summary>
+    private PakVariant DialogPakVariant => GameProfile.For(Game)?.PakVariant ?? _currentPakSource?.Variant ?? PakVariant.Standard;
+
+    private static Task<PakAssetSource> OpenPakSourceAsync(string pakPath, PakFormat format) =>
+        Task.Run(() => new PakAssetSource(pakPath, format.CopyAesKey(), variant: format.Variant));
 
     partial void OnUsmapPathChanged(string? value)
     {
-        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload(aesKeyChanged: false);
+        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload();
     }
 
     partial void OnPakAesKeyHexChanged(string value)
     {
-        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload(aesKeyChanged: true);
+        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload();
     }
 
-    private void ScheduleDebouncedReload(bool aesKeyChanged)
+    private void ScheduleDebouncedReload()
     {
-        _pendingAesReload = _pendingAesReload || aesKeyChanged;
         _reloadDebounceTimer.Stop();
         _reloadDebounceTimer.Start();
     }
@@ -419,22 +422,23 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private async void ReloadDebounceTimer_Tick(object? sender, EventArgs e)
     {
         _reloadDebounceTimer.Stop();
-        var aesKeyChanged = _pendingAesReload;
-        _pendingAesReload = false;
-        await ReloadContextAsync(aesKeyChanged);
+        await ReloadContextAsync();
     }
 
     /// <summary>
-    /// Reacts to the user changing the UE version, usmap, or (for a pak-backed workspace)
-    /// AES key without requiring a restart: an AES key change can only take effect by
-    /// re-opening the pak (the key is baked into the native reader at construction), so
-    /// that path rebuilds the source and tree from scratch; a version/usmap-only change
-    /// reuses the existing source and just drops every already-open asset so the next
-    /// access re-parses it under the new settings. Either way, whatever was last shown
-    /// (a search, or one opened tree entry) is then replayed so the visible content
+    /// Reacts to the user changing the UE version, usmap, game or AES key without requiring a
+    /// restart. A pak whose <see cref="PakAssetSource.Format"/> (key and variant, both baked
+    /// into the native reader at construction) is no longer what the settings ask for is
+    /// reopened and its tree rebuilt from scratch; anything else reuses the existing source and
+    /// just drops every already-open asset so the next access re-parses it under the new
+    /// settings. Deciding by comparing the open source with the settings (not by a flag set when
+    /// a setting changed) means a reload that was skipped (busy, discard declined) is simply
+    /// retried by the next one, and a repack never mixes the old source with the new settings,
+    /// since <see cref="PakRepacker"/> writes in the source's own format. Either way, whatever was
+    /// last shown (a search, or one opened tree entry) is then replayed so the visible content
     /// actually reflects the change instead of silently going stale.
     /// </summary>
-    private async Task ReloadContextAsync(bool aesKeyChanged)
+    private async Task ReloadContextAsync()
     {
         if (_workspace == null) return; // nothing open yet - new settings apply automatically the next time something opens
         if (IsBusy) return; // don't interrupt in-flight work; settings still apply on the next explicit action
@@ -448,17 +452,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         {
             _dirtyAssetPaths.Clear();
 
-            if (aesKeyChanged && IsPakBacked && _currentPakSource != null)
+            if (IsPakBacked && _currentPakSource is { } openSource && !openSource.Format.Equals(WantedFormatFor(openSource)))
             {
-                var pakPath = _currentPakSource.PakPath;
-                var aesKey = ParseAesKey(PakAesKeyHex);
+                // The new source is opened before the old one is let go: if it can't be opened (a wrong key), the workspace keeps working on the old one.
+                var pakSource = await OpenPakSourceAsync(openSource.PakPath, WantedFormatFor(openSource));
+                AssetWorkspace workspace;
+                try
+                {
+                    workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
+                }
+                catch
+                {
+                    pakSource.Dispose();
+                    throw;
+                }
 
                 DisposeCurrentSource();
-
-                var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey, variant: CurrentPakVariant));
                 _currentSource = pakSource;
                 _currentPakSource = pakSource;
-                _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
+                _workspace = workspace;
                 await RebuildTreeAsync(pakSource.ListAllEntries(), '/');
             }
             else
@@ -639,8 +651,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
 
-            var aesKey = ParseAesKey(PakAesKeyHex);
-            var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey, variant: CurrentPakVariant));
+            var pakSource = await OpenPakSourceAsync(pakPath, OpenFormat);
             _currentSource = pakSource;
             _currentPakSource = pakSource;
             _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
@@ -1095,9 +1106,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Repacking selected...";
         try
         {
-            var aesKey = ParseAesKey(PakAesKeyHex);
             var result = await Task.Run(() =>
-                PakRepacker.Build(source, outputPath, aesKey: aesKey, entryFilter: entry => MatchesAnySelectedPrefix(entry, prefixes)));
+                PakRepacker.Build(source, outputPath, entryFilter: entry => MatchesAnySelectedPrefix(entry, prefixes)));
 
             // Unlike a full Repack, this only ever bakes in the selected subset - only
             // remove those specific paths from the at-risk set, so anything still
@@ -1448,8 +1458,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Repacking...";
         try
         {
-            var aesKey = ParseAesKey(PakAesKeyHex);
-            var result = await Task.Run(() => PakRepacker.Build(source, outputPath, aesKey: aesKey));
+            var result = await Task.Run(() => PakRepacker.Build(source, outputPath));
 
             // A failed Repack discards its partial output entirely (see PakRepacker) - so
             // only a clean run actually folded every saved-but-unrepacked edit into a real
@@ -1597,7 +1606,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void UnpackPak()
     {
-        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex, CurrentPakVariant);
+        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex, DialogPakVariant);
         new UnpackPakWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
@@ -1627,7 +1636,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private async Task OpenRecentAsync(RecentSourceEntry entry)
     {
         _reloadDebounceTimer.Stop();
-        _pendingAesReload = false;
         _suppressReloadOnSettingsChange = true;
         try
         {

@@ -108,7 +108,7 @@ internal static class PakCommands
         }
 
         var mountPoint = args.Option("mount") ?? $"../../../{new DirectoryInfo(sourceFolder.TrimEnd('\\', '/')).Name}/";
-        var result = PakPacker.Build(sourceFolder, output, mountPoint, AssetIo.ResolvePakVersion(args), AssetIo.ResolveCompression(args), AssetIo.ResolveAesKey(args));
+        var result = PakPacker.Build(sourceFolder, output, mountPoint, AssetIo.ResolvePakVersion(args), AssetIo.ResolveCompression(args), AssetIo.ResolveAesKey(args), AssetIo.ResolvePakVariant(args));
 
         if (result.HasFailures)
         {
@@ -284,7 +284,7 @@ internal static class PakCommands
             Console.WriteLine($"-- applied ruleset: {changeSets.Count(c => c.Changed)} asset(s), {totalChanges} change(s)");
         }
 
-        var result = PakRepacker.Build(source, output, aesKey: aesKey);
+        var result = PakRepacker.Build(source, output);
         if (result.HasFailures)
         {
             Console.WriteLine($"FAILED: {result.FailedEntries[0].Reason}");

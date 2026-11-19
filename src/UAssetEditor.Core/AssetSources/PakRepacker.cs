@@ -11,7 +11,7 @@ namespace UAssetEditor.Core.AssetSources;
 /// much of the archive was ever opened - a large, lazily extracted pak that only had a
 /// handful of entries touched still repacks completely, one entry at a time, without needing
 /// the whole archive resident anywhere at once. Always writes to a new file; never overwrites
-/// <see cref="PakAssetSource.PakPath"/>.
+/// <see cref="PakAssetSource.PakPath"/>, and always writes in the source's own <see cref="PakAssetSource.Format"/>.
 ///
 /// Like <see cref="PakPacker"/>, the actual writing goes through the out-of-process worker -
 /// a crash (whether reading an untouched source entry or writing the new pak) fails this
@@ -34,7 +34,6 @@ public static class PakRepacker
         string outputPakPath,
         PakVersion? version = null,
         PakCompression[]? compression = null,
-        byte[]? aesKey = null,
         Func<string, bool>? entryFilter = null)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -42,7 +41,8 @@ public static class PakRepacker
         using var writer = new PakWriterHandle(PakWorkerProcess.Shared);
         try
         {
-            writer.OpenAsync(outputPakPath, source.MountPoint, version ?? source.Version, compression, aesKey, source.Variant).GetAwaiter().GetResult();
+            // The new pak is written in the format the source was read in (key and variant), never in whatever the caller's settings say now.
+            writer.OpenAsync(outputPakPath, source.MountPoint, version ?? source.Version, compression, source.Format.CopyAesKey(), source.Variant).GetAwaiter().GetResult();
 
             var count = 0;
             foreach (var entry in source.ListAllEntries())

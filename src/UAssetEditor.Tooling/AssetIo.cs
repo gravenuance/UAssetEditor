@@ -217,7 +217,7 @@ internal static class AssetIo
         if (text == null) return null;
         return Enum.TryParse<PakCompression>(text, ignoreCase: true, out var compression)
             ? [compression]
-            : throw new ArgException($"Unknown --compression '{text}' (expects Zlib, Gzip, Oodle, or Zstd).");
+            : throw new ArgException($"Unknown --compression '{text}' (expects one of {string.Join(", ", Enum.GetNames<PakCompression>())}).");
     }
 
     public static UAsset Open(string path, ArgReader args)

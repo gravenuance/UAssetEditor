@@ -43,7 +43,7 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     public PakAssetSource(string pakPath, byte[]? aesKey = null, long largePakThresholdBytes = LargePakThresholdBytes, string? tempRoot = null, PakVariant variant = PakVariant.Standard)
     {
         PakPath = pakPath;
-        Variant = variant;
+        Format = PakFormat.Of(aesKey, variant);
         IsLargePak = new FileInfo(pakPath).Length >= largePakThresholdBytes;
         TempExtractionDirectory = Path.Combine(tempRoot ?? Path.GetTempPath(), "UAssetEditor_Pak_" + Guid.NewGuid());
         Directory.CreateDirectory(TempExtractionDirectory);
@@ -82,7 +82,10 @@ public sealed class PakAssetSource : IAssetSource, IDisposable
     public PakVersion Version { get; }
 
     /// <summary>The pak format the pak was opened as; <see cref="PakRepacker"/> writes the new pak in the same one.</summary>
-    public PakVariant Variant { get; }
+    public PakVariant Variant => Format.Variant;
+
+    /// <summary>The key and variant the pak was opened with; a front end compares it with its current settings to tell whether the pak must be reopened.</summary>
+    public PakFormat Format { get; }
 
     public string TempExtractionDirectory { get; }
     public bool IsLargePak { get; }
