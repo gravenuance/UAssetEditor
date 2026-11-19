@@ -14,8 +14,8 @@ public sealed class PakWorkerTestHooks
 }
 
 /// <summary>
-/// A copy of the worker in a folder of its own, so nothing beside it (an old oo2core_9_win64.dll left in a build output,
-/// which repak_bind would load from beside the executable) can reach a test.
+/// A copy of the worker in a folder of its own, so nothing beside it (an oo2core_9_win64.dll left in a build output) can
+/// reach a test, whatever the native library does.
 /// </summary>
 public sealed class CleanWorkerFolder : IDisposable
 {

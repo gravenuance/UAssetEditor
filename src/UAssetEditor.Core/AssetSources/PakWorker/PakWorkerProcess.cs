@@ -11,8 +11,8 @@ namespace UAssetEditor.Core.AssetSources.PakWorker;
 /// detected by the caller and a fresh one is spawned transparently via <see cref="EnsureAsync"/>,
 /// never eagerly.
 /// <para>
-/// A worker's Oodle DLL is fixed when it starts, because repak_bind keeps its first Oodle lookup (a failed one
-/// too) for the process's life. <see cref="Shared"/> is the default worker: it starts with the validated
+/// A worker's Oodle DLL is fixed when it starts, because repak_bind keeps the DLL it first loaded for the
+/// process's life. <see cref="Shared"/> is the default worker: it starts with the validated
 /// <c>REPAK_OODLE_DLL</c> or none. A DLL found next to a pak gets a worker of its own,
 /// <see cref="ForOodleLibrary"/>, so no worker is ever replaced while someone else's session lives in it.
 /// </para>
@@ -156,8 +156,7 @@ public sealed class PakWorkerProcess : IDisposable
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true,
-                    // Never the host's folder: repak_bind's bare-name Oodle fallback searches the working folder, so a DLL planted
-                    // wherever the host was started from would load. The pak handles send absolute paths for this reason.
+                    // Never the host's folder, which is wherever the host happened to be started from. The pak handles send absolute paths for this reason.
                     WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(exePath)) ?? "",
                     RedirectStandardOutput = false,
                     RedirectStandardError = false,

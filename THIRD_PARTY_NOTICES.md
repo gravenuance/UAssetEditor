@@ -76,8 +76,12 @@ SOFTWARE.
 - Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
   by trumank). See https://github.com/trumank/repak for that project's own license/attribution.
   The Windows `repak_bind.dll.gz` is built from https://github.com/gravenuance/repak branch
-  `feat/upstream-read-fixes` @ `09dc525` (`cargo build --release --locked -p repak_bind`; SHA-256 of the
-  uncompressed DLL `b60f1bdbab9e8ce6688332e51a4e98de66f9a614cf91a290abce255f9c6961fd`): upstream's `cs-bindings`
-  line with our legacy-compression fix and upstream master's `1ef2c6f` and `355b5f6` cherry-picked (previous
-  vendor: `feat/upstream-read-fixes` @ `3d3fce0`), with the dependencies moved to their latest majors (aes 0.9,
-  sha1/sha2 0.11, ureq 3, ...). `repak_bind.so.gz` is upstream's older build.
+  `feat/marvel-rivals-variant` @ `a347bd3` (`cargo build --release -p repak_bind`; SHA-256 of the
+  uncompressed DLL `ef0bd9e7bfb29d6a4857172a7e87897a94df360907b59d7405c5c796597d2460`): upstream's `cs-bindings`
+  line with our legacy-compression fix, upstream master's `1ef2c6f` and `355b5f6`, Marvel Rivals' pak format
+  (`PakVariant`), a boundary that turns every panic in an export into an error, and an Oodle loader that loads
+  only the absolute path in `REPAK_OODLE_DLL` and never downloads (previous vendor:
+  `feat/upstream-read-fixes` @ `09dc525`), with the dependencies at their latest majors (aes 0.9,
+  sha1/sha2 0.11, ...). `vendor/UAssetAPI/Pak/{Interop,RePak}.cs` follow that branch's `repak_cs/RePak/`.
+  `repak_bind.so.gz` is upstream's older build and does not match these bindings (no `pak_last_error`,
+  `pak_builder_reader_ex` or `pak_builder_variant`); the app is Windows-only.
