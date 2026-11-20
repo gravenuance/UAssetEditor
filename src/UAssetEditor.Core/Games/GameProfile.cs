@@ -8,13 +8,14 @@ namespace UAssetEditor.Core.Games;
 /// What selecting a game fills in: the engine version its packages are cooked with, the AES key its paks are
 /// encrypted with, and (for a game that has one) a step that runs on every package right after it is opened.
 /// The keys are the publicly known community keys for these games; an empty key means the game's paks are not encrypted.
+/// <see cref="PakVariant"/> is how the game's paks deviate from the standard format.
 /// </summary>
-public sealed record GameProfile(Game Game, string CliName, string DisplayName, EngineVersion EngineVersion, string AesKeyHex)
+public sealed record GameProfile(Game Game, string CliName, string DisplayName, EngineVersion EngineVersion, string AesKeyHex, PakVariant PakVariant = PakVariant.Standard)
 {
     private static readonly GameProfile[] Profiles =
     [
         new(Game.MarvelRivals, "rivals", "Marvel Rivals", EngineVersion.VER_UE5_3,
-            "0x0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74"),
+            "0x0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74", PakVariant.MarvelRivals),
         new(Game.FinalFantasy7Remake, "ff7r", "Final Fantasy VII Remake", EngineVersion.VER_UE4_18,
             "0x23989837645C9D28BA58072B2076E895B853A7C9E1C5591B814C4FD2A2D7B782"),
         new(Game.StellarBlade, "stellarblade", "Stellar Blade", EngineVersion.VER_UE4_27, ""),
@@ -47,6 +48,9 @@ public sealed record GameProfile(Game Game, string CliName, string DisplayName, 
     /// <summary>The AES key (hex) to use: an explicit key wins, then the game's, else an empty string.</summary>
     public static string ResolveAesKeyHex(GameProfile? profile, string? explicitKeyHex) =>
         !string.IsNullOrWhiteSpace(explicitKeyHex) ? explicitKeyHex : profile?.AesKeyHex ?? string.Empty;
+
+    /// <summary>The pak format to read with: the game's, or <see cref="PakVariant.Standard"/> when no game is selected.</summary>
+    public static PakVariant ResolvePakVariant(GameProfile? profile) => profile?.PakVariant ?? PakVariant.Standard;
 
     /// <summary>
     /// Runs this game's own step on a freshly opened package and returns a warning for everything it had to leave alone.

@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using UAssetAPI;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
@@ -131,7 +132,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     // fire (and pop a discard-changes prompt) mid-typing. Engine version is a discrete
     // ComboBox selection and reloads immediately, no debounce needed.
     private readonly DispatcherTimer _reloadDebounceTimer;
-    private bool _pendingAesReload;
+
+    private readonly PakReloadCoordinator<OpenedPak> _reload;
 
     /// <summary>
     /// Set while <see cref="OpenRecentAsync"/> is applying a Recent entry's saved engine
@@ -323,6 +325,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         GameOptions = [new GameOption(Game.None, "None", game => Game = game), .. GameProfile.All.Select(p => new GameOption(p.Game, p.DisplayName, game => Game = game))];
         SyncGameOptions(Game);
 
+        _reload = new PakReloadCoordinator<OpenedPak>(new ReloadHost(this), Logger);
         _reloadDebounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(700) };
         _reloadDebounceTimer.Tick += ReloadDebounceTimer_Tick;
 
@@ -358,7 +361,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     partial void OnDefaultEngineVersionChanged(EngineVersion value)
     {
-        if (!_suppressReloadOnSettingsChange) _ = ReloadContextAsync(aesKeyChanged: false);
+        if (!_suppressReloadOnSettingsChange) _ = _reload.ReloadAsync();
     }
 
     private void SyncGameOptions(Game selected)
@@ -374,10 +377,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         // Choosing a game fills in its engine version and key; the two fields stay editable afterwards. "None" leaves them as they are.
         var profile = GameProfile.For(value);
-        var keyChanged = false;
         if (profile != null)
         {
-            keyChanged = !string.Equals(PakAesKeyHex, profile.AesKeyHex, StringComparison.Ordinal);
             _suppressReloadOnSettingsChange = true;
             try
             {
@@ -390,88 +391,127 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        ScheduleDebouncedReload(aesKeyChanged: keyChanged);
+        ScheduleDebouncedReload();
     }
+
+    /// <summary>The format a pak opened now is read in: the key field, and the selected game's variant (standard with no game).</summary>
+    private PakFormat OpenFormat => PakFormat.Resolve(GameProfile.For(Game), PakAesKeyHex);
+
+    /// <summary>The variant the pak dialogs read in: the selected game's, else the open pak's, else the standard one.</summary>
+    private PakVariant DialogPakVariant => GameProfile.For(Game)?.PakVariant ?? _currentPakSource?.Variant ?? PakVariant.Standard;
+
+    private static Task<PakAssetSource> OpenPakSourceAsync(string pakPath, PakFormat format, CancellationToken cancellationToken = default) =>
+        Task.Run(() => new PakAssetSource(pakPath, format.CopyAesKey(), variant: format.Variant), cancellationToken);
+
+    /// <summary>What the toolbar asks for right now.</summary>
+    private ReloadSettings CurrentSettings => new(DefaultEngineVersion, Game, UsmapPath, PakAesKeyHex);
 
     partial void OnUsmapPathChanged(string? value)
     {
-        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload(aesKeyChanged: false);
+        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload();
     }
 
     partial void OnPakAesKeyHexChanged(string value)
     {
-        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload(aesKeyChanged: true);
+        if (!_suppressReloadOnSettingsChange) ScheduleDebouncedReload();
     }
 
-    private void ScheduleDebouncedReload(bool aesKeyChanged)
+    private void ScheduleDebouncedReload()
     {
-        _pendingAesReload = _pendingAesReload || aesKeyChanged;
         _reloadDebounceTimer.Stop();
         _reloadDebounceTimer.Start();
     }
 
-    private async void ReloadDebounceTimer_Tick(object? sender, EventArgs e)
+    private async void ReloadDebounceTimer_Tick(object? sender, EventArgs e) => await _reload.ReloadAsync();
+
+    /// <summary>Runs a reload skipped because other work was in flight, as soon as that work ends.</summary>
+    partial void OnIsBusyChanged(bool value)
     {
-        _reloadDebounceTimer.Stop();
-        var aesKeyChanged = _pendingAesReload;
-        _pendingAesReload = false;
-        await ReloadContextAsync(aesKeyChanged);
+        if (!value) _ = _reload.RunPendingAsync();
     }
 
-    /// <summary>
-    /// Reacts to the user changing the UE version, usmap, or (for a pak-backed workspace)
-    /// AES key without requiring a restart: an AES key change can only take effect by
-    /// re-opening the pak (the key is baked into the native reader at construction), so
-    /// that path rebuilds the source and tree from scratch; a version/usmap-only change
-    /// reuses the existing source and just drops every already-open asset so the next
-    /// access re-parses it under the new settings. Either way, whatever was last shown
-    /// (a search, or one opened tree entry) is then replayed so the visible content
-    /// actually reflects the change instead of silently going stale.
-    /// </summary>
-    private async Task ReloadContextAsync(bool aesKeyChanged)
+    /// <summary>Makes <paramref name="opened"/> the current pak: the old source is disposed only now, after the new one opened, and the edits it carried are gone with it.</summary>
+    private void AdoptPak(OpenedPak opened)
     {
-        if (_workspace == null) return; // nothing open yet - new settings apply automatically the next time something opens
-        if (IsBusy) return; // don't interrupt in-flight work; settings still apply on the next explicit action
+        DisposeCurrentSource();
+        _dirtyAssetPaths.Clear();
+        _currentSource = opened.Source;
+        _currentPakSource = opened.Source;
+        _workspace = opened.Workspace;
+        _appliedResolverSettings = opened.Settings;
+        IsPakBacked = true;
+    }
 
-        if (!ConfirmDiscardDirtyEdits("Reload now and discard unsaved edits?"))
-            return;
+    private ResolverSettings? _appliedResolverSettings;
 
-        IsBusy = true;
-        StatusMessage = "Reloading with updated settings...";
+    /// <summary>A pak opened with its own workspace, not yet the current one; disposing it releases the source.</summary>
+    private sealed class OpenedPak(PakAssetSource source, AssetWorkspace workspace, ResolverSettings settings) : IDisposable
+    {
+        public PakAssetSource Source { get; } = source;
+        public AssetWorkspace Workspace { get; } = workspace;
+        public ResolverSettings Settings { get; } = settings;
+
+        public void Dispose() => Source.Dispose();
+    }
+
+    /// <summary>Opens <paramref name="pakPath"/> in <paramref name="format"/> with a workspace built from <paramref name="build"/>; nothing of the current source is touched, and a failure releases the new one.</summary>
+    private static async Task<OpenedPak> OpenPakWorkspaceAsync(string pakPath, PakFormat format, ResolverBuild build, CancellationToken cancellationToken = default)
+    {
+        var source = await OpenPakSourceAsync(pakPath, format, cancellationToken);
         try
         {
-            _dirtyAssetPaths.Clear();
-
-            if (aesKeyChanged && IsPakBacked && _currentPakSource != null)
-            {
-                var pakPath = _currentPakSource.PakPath;
-                var aesKey = ParseAesKey(PakAesKeyHex);
-
-                DisposeCurrentSource();
-
-                var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey));
-                _currentSource = pakSource;
-                _currentPakSource = pakSource;
-                _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
-                await RebuildTreeAsync(pakSource.ListAllEntries(), '/');
-            }
-            else
-            {
-                _workspace.UpdateVersionResolver(BuildVersionResolver());
-            }
-
-            await RefreshOpenContentAsync();
-            StatusMessage = "Reloaded with updated settings.";
+            return new OpenedPak(source, new AssetWorkspace(source, build.Resolver), build.Applied);
         }
-        catch (Exception ex)
+        catch
         {
-            Logger.LogError(ex, "Reload with updated settings failed for '{SourcePath}'.", SourcePath);
-            StatusMessage = $"Reload failed: {ex.Message}";
+            source.Dispose();
+            throw;
         }
-        finally
+    }
+
+    /// <summary>Gives <see cref="PakReloadCoordinator{TOpened}"/> the window's state and side effects; the reload logic itself lives there so it runs under test.</summary>
+    private sealed class ReloadHost(MainViewModel owner) : IPakReloadHost<OpenedPak>
+    {
+        public bool IsBusy { get => owner.IsBusy; set => owner.IsBusy = value; }
+
+        public AssetWorkspace? Workspace => owner._workspace;
+
+        public OpenPakInfo? OpenPak => owner.IsPakBacked && owner._currentPakSource is { } pak ? new OpenPakInfo(pak.PakPath, pak.Format) : null;
+
+        public ReloadSettings Settings => owner.CurrentSettings;
+
+        public ResolverSettings? AppliedSettings { get => owner._appliedResolverSettings; set => owner._appliedResolverSettings = value; }
+
+        public string StatusMessage { get => owner.StatusMessage; set => owner.StatusMessage = value; }
+
+        public bool UsmapFileExists(string path) => File.Exists(path);
+
+        public ResolverBuild BuildResolver(ReloadSettings settings) => MainViewModel.BuildResolver(settings);
+
+        public Task<OpenedPak> OpenPakAsync(string pakPath, PakFormat format, ResolverBuild build, CancellationToken cancellationToken) =>
+            OpenPakWorkspaceAsync(pakPath, format, build, cancellationToken);
+
+        public bool ConfirmDiscardUnsavedEdits() => owner.ConfirmDiscardUnsavedEdits("Reload now and discard unsaved edits?");
+
+        public bool ConfirmDiscardUnrepackedEdits() => owner.ConfirmDiscardUnrepackedEdits();
+
+        public async Task AdoptPakAsync(OpenedPak opened)
         {
-            IsBusy = false;
+            owner.AdoptPak(opened);
+            await owner.RebuildTreeAsync(opened.Source.ListAllEntries(), '/');
         }
+
+        public void ClearUnsavedEditTracking() => owner._dirtyAssetPaths.Clear();
+
+        public void ResetTreeAssets(IReadOnlyCollection<string> assetPaths)
+        {
+            foreach (var assetNode in owner.FindAssetNodes(new HashSet<string>(assetPaths, StringComparer.OrdinalIgnoreCase)))
+                assetNode.ResetLoadedState();
+        }
+
+        public Task RefreshOpenContentAsync() => owner.RefreshOpenContentAsync();
+
+        public void CancelScheduledReload() => owner._reloadDebounceTimer.Stop();
     }
 
     /// <summary>Re-runs whichever of the last search or last opened tree entry populated the results grid, against the (just-reloaded) workspace.</summary>
@@ -584,9 +624,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
 
+            var build = BuildResolver(CurrentSettings);
             var source = new LooseFolderAssetSource(folderPath);
             _currentSource = source;
-            _workspace = new AssetWorkspace(source, BuildVersionResolver());
+            _workspace = new AssetWorkspace(source, build.Resolver);
+            _appliedResolverSettings = build.Applied;
             IsPakBacked = false;
 
             // Enumerates only files (not EnumerateFileSystemEntries + a per-entry
@@ -625,20 +667,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Opening pak...";
         try
         {
-            DisposeCurrentSource();
-            _dirtyAssetPaths.Clear();
+            // The new pak is opened before anything of the current source is let go, so a pak that won't open (a wrong key) leaves the workspace and its edits as they were.
+            // The price is both paks' readers and extraction folders alive for the moment between the open and the swap.
+#pragma warning disable CA2000 // AdoptPak makes the opened pak the current source, which DisposeCurrentSource releases.
+            var opened = await OpenPakWorkspaceAsync(pakPath, OpenFormat, BuildResolver(CurrentSettings));
+#pragma warning restore CA2000
+            var pakSource = opened.Source;
+            AdoptPak(opened);
             SearchResults.Clear();
             _lastSearchQuery = null;
             _lastOpenedExports = [];
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
-
-            var aesKey = ParseAesKey(PakAesKeyHex);
-            var pakSource = await Task.Run(() => new PakAssetSource(pakPath, aesKey));
-            _currentSource = pakSource;
-            _currentPakSource = pakSource;
-            _workspace = new AssetWorkspace(pakSource, BuildVersionResolver());
-            IsPakBacked = true;
 
             await RebuildTreeAsync(pakSource.ListAllEntries(), '/');
             SourcePath = pakPath;
@@ -677,9 +717,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
 
+            var build = BuildResolver(CurrentSettings);
             var source = new SingleFileAssetSource(filePath);
             _currentSource = source;
-            _workspace = new AssetWorkspace(source, BuildVersionResolver());
+            _workspace = new AssetWorkspace(source, build.Resolver);
+            _appliedResolverSettings = build.Applied;
             IsPakBacked = false;
 
             await RebuildTreeAsync([Path.GetFileName(filePath)], '/');
@@ -1089,9 +1131,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Repacking selected...";
         try
         {
-            var aesKey = ParseAesKey(PakAesKeyHex);
             var result = await Task.Run(() =>
-                PakRepacker.Build(source, outputPath, aesKey: aesKey, entryFilter: entry => MatchesAnySelectedPrefix(entry, prefixes)));
+                PakRepacker.Build(source, outputPath, entryFilter: entry => MatchesAnySelectedPrefix(entry, prefixes)));
 
             // Unlike a full Repack, this only ever bakes in the selected subset - only
             // remove those specific paths from the at-risk set, so anything still
@@ -1107,7 +1148,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             }
             StatusMessage = result.HasFailures
                 ? $"Repack failed: {result.FailedEntries[0].Reason}"
-                : $"Repacked {result.SucceededCount} selected file(s) to {outputPath}.";
+                : $"Repacked {result.SucceededCount} selected file(s) to {outputPath}.{RepackFormatNote(source)}";
         }
         catch (Exception ex)
         {
@@ -1417,6 +1458,12 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         return count;
     }
 
+    /// <summary>A repack writes in its source's own key and variant; says so when the key/game fields now show something else, so the output isn't taken to be in that.</summary>
+    private string RepackFormatNote(PakAssetSource source) =>
+        PakReloadDecision.For(source.Format, GameProfile.For(Game), PakAesKeyHex).OpenPakDiffersFromSettings
+            ? " It was written in the open pak's own key and game format, not the key/game now selected."
+            : "";
+
     /// <summary>Repacks the currently-open pak - unlike <see cref="UnpackPakCommand"/>/<see cref="PackFolderCommand"/> (standalone tools that browse for their own source), this only ever operates on <see cref="_currentPakSource"/>, so <see cref="CanRepack"/> checks that directly instead of the generic <see cref="CanEditWorkspace"/>, matching how <see cref="CanRepackToIoStore"/> already does for its own command.</summary>
     [RelayCommand(CanExecute = nameof(CanRepack))]
     private async Task RepackAsync()
@@ -1442,8 +1489,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Repacking...";
         try
         {
-            var aesKey = ParseAesKey(PakAesKeyHex);
-            var result = await Task.Run(() => PakRepacker.Build(source, outputPath, aesKey: aesKey));
+            var result = await Task.Run(() => PakRepacker.Build(source, outputPath));
 
             // A failed Repack discards its partial output entirely (see PakRepacker) - so
             // only a clean run actually folded every saved-but-unrepacked edit into a real
@@ -1455,7 +1501,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 Logger.LogWarning("Repack -> '{OutputPath}' failed: {Reason}", outputPath, result.FailedEntries[0].Reason);
             StatusMessage = result.HasFailures
                 ? $"Repack failed: {result.FailedEntries[0].Reason}"
-                : $"Repacked to {outputPath}.";
+                : $"Repacked to {outputPath}.{RepackFormatNote(source)}";
         }
         catch (Exception ex)
         {
@@ -1591,7 +1637,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void UnpackPak()
     {
-        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex);
+        using var viewModel = new UnpackPakViewModel(_currentPakSource?.PakPath, PakAesKeyHex, DialogPakVariant);
         new UnpackPakWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
@@ -1600,7 +1646,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private void PackFolder()
     {
         using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex, DefaultEngineVersion,
-            mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version, game: Game);
+            mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version, game: Game, pakVariant: DialogPakVariant);
         new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
 
@@ -1621,7 +1667,6 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private async Task OpenRecentAsync(RecentSourceEntry entry)
     {
         _reloadDebounceTimer.Stop();
-        _pendingAesReload = false;
         _suppressReloadOnSettingsChange = true;
         try
         {
@@ -1895,7 +1940,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var source = _currentSource;
-        var versions = BuildVersionResolver();
+        var versions = BuildResolver(CurrentSettings).Resolver;
         var ruleSet = BuildRuleSet();
 
         PreviewChanges.Clear();
@@ -2100,23 +2145,25 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnResultRowDirty(SearchResultRow row) => _dirtyAssetPaths.Add(row.AssetPath);
 
-    private bool ConfirmDiscardDirtyEdits(string message = "Discard unsaved edits and continue?")
+    private bool ConfirmDiscardDirtyEdits(string message = "Discard unsaved edits and continue?") =>
+        ConfirmDiscardUnsavedEdits(message) && ConfirmDiscardUnrepackedEdits();
+
+    private bool ConfirmDiscardUnrepackedEdits()
     {
-        if (_dirtyAssetPaths.Count > 0)
-        {
-            var result = MessageBox.Show(message, "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return false;
-        }
+        if (_unrepackedSavedPaths.Count == 0) return true;
 
-        if (_unrepackedSavedPaths.Count > 0)
-        {
-            var result = MessageBox.Show(
-                $"Continue and lose {_unrepackedSavedPaths.Count} unrepacked asset(s)?",
-                "Unrepacked changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return false;
-        }
+        var result = MessageBox.Show(
+            $"Continue and lose {_unrepackedSavedPaths.Count} unrepacked asset(s)?",
+            "Unrepacked changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        return result == MessageBoxResult.Yes;
+    }
 
-        return true;
+    private bool ConfirmDiscardUnsavedEdits(string message)
+    {
+        if (_dirtyAssetPaths.Count == 0) return true;
+
+        var result = MessageBox.Show(message, "Unsaved changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        return result == MessageBoxResult.Yes;
     }
 
     private void DisposeCurrentSource()
@@ -2152,12 +2199,18 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private static byte[]? ParseAesKey(string hex) => PakAesKey.Parse(hex);
 
-    private EngineVersionResolver BuildVersionResolver()
+    /// <summary>Builds the resolver for <paramref name="settings"/>, loading its usmap when the file exists; a usmap that exists but can't be read throws.</summary>
+    private static ResolverBuild BuildResolver(ReloadSettings settings)
     {
-        var resolver = new EngineVersionResolver { DefaultVersion = DefaultEngineVersion, Game = Game };
-        if (!string.IsNullOrWhiteSpace(UsmapPath) && File.Exists(UsmapPath))
-            resolver.Mappings = new Usmap(UsmapPath);
-        return resolver;
+        var resolver = new EngineVersionResolver { DefaultVersion = settings.Version, Game = settings.Game };
+        var mappingsLoaded = false;
+        if (ResolverSettings.Create(settings.Version, settings.Game, settings.UsmapPath, mappingsLoaded: false).UsmapPath is { } usmapPath && File.Exists(usmapPath))
+        {
+            resolver.Mappings = new Usmap(usmapPath);
+            mappingsLoaded = true;
+        }
+
+        return new ResolverBuild(resolver, ResolverSettings.Create(settings.Version, settings.Game, settings.UsmapPath, mappingsLoaded));
     }
 
     private SearchQuery BuildScope() => new()

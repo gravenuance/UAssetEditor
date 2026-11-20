@@ -1,5 +1,6 @@
 using System.Globalization;
 using ModelContextProtocol;
+using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Tooling;
@@ -43,6 +44,9 @@ internal sealed class OpenSettings
 
     /// <summary>The AES key: the one given, else the game's. Never returned to the caller or logged.</summary>
     public byte[]? AesKey => AssetIo.ResolveAesKey(Args);
+
+    /// <summary>The game's pak format, else the standard one.</summary>
+    public PakVariant PakVariant => AssetIo.ResolvePakVariant(Args);
 
     /// <param name="aesKey">Hex, for a pak whose key is not the game's; kept in memory only.</param>
     public static OpenSettings Create(MappingsStore store, string? game, string? engineVersion, string? usmap, bool strict = false, string? aesKey = null)

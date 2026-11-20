@@ -42,13 +42,15 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         ToolInput.InRange(maxFiles, 1, MaxUnpackFiles, nameof(maxFiles));
         var folder = ToolPaths.Absolute(destination, nameof(destination));
         if (File.Exists(folder)) throw new McpException($"destination is a file: {folder}");
-        var key = OpenSettings.Create(store, game, null, null, aesKey: aesKey).AesKey;
+        var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
+        var key = settings.AesKey;
+        var variant = settings.PakVariant;
         var sink = new ProgressSink(progress, "Unpacked entries");
 
         return await ToolRuntime.UsePakWorkerBlockingAsync(() =>
         {
             // A threshold of zero keeps the source from extracting every asset up front: only the filtered entries are read.
-            using var source = new PakAssetSource(path, key, largePakThresholdBytes: 0);
+            using var source = new PakAssetSource(path, key, largePakThresholdBytes: 0, variant: variant);
             bool Matches(string entry) => entry.Contains(contains, StringComparison.OrdinalIgnoreCase);
 
             var entries = source.ListAllEntries().Where(Matches).ToList();
@@ -93,7 +95,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         [Description(ToolParams.Usmap + " Needed by kawaiiPhysics and the hidden-material patches.")] string? usmap = null,
         [Description(".pak only: mount point, default ../../../<folder name>/.")] string? mount = null,
         [Description(".pak only: pak version name, default V11.")] string? pakVersion = null,
-        [Description(".pak only: Zlib, Gzip, Oodle or Zstd; default none.")] string? compression = null,
+        [Description(".pak only: Zlib, Gzip, Oodle, Zstd or LZ4; default none.")] string? compression = null,
         [Description(ToolParams.AesKey)] string? aesKey = null,
         [Description(".utoc, game rivals only: encrypt the container's data blocks, as retoc-rivals --obfuscate does.")] bool obfuscate = false,
         [Description(".utoc, game rivals only: port legacy KawaiiPhysics anim nodes to the game's Chains layout (needs a usmap).")] bool kawaiiPhysics = false,
@@ -147,7 +149,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         var succeeded = await StagedAsync(target, async staging =>
         {
             var result = await ToolRuntime.UsePakWorkerBlockingAsync(
-                () => PakPacker.Build(source, staging, mountPoint, version, codecs, key, sink, cancellationToken),
+                () => PakPacker.Build(source, staging, mountPoint, version, codecs, key, settings.PakVariant, sink, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
             if (result.HasFailures) throw new McpException($"Packing failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
             return result.SucceededCount;
@@ -302,7 +304,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
 
         return await ToolRuntime.UsePakWorkerAsync(async () =>
         {
-            using var source = await Task.Run(() => new PakAssetSource(path, key), cancellationToken).ConfigureAwait(false);
+            using var source = await Task.Run(() => new PakAssetSource(path, key, variant: settings.PakVariant), cancellationToken).ConfigureAwait(false);
             var log = new LogLines(MaxLogLines);
             var edited = 0;
             var changes = 0;
@@ -332,7 +334,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            var result = await Task.Run(() => PakRepacker.Build(source, target, aesKey: key), CancellationToken.None).ConfigureAwait(false);
+            var result = await Task.Run(() => PakRepacker.Build(source, target), CancellationToken.None).ConfigureAwait(false);
             if (result.HasFailures) throw new McpException($"Repacking failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
 
             return new RepackResult(path, target, result.SucceededCount, edited, changes, log.ToList(), settings.Warnings());

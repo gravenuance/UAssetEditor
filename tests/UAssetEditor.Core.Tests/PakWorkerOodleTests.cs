@@ -14,8 +14,8 @@ public sealed class PakWorkerTestHooks
 }
 
 /// <summary>
-/// A copy of the worker in a folder of its own, so nothing beside it (an old oo2core_9_win64.dll left in a build output,
-/// which repak_bind would load from beside the executable) can reach a test.
+/// A copy of the worker in a folder of its own, so nothing beside it (an oo2core_9_win64.dll left in a build output) can
+/// reach a test, whatever the native library does.
 /// </summary>
 public sealed class CleanWorkerFolder : IDisposable
 {
@@ -249,7 +249,7 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
             using var plainReader = new PakReaderHandle(_worker, plain.Path, null, _ => OodleLibrary.NotFound);
             await plainReader.OpenAsync(TestContext.Current.CancellationToken);
             using var writer = new PakWriterHandle(_worker);
-            await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, TestContext.Current.CancellationToken);
+            await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, cancellationToken: TestContext.Current.CancellationToken);
             await writer.WriteFileAsync("Bar.uasset", Encoding.UTF8.GetBytes("bar"), TestContext.Current.CancellationToken);
             var before = await StateAsync(_worker);
 

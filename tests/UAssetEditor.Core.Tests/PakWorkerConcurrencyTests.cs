@@ -60,7 +60,7 @@ public sealed class PakWorkerConcurrencyTests : IClassFixture<CleanWorkerFolder>
         }
 
         using var writer = new PakWriterHandle(_worker);
-        await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, TestContext.Current.CancellationToken);
+        await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, cancellationToken: TestContext.Current.CancellationToken);
 
         try
         {
@@ -117,7 +117,7 @@ public sealed class PakWorkerConcurrencyTests : IClassFixture<CleanWorkerFolder>
         var written = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Lost_" + Guid.NewGuid().ToString("N") + ".pak");
         _files.Add(written);
         using var writer = new PakWriterHandle(_worker);
-        await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, TestContext.Current.CancellationToken);
+        await writer.OpenAsync(written, "../../../Game/", PakVersion.V11, null, null, cancellationToken: TestContext.Current.CancellationToken);
         await CrashAsync();
         using var reader = new PakReaderHandle(_worker, pak, null);
         await reader.OpenAsync(TestContext.Current.CancellationToken); // a session on the new worker, which the writer's old id must not reach

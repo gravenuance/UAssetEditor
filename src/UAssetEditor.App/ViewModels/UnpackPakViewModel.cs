@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using UAssetAPI;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Logging;
 
@@ -23,10 +24,13 @@ public sealed partial class UnpackPakViewModel : ObservableObject, IDisposable
 
     private CancellationTokenSource? _cts;
 
-    public UnpackPakViewModel(string? initialSourcePakPath, string initialAesKeyHex)
+    private readonly PakVariant _pakVariant;
+
+    public UnpackPakViewModel(string? initialSourcePakPath, string initialAesKeyHex, PakVariant pakVariant = PakVariant.Standard)
     {
         _sourcePakPath = initialSourcePakPath ?? "";
         _aesKeyHex = initialAesKeyHex;
+        _pakVariant = pakVariant;
     }
 
     [RelayCommand]
@@ -58,7 +62,7 @@ public sealed partial class UnpackPakViewModel : ObservableObject, IDisposable
 
             var result = await Task.Run(() =>
             {
-                using var source = new PakAssetSource(sourcePath, aesKey);
+                using var source = new PakAssetSource(sourcePath, aesKey, variant: _pakVariant);
                 ProgressTotal = source.ListAllEntries().Count;
                 return PakUnpacker.Unpack(source, destination, progress: progress, cancellationToken: _cts.Token);
             }, _cts.Token);

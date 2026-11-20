@@ -70,6 +70,9 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     public IReadOnlyList<PackOutputFormatOption> OutputFormats { get; } =
         [new PackOutputFormatOption(PackOutputFormat.Pak, "Legacy .pak"), new PackOutputFormatOption(PackOutputFormat.IoStore, "IoStore (.utoc)")];
 
+    /// <summary>The pak variant the dialog reads headers in and writes new paks in.</summary>
+    private readonly PakVariant _pakVariant;
+
     public bool IsNotRunning => !IsRunning;
     public bool IsPakFormat => OutputFormat == PackOutputFormat.Pak;
     public bool IsIoStoreFormat => OutputFormat == PackOutputFormat.IoStore;
@@ -77,10 +80,13 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     /// <summary>Retoc gives no incremental progress for to-zen, unlike <see cref="PakPacker"/>'s per-file callback - so the progress bar just spins while an IoStore pack is running instead of tracking real completion.</summary>
     public bool IsIndeterminateProgress => IsRunning && IsIoStoreFormat;
 
+    /// <param name="game">The selected game, for IoStore packing.</param>
+    /// <param name="pakVariant">The variant of paks the dialog reads and writes; the selected game's when omitted.</param>
     public PackFolderViewModel(string? initialSourceFolder, string initialMountPoint, string initialAesKeyHex, EngineVersion defaultEngineVersion,
-        bool mountPointIsAuthoritative = false, PakVersion? initialVersion = null, Game game = Game.None)
+        bool mountPointIsAuthoritative = false, PakVersion? initialVersion = null, Game game = Game.None, PakVariant? pakVariant = null)
     {
         _game = game;
+        _pakVariant = pakVariant ?? GameProfile.ResolvePakVariant(GameProfile.For(game));
         _sourceFolder = initialSourceFolder ?? "";
         _mountPoint = initialMountPoint;
         _aesKeyHex = initialAesKeyHex;
@@ -125,7 +131,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         try
         {
             var aesKey = PakAesKey.Parse(AesKeyHex);
-            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey));
+            var header = await Task.Run(() => PakMountPointReader.Read(dialog.FileName, aesKey, _pakVariant));
             MountPoint = header.MountPoint;
             Version = header.Version;
             Status = $"Mount point and version ({header.Version}) read from '{System.IO.Path.GetFileName(dialog.FileName)}'.";
@@ -177,7 +183,8 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
         var compression = Compression is { } c ? new[] { c } : null;
         var progress = new Progress<(int Done, int Total)>(p => { ProgressDone = p.Done; ProgressTotal = p.Total; });
 
-        var result = await Task.Run(() => PakPacker.Build(sourceFolder, outputPath, mountPoint, version, compression, aesKey, progress, cancellationToken), cancellationToken);
+        var variant = _pakVariant;
+        var result = await Task.Run(() => PakPacker.Build(sourceFolder, outputPath, mountPoint, version, compression, aesKey, variant, progress, cancellationToken), cancellationToken);
 
         Status = result.HasFailures
             ? $"Pack failed: {result.FailedEntries[0].Reason}"

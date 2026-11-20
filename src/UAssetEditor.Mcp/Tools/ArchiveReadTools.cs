@@ -24,9 +24,11 @@ internal sealed class ArchiveReadTools(MappingsStore store)
     {
         ToolRuntime.RequireWindows("pak_info");
         var path = ToolPaths.ExistingFile(pak, nameof(pak), ".pak");
-        var key = OpenSettings.Create(store, game, null, null, aesKey: aesKey).AesKey;
+        var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
+        var key = settings.AesKey;
+        var variant = settings.PakVariant;
 
-        var info = await ToolRuntime.UsePakWorkerBlockingAsync(() => PakMountPointReader.Read(path, key), cancellationToken).ConfigureAwait(false);
+        var info = await ToolRuntime.UsePakWorkerBlockingAsync(() => PakMountPointReader.Read(path, key, variant), cancellationToken).ConfigureAwait(false);
         return new PakInfoResult(path, Untrusted.Clean(info.MountPoint, 500), info.Version.ToString());
     }
 
@@ -44,11 +46,13 @@ internal sealed class ArchiveReadTools(MappingsStore store)
         ToolInput.InRange(maxResults, 1, MaxEntries, nameof(maxResults));
         var path = ToolPaths.ExistingFile(pak, nameof(pak), ".pak");
         var contains = ToolInput.Optional(filter, nameof(filter), 300);
-        var key = OpenSettings.Create(store, game, null, null, aesKey: aesKey).AesKey;
+        var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
+        var key = settings.AesKey;
+        var variant = settings.PakVariant;
 
         var entries = await ToolRuntime.UsePakWorkerAsync(async () =>
         {
-            using var reader = new PakReaderHandle(PakWorkerProcess.Shared, path, key);
+            using var reader = new PakReaderHandle(PakWorkerProcess.Shared, path, key, variant);
             await reader.OpenAsync(cancellationToken).ConfigureAwait(false);
             return reader.Entries;
         }, cancellationToken).ConfigureAwait(false);

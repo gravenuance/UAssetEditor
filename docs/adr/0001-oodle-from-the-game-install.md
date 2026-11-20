@@ -8,7 +8,7 @@ Legacy Unreal 4 paks mark some entries `COMPRESS_Custom` (flag `0x04`), which in
 
 `oo2core` is Epic Games Tools' (RAD's) proprietary library. This repository and its releases are public. Neither Days Gone nor Marvel Rivals ships the DLL (checked on a Steam install, 2026-11-18): both link Oodle into their executables. Other Unreal games do ship it, for example Final Fantasy VII Remake in `Engine/Binaries/ThirdParty/Oodle/Win64/oo2core_7_win64.dll`.
 
-Two properties of `repak_bind` shape the design. It reads `REPAK_OODLE_DLL` once, when Oodle is first needed, and keeps that result (a failed lookup too) for the life of the process. And when the variable's path does not load it falls back to `oo2core_9_win64.dll` by bare name (the worker's folder, the working folder, `PATH`). The worker is one long-lived process shared by every open pak.
+Two properties of `repak_bind` shape the design. It reads `REPAK_OODLE_DLL` when Oodle is first needed and keeps a successful load for the life of the process (a failed one is not kept, so the next read tries the variable again). And it loads only that absolute path: it searches neither the worker's folder, the working folder nor `PATH`. The worker is one long-lived process shared by every open pak. (Before the unified `repak_bind` of 2026-11-19 it kept a failed lookup too and fell back to `oo2core_9_win64.dll` by bare name.)
 
 ## Options
 
@@ -35,7 +35,7 @@ The app has no settings store for this: `lastSession.json` is per-session UI sta
 
 - Reading Days Gone or Marvel Rivals Oodle entries needs a DLL from some other game or tool the user owns; the README and the error message say so.
 - Auto-detect loads and runs code from the game's folder, which is the same trust as running that game; the project accepts this. A pak opened from a folder laid out like a game (a project folder with `Content` and `Binaries/Win64`, or an `Engine` folder) can carry a planted `oo2core_*_win64.dll`; the name and file checks do not prove it is genuine. Because the search stops at the first root, a DLL in an unrelated folder above or beside the install is not reachable.
-- `repak_bind` itself still falls back to `oo2core_9_win64.dll` beside the worker (the worker's working folder is its own folder, never the host's) and then in `PATH` when the path it was given will not load. This app puts no file in either place, but the fallback is the remaining way a planted DLL could load, through `PATH` or the worker's folder; it is tracked in `TODO.md` for repak-cs-bindings.
+- `repak_bind` loads Oodle only from the absolute path in `REPAK_OODLE_DLL`, which this app validates, so a DLL planted beside the worker or on `PATH` is never loaded. `PakNativeLibraryTests` checks that the embedded `repak_bind.dll` names no `oo2core` file to search for, so a re-vendored older build is caught.
 - A DLL beside a pak that is not inside a recognisable game root (a loose pak in Downloads with `oo2core_*_win64.dll` next to it) is deliberately not found; point `REPAK_OODLE_DLL` at it instead.
 - Each distinct DLL path costs one more worker process for the session, started the first time a pak needs it. A worker is never replaced for another reader's sake, but a reader opened on a worker that crashed reopens its pak on the next read.
 - The worker's crash and state entries used by the tests answer only a worker started with `UASSETEDITOR_PAKWORKER_TEST_HOOKS=1`, which only the test process sets.

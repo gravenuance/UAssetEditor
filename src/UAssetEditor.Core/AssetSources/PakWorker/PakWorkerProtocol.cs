@@ -81,6 +81,9 @@ public sealed class PakWorkerRequest
     public string? PakPath { get; init; }
     public string? AesKeyHex { get; init; }
 
+    /// <summary>The game's pak format for <see cref="PakWorkerOpcode.OpenReader"/> and <see cref="PakWorkerOpcode.OpenWriter"/>; absent means <see cref="PakVariant.Standard"/>.</summary>
+    public PakVariant? Variant { get; init; }
+
     public string? EntryPath { get; init; }
     public string? MountPoint { get; init; }
     public PakVersion? Version { get; init; }

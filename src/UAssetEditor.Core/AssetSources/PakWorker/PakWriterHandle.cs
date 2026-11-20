@@ -24,7 +24,7 @@ public sealed class PakWriterHandle : IDisposable
 
     public async Task OpenAsync(
         string outputPakPath, string mountPoint, PakVersion version, PakCompression[]? compression, byte[]? aesKey,
-        CancellationToken cancellationToken = default)
+        PakVariant variant = PakVariant.Standard, CancellationToken cancellationToken = default)
     {
         var request = new PakWorkerRequest
         {
@@ -34,6 +34,7 @@ public sealed class PakWriterHandle : IDisposable
             Version = version,
             Compression = compression,
             AesKeyHex = aesKey != null ? Convert.ToHexString(aesKey) : null,
+            Variant = variant,
         };
 
         var (response, _) = await _client.SendAsync(request, operation: $"creating '{outputPakPath}'", cancellationToken: cancellationToken).ConfigureAwait(false);

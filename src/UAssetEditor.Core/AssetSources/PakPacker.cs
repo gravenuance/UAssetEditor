@@ -7,7 +7,8 @@ namespace UAssetEditor.Core.AssetSources;
 /// Builds a brand-new .pak from an arbitrary loose folder on disk - the counterpart to
 /// <see cref="PakRepacker"/>, which only ever rebuilds from an already-open
 /// <see cref="PakAssetSource"/>. Every file under <paramref name="sourceFolder"/> (recursively)
-/// becomes one pak entry, keyed by its path relative to that folder. Writes go through the
+/// becomes one pak entry, keyed by its path relative to that folder; the pak is written in the given
+/// <see cref="PakVariant"/>, which must be the game's own or its readers cannot open it. Writes go through the
 /// out-of-process worker like every other repak call (see <see cref="PakWorkerProcess"/>) -
 /// a crash mid-build is not resumable (a pak writer session can't append after the fact), so
 /// it fails this whole attempt cleanly, discarding the partial output, rather than the app.
@@ -21,6 +22,7 @@ public static class PakPacker
         PakVersion version = PakVersion.V11,
         PakCompression[]? compression = null,
         byte[]? aesKey = null,
+        PakVariant variant = PakVariant.Standard,
         IProgress<(int Done, int Total)>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -29,7 +31,7 @@ public static class PakPacker
         using var writer = new PakWriterHandle(PakWorkerProcess.Shared);
         try
         {
-            writer.OpenAsync(outputPakPath, mountPoint, version, compression, aesKey, cancellationToken).GetAwaiter().GetResult();
+            writer.OpenAsync(outputPakPath, mountPoint, version, compression, aesKey, variant, cancellationToken).GetAwaiter().GetResult();
 
             for (var i = 0; i < files.Count; i++)
             {
