@@ -95,7 +95,16 @@ public sealed class PakVariantTests : IDisposable
             writer.WriteIndex();
         }
 
-        Assert.ThrowsAny<Exception>(() => ReadWithAPlainReader(path, "Marvel/Content/Foo.uasset"));
+        // Control: the pak itself is sound and the native reader works; only the key form decides.
+        using (var stream = File.OpenRead(path))
+        using (var asStored = new PakBuilder())
+        {
+            asStored.Key(Key).Variant(PakVariant.MarvelRivals);
+            using var reader = asStored.Reader(stream);
+            Assert.Equal(Contents, reader.Get(stream, "Marvel/Content/Foo.uasset"));
+        }
+
+        Assert.Throws<IOException>(() => ReadWithAPlainReader(path, "Marvel/Content/Foo.uasset"));
         Assert.ThrowsAny<Exception>(() => PakMountPointReader.Read(path, Key, PakVariant.MarvelRivals));
     }
 
