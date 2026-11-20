@@ -103,6 +103,7 @@ public class PakPackerTests
             using var check = new PakAssetSource(outputPath, key, variant: PakVariant.MarvelRivals);
             using var rented = check.ReadOriginalBytes("Foo.uasset");
             Assert.Equal(Encoding.UTF8.GetBytes("foo"), rented.ToArray());
+            Assert.ThrowsAny<Exception>(() => PakMountPointReader.Read(outputPath, key, PakVariant.Standard));
         }
         finally
         {

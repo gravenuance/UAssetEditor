@@ -58,7 +58,7 @@ public sealed class PakWorkerSessionTests : IDisposable
     {
         var failure = new InvalidOperationException("Failed to read the pak", new IOException("The device is not ready.", new EndOfStreamException("Unexpected end.")));
 
-        Assert.Equal("Failed to read the pak: The device is not ready.: Unexpected end.", PakWorkerError.Describe(failure));
+        Assert.Equal("Failed to read the pak: The device is not ready: Unexpected end.", PakWorkerError.Describe(failure));
     }
 
     [Fact]

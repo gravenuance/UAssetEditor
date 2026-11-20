@@ -1,4 +1,5 @@
 using System.IO;
+using UAssetAPI;
 using UAssetAPI.UnrealTypes;
 using UAssetEditor.App.ViewModels;
 using UAssetEditor.Core.AssetSources;
@@ -68,19 +69,39 @@ public class PackFolderViewModelTests
     public async Task RunningAPakPack_ForMarvelRivals_WritesThePakInTheGamesFormat()
     {
         var rivals = GameProfile.For(Game.MarvelRivals)!;
+
+        await PackAndAssertReadsOnlyAsRivalsAsync(rivals, (folder, output) =>
+            new PackFolderViewModel(folder, "../../../Mod/", rivals.AesKeyHex, EngineVersion.VER_UE5_3, game: Game.MarvelRivals) { OutputPath = output });
+    }
+
+    [Fact]
+    public async Task RunningAPakPack_WithTheVariantOfTheOpenPak_AndNoGame_WritesThePakInThatVariant()
+    {
+        // MainViewModel passes the dialog variant (the open pak's own when no game is selected); the game alone would give Standard.
+        var rivals = GameProfile.For(Game.MarvelRivals)!;
+
+        await PackAndAssertReadsOnlyAsRivalsAsync(rivals, (folder, output) =>
+            new PackFolderViewModel(folder, "../../../Mod/", rivals.AesKeyHex, EngineVersion.VER_UE5_3, game: Game.None, pakVariant: PakVariant.MarvelRivals) { OutputPath = output });
+    }
+
+    private static async Task PackAndAssertReadsOnlyAsRivalsAsync(GameProfile rivals, Func<string, string, PackFolderViewModel> createViewModel)
+    {
         var folder = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_PackVm_" + Guid.NewGuid());
         Directory.CreateDirectory(folder);
         await File.WriteAllTextAsync(Path.Combine(folder, "A.txt"), "a", TestContext.Current.CancellationToken);
         var output = folder + ".pak";
         try
         {
-            using var viewModel = new PackFolderViewModel(folder, "../../../Mod/", rivals.AesKeyHex, EngineVersion.VER_UE5_3, game: Game.MarvelRivals) { OutputPath = output };
+            using var viewModel = createViewModel(folder, output);
 
             await viewModel.RunCommand.ExecuteAsync(null);
 
-            var readAsRivals = await Record.ExceptionAsync(() => Task.Run(() => PakMountPointReader.Read(output, PakAesKey.Parse(rivals.AesKeyHex), rivals.PakVariant)));
-            Assert.Null(readAsRivals);
+            var key = PakAesKey.Parse(rivals.AesKeyHex);
             Assert.True(viewModel.IsDone, viewModel.Status);
+            var readAsRivals = await Record.ExceptionAsync(() => Task.Run(() => PakMountPointReader.Read(output, key, PakVariant.MarvelRivals)));
+            Assert.Null(readAsRivals);
+            var readAsStandard = await Record.ExceptionAsync(() => Task.Run(() => PakMountPointReader.Read(output, key, PakVariant.Standard)));
+            Assert.NotNull(readAsStandard);
         }
         finally
         {

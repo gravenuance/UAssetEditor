@@ -12,7 +12,7 @@ public static class PakWorkerError
         for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
         {
             if (!text.Contains(inner.Message, StringComparison.Ordinal))
-                text = $"{text}: {inner.Message}";
+                text = $"{text.TrimEnd().TrimEnd('.')}: {inner.Message}";
         }
         return text;
     }
