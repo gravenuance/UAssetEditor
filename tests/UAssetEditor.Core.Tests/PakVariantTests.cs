@@ -212,7 +212,7 @@ public sealed class PakVariantTests : IDisposable
         Assert.Equal(source.Format, PakFormat.Resolve(GameProfile.For(Game.MarvelRivals), GameProfile.For(Game.MarvelRivals)!.AesKeyHex));
         Assert.Equal(source.Format, PakFormat.Resolve(null, GameProfile.For(Game.MarvelRivals)!.AesKeyHex, source.Variant));
         Assert.NotEqual(source.Format, PakFormat.Resolve(GameProfile.For(Game.FinalFantasy7Remake), GameProfile.For(Game.FinalFantasy7Remake)!.AesKeyHex));
-        Assert.NotEqual(source.Format, PakFormat.Resolve(GameProfile.For(Game.MarvelRivals), "00"));
+        Assert.NotEqual(source.Format, PakFormat.Resolve(GameProfile.For(Game.MarvelRivals), new string('0', 64)));
     }
 
     [Fact]

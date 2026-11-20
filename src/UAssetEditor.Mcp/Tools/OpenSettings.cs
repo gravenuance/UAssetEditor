@@ -2,6 +2,7 @@ using System.Globalization;
 using ModelContextProtocol;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
+using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Games;
 using UAssetEditor.Tooling;
 
@@ -17,7 +18,6 @@ namespace UAssetEditor.Mcp.Tools;
 internal sealed class OpenSettings
 {
     private const int MaxWarnings = 20;
-    private const int AesKeyBytes = 32;
 
     private readonly StringWriter _diagnostics;
     private readonly List<string> _notes;
@@ -65,7 +65,7 @@ internal sealed class OpenSettings
         var usmapPath = ResolveUsmap(store, profile, usmap, notes);
         if (usmapPath != null) arguments.AddRange(["--usmap", usmapPath]);
 
-        if (ToolInput.Optional(aesKey, nameof(aesKey), 200) is { } keyText) arguments.AddRange(["--aes", ValidateHex(keyText)]);
+        if (ToolInput.Optional(aesKey, nameof(aesKey), 200) is { } keyText) arguments.AddRange(["--aes", ValidateKey(keyText)]);
 
         // Last, so a value-less switch cannot take a following value.
         if (strict) arguments.Add("--strict");
@@ -114,17 +114,16 @@ internal sealed class OpenSettings
         return stored.Path;
     }
 
-    private static string ValidateHex(string text)
+    /// <summary>Checks a given key once, up front, so a bad one fails the call before anything opens; a key given but empty (just "0x") is refused too.</summary>
+    private static string ValidateKey(string text)
     {
-        var hex = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? text[2..] : text;
-        const string Refusal = "aesKey must be exactly 32 bytes: 64 hex digits, with or without a leading 0x.";
         try
         {
-            return Convert.FromHexString(hex).Length == AesKeyBytes ? text : throw new McpException(Refusal);
+            return PakAesKey.Parse(text) is null ? throw new McpException(PakAesKey.Requirement) : text;
         }
         catch (FormatException ex)
         {
-            throw new McpException(Refusal, ex);
+            throw new McpException(ex.Message, ex);
         }
     }
 }

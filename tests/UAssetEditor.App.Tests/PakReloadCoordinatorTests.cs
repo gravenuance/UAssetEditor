@@ -430,7 +430,7 @@ public sealed class PakReloadCoordinatorTests
         await CoordinatorFor(host).ReloadAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(EngineVersion.VER_UE5_4, host.AppliedSettings!.Version);
-        Assert.Contains("not a valid hex", host.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("32 bytes", host.StatusMessage, StringComparison.Ordinal);
         Assert.DoesNotContain("open", host.Calls);
     }
 
