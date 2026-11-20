@@ -68,6 +68,14 @@ public sealed class PakWorkerSessionTests : IDisposable
     }
 
     [Fact]
+    public void OnlyOneTrailingFullStopOfAMessage_IsDroppedBeforeTheInnerOne()
+    {
+        var failure = new InvalidOperationException("Waiting...", new IOException("timed out"));
+
+        Assert.Equal("Waiting..: timed out", PakWorkerError.Describe(failure));
+    }
+
+    [Fact]
     public void AnInnerMessageTheOuterOneAlreadyQuotes_IsNotRepeated()
     {
         var failure = new InvalidOperationException("Failed: disk full", new IOException("disk full"));

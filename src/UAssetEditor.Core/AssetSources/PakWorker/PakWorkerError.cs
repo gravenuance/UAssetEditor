@@ -12,8 +12,15 @@ public static class PakWorkerError
         for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
         {
             if (!text.Contains(inner.Message, StringComparison.Ordinal))
-                text = $"{text.TrimEnd().TrimEnd('.')}: {inner.Message}";
+                text = $"{WithoutOneTrailingFullStop(text)}: {inner.Message}";
         }
         return text;
+    }
+
+    /// <summary>Drops a single closing '.', so an ellipsis or an abbreviation in a message keeps the rest of its dots.</summary>
+    private static string WithoutOneTrailingFullStop(string text)
+    {
+        var trimmed = text.TrimEnd();
+        return trimmed is [.., '.'] ? trimmed[..^1] : trimmed;
     }
 }
