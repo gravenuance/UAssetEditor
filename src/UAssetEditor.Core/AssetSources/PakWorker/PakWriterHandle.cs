@@ -33,7 +33,7 @@ public sealed class PakWriterHandle : IDisposable
             MountPoint = mountPoint,
             Version = version,
             Compression = compression,
-            AesKeyHex = aesKey != null ? Convert.ToHexString(aesKey) : null,
+            AesKeyHex = PakFormat.Of(aesKey, variant).CipherKeyHex(),
             Variant = variant,
         };
 

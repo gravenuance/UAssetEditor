@@ -11,6 +11,8 @@ namespace UAssetEditor.Core.Tests;
 public sealed class PakVariantTests : IDisposable
 {
     private static readonly byte[] Key = PakAesKey.Parse(GameProfile.For(Game.MarvelRivals)!.AesKeyHex)!;
+    // The key the game's own paks are encrypted with: the profile key with each 4-byte word reversed (hand-derived).
+    private static readonly byte[] PakCipherKey = Convert.FromHexString("8C3D260C85B0DC22C3994889836379A3E09DBFE9C908FBCB2EEF2DBF749DF284");
     private static readonly byte[] Contents = Enumerable.Range(0, 5000).Select(i => (byte)(i % 7)).ToArray();
 
     private readonly List<string> _files = [];
@@ -27,11 +29,74 @@ public sealed class PakVariantTests : IDisposable
         _files.Add(path);
         using var stream = File.Create(path);
         using var builder = new PakBuilder();
-        builder.Key(Key).Variant(PakVariant.MarvelRivals).Compression([PakCompression.Zlib]);
+        builder.Key(PakCipherKey).Variant(PakVariant.MarvelRivals).Compression([PakCompression.Zlib]);
         using var writer = builder.Writer(stream, PakVersion.V11, "../../../Marvel/");
         writer.WriteFile("Marvel/Content/Foo.uasset", Contents);
         writer.WriteIndex();
         return path;
+    }
+
+    /// <summary>Reads an entry the way a plain repak reader does: the pak cipher key is given directly, with no profile key in sight.</summary>
+    private static byte[] ReadWithAPlainReader(string pak, string entry)
+    {
+        using var stream = File.OpenRead(pak);
+        using var builder = new PakBuilder();
+        builder.Key(PakCipherKey).Variant(PakVariant.MarvelRivals);
+        using var reader = builder.Reader(stream);
+        return reader.Get(stream, entry);
+    }
+
+    [Fact]
+    public void APakPackedForMarvelRivals_IsReadableByAPlainReader_GivenTheReversedKey()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Pack_" + Guid.NewGuid());
+        Directory.CreateDirectory(folder);
+        File.WriteAllBytes(Path.Combine(folder, "Foo.uasset"), Contents);
+        var output = folder + ".pak";
+        _files.Add(output);
+        try
+        {
+            var result = PakPacker.Build(folder, output, "../../../Marvel/", compression: [PakCompression.Zlib], aesKey: Key, variant: PakVariant.MarvelRivals,
+                cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.False(result.HasFailures);
+            Assert.Equal(Contents, ReadWithAPlainReader(output, "Foo.uasset"));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ARepackOfAMarvelRivalsPak_IsReadableByAPlainReader_GivenTheReversedKey()
+    {
+        var pak = MarvelRivalsPak();
+        var output = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
+        _files.Add(output);
+        using (var source = new PakAssetSource(pak, Key, variant: PakVariant.MarvelRivals))
+            Assert.False(PakRepacker.Build(source, output, compression: [PakCompression.Zlib]).HasFailures);
+
+        Assert.Equal(Contents, ReadWithAPlainReader(output, "Marvel/Content/Foo.uasset"));
+    }
+
+    [Fact]
+    public void AMarvelRivalsPak_WrittenWithTheProfileKeyAsStored_IsNotWhatTheGameReads()
+    {
+        // The pre-fix writer used the profile key as is; the game cannot read such a pak, so neither may we call it a Rivals pak.
+        var path = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_" + Guid.NewGuid() + ".pak");
+        _files.Add(path);
+        using (var stream = File.Create(path))
+        using (var builder = new PakBuilder())
+        {
+            builder.Key(Key).Variant(PakVariant.MarvelRivals).Compression([PakCompression.Zlib]);
+            using var writer = builder.Writer(stream, PakVersion.V11, "../../../Marvel/");
+            writer.WriteFile("Marvel/Content/Foo.uasset", Contents);
+            writer.WriteIndex();
+        }
+
+        Assert.ThrowsAny<Exception>(() => ReadWithAPlainReader(path, "Marvel/Content/Foo.uasset"));
+        Assert.ThrowsAny<Exception>(() => PakMountPointReader.Read(path, Key, PakVariant.MarvelRivals));
     }
 
     [Fact]

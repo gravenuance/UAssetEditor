@@ -79,6 +79,7 @@ public sealed class PakWorkerRequest
     /// <summary>A session id the worker handed out; random per worker, so an id from another worker or from before a restart is refused.</summary>
     public long SessionId { get; init; }
     public string? PakPath { get; init; }
+    /// <summary>The key the pak's cipher is keyed with (<see cref="PakFormat.CipherKeyHex"/>), which the worker uses as given.</summary>
     public string? AesKeyHex { get; init; }
 
     /// <summary>The game's pak format for <see cref="PakWorkerOpcode.OpenReader"/> and <see cref="PakWorkerOpcode.OpenWriter"/>; absent means <see cref="PakVariant.Standard"/>.</summary>

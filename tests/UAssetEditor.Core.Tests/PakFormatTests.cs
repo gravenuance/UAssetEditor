@@ -71,6 +71,50 @@ public sealed class PakFormatTests
     }
 
     [Fact]
+    public void ForMarvelRivals_TheCipherKeyIsTheProfileKey_WithEach4ByteWordReversed()
+    {
+        // Hand-derived: 0C 26 3D 8C -> 8C 3D 26 0C, 22 DC B0 85 -> 85 B0 DC 22, and so on for all eight words.
+        const string PakCipherKeyHex = "8C3D260C85B0DC22C3994889836379A3E09DBFE9C908FBCB2EEF2DBF749DF284";
+
+        var format = PakFormat.Resolve(GameProfile.For(Game.MarvelRivals), RivalsKeyHex);
+
+        Assert.Equal(Convert.FromHexString(PakCipherKeyHex), format.CopyCipherKey());
+        Assert.Equal(Convert.FromHexString(RivalsKeyHex[2..]), format.CopyAesKey());
+    }
+
+    [Fact]
+    public void ForAStandardPak_TheCipherKeyIsTheKeyAsGiven()
+    {
+        var format = PakFormat.Of(Convert.FromHexString("00112233445566778899AABBCCDDEEFF"), PakVariant.Standard);
+
+        Assert.Equal(Convert.FromHexString("00112233445566778899AABBCCDDEEFF"), format.CopyCipherKey());
+    }
+
+    [Fact]
+    public void WithNoKey_ThereIsNoCipherKey_InEveryVariant()
+    {
+        Assert.Null(PakFormat.Of(null, PakVariant.MarvelRivals).CopyCipherKey());
+        Assert.Null(PakFormat.Of([], PakVariant.MarvelRivals).CopyCipherKey());
+        Assert.Null(PakFormat.Of(null, PakVariant.Standard).CopyCipherKey());
+    }
+
+    [Fact]
+    public void ARivalsKeyThatIsNotWholeWords_IsRefused_NotReversedPartway()
+    {
+        Assert.Throws<FormatException>(() => PakFormat.Of([1, 2, 3, 4, 5], PakVariant.MarvelRivals).CopyCipherKey());
+    }
+
+    [Fact]
+    public void TheCipherKeyBytes_CannotBeChangedThroughTheFormat()
+    {
+        var format = PakFormat.Of([1, 2, 3, 4], PakVariant.MarvelRivals);
+
+        format.CopyCipherKey()![0] = 9;
+
+        Assert.Equal(new byte[] { 4, 3, 2, 1 }, format.CopyCipherKey());
+    }
+
+    [Fact]
     public void TheKeyBytes_CannotBeChangedThroughTheFormat()
     {
         var format = PakFormat.Of([1, 2, 3], PakVariant.Standard);
