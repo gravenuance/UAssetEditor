@@ -82,7 +82,7 @@ public sealed partial class PakReaderHandle : IDisposable
         {
             Opcode = PakWorkerOpcode.OpenReader,
             PakPath = Path.GetFullPath(_pakPath), // the worker's working folder is its own, so a relative path would resolve there
-            AesKeyHex = _aesKey != null ? Convert.ToHexString(_aesKey) : null,
+            AesKeyHex = PakFormat.Of(_aesKey, _variant).CipherKeyHex(),
             Variant = _variant,
         };
 

@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text;
 using UAssetAPI;
+using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Games;
 
@@ -162,6 +163,31 @@ public class RetocProcessTests
 
             Assert.Equal("No assets converted - see the log for retoc's reason.", exception.UserMessage);
             Assert.Contains("legacy assets", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ARivalsCompanionPak_WrittenByRetoc_OpensWithTheProfileKeyAsAMarvelRivalsPak()
+    {
+        // retoc encrypts its companion stub with the pak form of the key; the app must derive the same form from the profile key.
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var pakPath = BuildLegacyTestPak(workDir);
+            var utocPath = Path.Combine(workDir, "rivals_9999999_P.utoc");
+            var profile = GameProfile.For(Game.MarvelRivals)!;
+            var key = PakAesKey.Parse(profile.AesKeyHex);
+
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", key, new RetocZenOptions(Game.MarvelRivals), cancellationToken: TestContext.Current.CancellationToken);
+
+            var header = PakMountPointReader.Read(Path.ChangeExtension(utocPath, ".pak"), key, profile.PakVariant);
+            Assert.Equal(PakVersion.V11, header.Version);
+            Assert.StartsWith("../../../", header.MountPoint, StringComparison.Ordinal);
         }
         finally
         {

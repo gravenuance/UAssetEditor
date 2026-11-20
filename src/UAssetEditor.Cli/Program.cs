@@ -261,6 +261,8 @@ static void PrintUsage()
               Records that fail to inflate and a log that stops early are reported on stderr.
 
         Pak/IoStore archive commands (mirror the app's Unpack/Pack/Convert dialogs and Repack). All take --aes <hex> for an encrypted pak.
+        With --game rivals, --aes is the same key the IoStore containers use (the one --game rivals fills in): a Marvel Rivals pak
+        is encrypted with that key's 4-byte words byte-reversed, and uacli does the reversal itself. Never type the reversed form.
 
           uacli pak-info <pak> [--aes <hex>]
               Print a .pak's mount point and format version.
