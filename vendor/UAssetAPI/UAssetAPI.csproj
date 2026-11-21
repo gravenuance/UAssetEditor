@@ -97,7 +97,6 @@
   </Target>
   <ItemGroup>
     <None Remove="repak_bind.dll.gz" />
-    <None Remove="repak_bind.so.gz" />
   </ItemGroup>
   <ItemGroup>
     <Compile Update="Properties\Resources.Designer.cs">
@@ -115,9 +114,6 @@
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="repak_bind.dll.gz" WithCulture="false">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="repak_bind.so.gz" WithCulture="false">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>

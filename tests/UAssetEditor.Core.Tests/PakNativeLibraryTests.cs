@@ -16,6 +16,14 @@ public sealed class PakNativeLibraryTests
     }
 
     [Fact]
+    public void OnlyTheWindowsLibraryIsEmbedded()
+    {
+        var libraries = typeof(PakBuilder).Assembly.GetManifestResourceNames().Where(name => name.Contains("repak_bind", StringComparison.Ordinal));
+
+        Assert.Equal(["UAssetAPI.repak_bind.dll.gz"], libraries);
+    }
+
+    [Fact]
     public void TheEmbeddedLibrary_NeverSearchesForOodleByName()
     {
         var library = EmbeddedWindowsLibrary();
