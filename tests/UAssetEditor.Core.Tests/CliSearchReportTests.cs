@@ -18,6 +18,22 @@ public class CliSearchReportTests
     }
 
     [Fact]
+    public void Warnings_ArePrefixedSkipLinesOfTheOutcome_SoTheWordingCannotDrift()
+    {
+        var outcome = new SearchOutcome([], 0, 3, 1, 0, [new SearchSkip("bad.uasset", "InvalidOperationException: cannot open")]);
+
+        Assert.Equal(["bad.uasset: InvalidOperationException: cannot open"], outcome.SkipLines());
+        Assert.Equal(outcome.SkipLines().Select(line => $"Warning: {line}"), Commands.SearchWarnings(outcome));
+        Assert.Equal(outcome.SkipLines(), outcome.Warnings().Skip(1));
+    }
+
+    [Fact]
+    public void Every_front_end_limits_a_search_regex_to_three_seconds()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(3), SearchQuery.DefaultRegexTimeout);
+    }
+
+    [Fact]
     public void Summary_CountsEveryMatch_NotOnlyTheOnesKept()
     {
         var outcome = new SearchOutcome([Hit("a.uasset")], 7, 5, 0, 0, []);

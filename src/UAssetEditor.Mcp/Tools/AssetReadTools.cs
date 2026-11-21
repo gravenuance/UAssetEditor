@@ -25,7 +25,6 @@ internal sealed class AssetReadTools(MappingsStore store)
     private const int MaxResults = 2000;
     private const int MaxSearchHits = 1000;
     private const int MaxValueLength = 500;
-    private static readonly TimeSpan SearchRegexTimeout = TimeSpan.FromSeconds(3);
     private const int MaxDumpCharacters = 150_000;
     private const int MaxMemberCharacters = 150_000;
 
@@ -266,7 +265,7 @@ internal sealed class AssetReadTools(MappingsStore store)
             ValueCompare = compare,
             ReferenceTerms = ToTerms(terms[3]),
             ReferenceCompare = compare,
-            RegexTimeout = SearchRegexTimeout,
+            RegexTimeout = SearchQuery.DefaultRegexTimeout,
         };
 
         SearchOutcome outcome;

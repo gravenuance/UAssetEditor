@@ -105,7 +105,7 @@ internal static class Commands
             ValueCompare = compare,
             ReferenceTerms = ToTerms(args.Option("reference")),
             ReferenceCompare = compare,
-            RegexTimeout = TimeSpan.FromSeconds(3),
+            RegexTimeout = SearchQuery.DefaultRegexTimeout,
         };
 
         SearchOutcome outcome;
@@ -143,7 +143,7 @@ internal static class Commands
 
     /// <summary>One warning per asset that was not searched, with the reason (the first few only).</summary>
     internal static IReadOnlyList<string> SearchWarnings(SearchOutcome outcome) =>
-        [.. outcome.Skips.Select(skip => $"Warning: {skip.AssetPath}: {skip.Reason}")];
+        [.. outcome.SkipLines().Select(line => $"Warning: {line}")];
 
     private static IReadOnlyList<ConditionTerm> ToTerms(string? text) =>
         text == null ? [] : [new ConditionTerm(text)];

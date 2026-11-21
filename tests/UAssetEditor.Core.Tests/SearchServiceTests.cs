@@ -370,6 +370,58 @@ public class SearchServiceTests
         Assert.Equal(20, outcome.Skips.Count);
     }
 
+    [Fact]
+    public async Task SearchAllAsync_DoesNotBuildSkipReasonsItWillNotKeep()
+    {
+        var messageReads = 0;
+        var source = new FailingAssetsSource(200, descending: false, () => new MessageCountingException(() => Interlocked.Increment(ref messageReads)));
+
+        var outcome = await SearchService.SearchAllAsync(source, new EngineVersionResolver(), new SearchQuery { PropertyNameTerms = ["Count"] }, maxDegreeOfParallelism: 1, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(200, outcome.AssetsSkipped);
+        Assert.Equal(20, outcome.Skips.Count);
+        Assert.Equal(20, messageReads);
+    }
+
+    [Fact]
+    public async Task SearchAllAsync_NamesTheFirstSkippedPathsWhateverOrderTheAssetsFail()
+    {
+        var source = new FailingAssetsSource(200, descending: true, () => new InvalidOperationException("cannot open"));
+
+        var outcome = await SearchService.SearchAllAsync(source, new EngineVersionResolver(), new SearchQuery { PropertyNameTerms = ["Count"] }, maxDegreeOfParallelism: 1, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(200, outcome.AssetsSkipped);
+        Assert.Equal(Enumerable.Range(0, 20).Select(i => $"bad{i:D3}.uasset"), outcome.Skips.Select(skip => skip.AssetPath));
+    }
+
+#pragma warning disable CA1032 // A test double built with one delegate; the standard exception constructors would be unused.
+    private sealed class MessageCountingException(Action onMessageRead) : InvalidOperationException
+#pragma warning restore CA1032
+    {
+        public override string Message
+        {
+            get
+            {
+                onMessageRead();
+                return "cannot open";
+            }
+        }
+    }
+
+    private sealed class FailingAssetsSource(int count, bool descending, Func<Exception> failure) : Core.AssetSources.IAssetSource
+    {
+        public IEnumerable<string> EnumerateAssetPaths()
+        {
+            var indexes = Enumerable.Range(0, count);
+            return (descending ? indexes.Reverse() : indexes).Select(i => $"bad{i:D3}.uasset");
+        }
+
+        public UAssetAPI.UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game) =>
+            throw failure();
+
+        public void SaveAsset(UAssetAPI.UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }
+    }
+
     private sealed class ManyBadAssetsSource(int count) : Core.AssetSources.IAssetSource
     {
         public IEnumerable<string> EnumerateAssetPaths() => Enumerable.Range(0, count).Select(i => $"bad{i}.uasset");
