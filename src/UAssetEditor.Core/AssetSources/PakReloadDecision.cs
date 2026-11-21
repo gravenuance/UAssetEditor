@@ -29,7 +29,7 @@ public sealed record PakReloadDecision
 
     /// <summary>
     /// Compares the open pak's <paramref name="openFormat"/> with what the settings ask for: the selected game's variant (the
-    /// open pak's own when no game is selected) and the key text. Never throws for key text that is not hex.
+    /// open pak's own when no game is selected) and the key text. Never throws for key text that is not a valid key.
     /// </summary>
     public static PakReloadDecision For(PakFormat openFormat, GameProfile? profile, string? aesKeyHex)
     {
@@ -40,9 +40,9 @@ public sealed record PakReloadDecision
         {
             wanted = PakFormat.Resolve(profile, aesKeyHex, openFormat.Variant);
         }
-        catch (FormatException)
+        catch (FormatException ex)
         {
-            return new PakReloadDecision(null, "The AES key is not a valid hex string.");
+            return new PakReloadDecision(null, ex.Message);
         }
 
         return new PakReloadDecision(wanted.Equals(openFormat) ? null : wanted, null);

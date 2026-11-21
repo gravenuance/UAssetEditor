@@ -29,14 +29,11 @@ public sealed record PakFormat
     /// Marvel Rivals pak is encrypted with it with each 4-byte word byte-reversed (as retoc does for its companion paks).
     /// The one place the two forms are told apart: every pak read and write takes the key from here.
     /// </summary>
-    /// <exception cref="FormatException">A Marvel Rivals key is not a whole number of 4-byte words.</exception>
     public byte[]? CopyCipherKey()
     {
         var key = CopyAesKey();
         if (key == null || Variant != PakVariant.MarvelRivals) return key;
 
-        if (key.Length % sizeof(uint) != 0)
-            throw new FormatException($"A Marvel Rivals pak key must be a whole number of 4-byte words, not {key.Length} bytes.");
         for (var word = 0; word < key.Length; word += sizeof(uint))
             Array.Reverse(key, word, sizeof(uint));
         return key;
@@ -45,14 +42,19 @@ public sealed record PakFormat
     /// <summary><see cref="CopyCipherKey"/> as the hex the pak worker takes, or null for an unencrypted pak.</summary>
     public string? CipherKeyHex() => CopyCipherKey() is { } key ? Convert.ToHexString(key) : null;
 
-    public static PakFormat Of(byte[]? aesKey, PakVariant variant) =>
-        new(aesKey is { Length: > 0 } ? Convert.ToHexString(aesKey) : "", variant);
+    /// <exception cref="ArgumentException">The key is not empty and not <see cref="PakAesKey.Length"/> bytes.</exception>
+    public static PakFormat Of(byte[]? aesKey, PakVariant variant)
+    {
+        if (aesKey == null || aesKey.Length == 0) return new PakFormat("", variant);
+        if (aesKey.Length != PakAesKey.Length) throw new ArgumentException(PakAesKey.Requirement, nameof(aesKey));
+        return new PakFormat(Convert.ToHexString(aesKey), variant);
+    }
 
     /// <summary>
     /// The format for a game selection: the game's variant, or <paramref name="keptVariant"/> when no game is selected (so a pak
     /// already open keeps the variant it was opened with); the key is <paramref name="aesKeyHex"/> (an empty one means none).
     /// </summary>
-    /// <exception cref="FormatException">The key text is not hex.</exception>
+    /// <exception cref="FormatException">The key text is not exactly <see cref="PakAesKey.Length"/> bytes of hex.</exception>
     public static PakFormat Resolve(GameProfile? profile, string? aesKeyHex, PakVariant keptVariant = PakVariant.Standard) =>
         Of(PakAesKey.Parse(aesKeyHex ?? ""), profile?.PakVariant ?? keptVariant);
 }

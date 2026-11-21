@@ -7,7 +7,8 @@ namespace UAssetEditor.Core.Tests;
 /// <summary>When an open pak must be reopened after a key or game change, and what a bad key does to that decision.</summary>
 public sealed class PakReloadDecisionTests
 {
-    private const string KeyHex = "00112233445566778899AABBCCDDEEFF";
+    private const string KeyHex = "00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF";
+    private const string OtherKeyHex = "FFEEDDCCBBAA99887766554433221100FFEEDDCCBBAA99887766554433221100";
     private static readonly byte[] KeyBytes = Convert.FromHexString(KeyHex);
 
     [Fact]
@@ -22,8 +23,8 @@ public sealed class PakReloadDecisionTests
     }
 
     [Theory]
-    [InlineData("0x00112233445566778899aabbccddeeff")]
-    [InlineData("  00112233445566778899AABBCCDDEEFF  ")]
+    [InlineData("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")]
+    [InlineData("  00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF  ")]
     public void TheSameKeySpeltDifferently_IsNotAReason_ToReopen(string keyText)
     {
         var decision = PakReloadDecision.For(PakFormat.Of(KeyBytes, PakVariant.Standard), null, keyText);
@@ -34,10 +35,10 @@ public sealed class PakReloadDecisionTests
     [Fact]
     public void ADifferentKey_ReopensInTheNewKey_KeepingTheOpenVariant()
     {
-        var decision = PakReloadDecision.For(PakFormat.Of(KeyBytes, PakVariant.MarvelRivals), null, "FFEEDDCCBBAA99887766554433221100");
+        var decision = PakReloadDecision.For(PakFormat.Of(KeyBytes, PakVariant.MarvelRivals), null, OtherKeyHex);
 
         Assert.True(decision.NeedsReopen);
-        Assert.Equal(PakFormat.Of(Convert.FromHexString("FFEEDDCCBBAA99887766554433221100"), PakVariant.MarvelRivals), decision.ReopenAs);
+        Assert.Equal(PakFormat.Of(Convert.FromHexString(OtherKeyHex), PakVariant.MarvelRivals), decision.ReopenAs);
         Assert.Null(decision.KeyProblem);
     }
 
@@ -70,12 +71,13 @@ public sealed class PakReloadDecisionTests
     [Theory]
     [InlineData("not hex")]
     [InlineData("0xABC")]
-    public void AKeyThatIsNotHex_IsReported_NotThrown_AndTheOpenPakIsKept(string keyText)
+    [InlineData("00112233445566778899AABBCCDDEEFF")] // 16 bytes
+    public void AKeyThatIsNotAValidKey_IsReported_NotThrown_AndTheOpenPakIsKept(string keyText)
     {
         var decision = PakReloadDecision.For(PakFormat.Of(KeyBytes, PakVariant.Standard), null, keyText);
 
         Assert.False(decision.NeedsReopen);
-        Assert.False(string.IsNullOrWhiteSpace(decision.KeyProblem));
+        Assert.Equal(PakAesKey.Requirement, decision.KeyProblem);
         Assert.True(decision.OpenPakDiffersFromSettings);
     }
 }

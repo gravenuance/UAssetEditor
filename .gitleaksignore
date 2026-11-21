@@ -8,3 +8,5 @@ daf0873a8c11520bc13d954152e9ed5c4aedebb5:tests/UAssetEditor.Mcp.Tests/SecretsTes
 e95dddc41e50bddea3fb6cbc56f695461b105ac1:tests/UAssetEditor.App.Tests/EditorSessionTests.cs:generic-api-key:39
 # Marvel Rivals' own pak AES key, published in modding tools; not a credential of ours. Replaced by a dummy in a later commit.
 ac2fedceccf13b4021a67a6ca46adbfd546347ed:tests/UAssetEditor.App.Tests/EditorSessionTests.cs:generic-api-key:37
+# Made-up AES key in a test (0011..EEFF pattern); not a real key.
+4abb114c05c65aa98b47c67b3598af66120b8792:tests/UAssetEditor.Core.Tests/PakReloadDecisionTests.cs:generic-api-key:10

@@ -51,23 +51,23 @@ public sealed class PakFormatTests
     [Fact]
     public void TwoFormats_AreEqualWhenKeyBytesAndVariantAre_HoweverTheKeyWasSpelt()
     {
-        var bytes = Convert.FromHexString("00112233445566778899AABBCCDDEEFF");
+        var bytes = Convert.FromHexString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF");
 
         var fromBytes = PakFormat.Of(bytes, PakVariant.Standard);
 
-        Assert.Equal(fromBytes, PakFormat.Resolve(null, "0x00112233445566778899aabbccddeeff"));
-        Assert.Equal(fromBytes, PakFormat.Resolve(null, " 00112233445566778899AABBCCDDEEFF "));
+        Assert.Equal(fromBytes, PakFormat.Resolve(null, "0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"));
+        Assert.Equal(fromBytes, PakFormat.Resolve(null, " 00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF "));
         Assert.Equal(PakFormat.Of(null, PakVariant.Standard), PakFormat.Resolve(null, ""));
     }
 
     [Fact]
     public void TwoFormats_DifferByKey_OrByVariant()
     {
-        var format = PakFormat.Of([1, 2, 3], PakVariant.Standard);
+        var format = PakFormat.Of(KeyStartingWith(1, 2, 3), PakVariant.Standard);
 
-        Assert.NotEqual(format, PakFormat.Of([1, 2, 4], PakVariant.Standard));
+        Assert.NotEqual(format, PakFormat.Of(KeyStartingWith(1, 2, 4), PakVariant.Standard));
         Assert.NotEqual(format, PakFormat.Of(null, PakVariant.Standard));
-        Assert.NotEqual(format, PakFormat.Of([1, 2, 3], PakVariant.MarvelRivals));
+        Assert.NotEqual(format, PakFormat.Of(KeyStartingWith(1, 2, 3), PakVariant.MarvelRivals));
     }
 
     [Fact]
@@ -85,9 +85,9 @@ public sealed class PakFormatTests
     [Fact]
     public void ForAStandardPak_TheCipherKeyIsTheKeyAsGiven()
     {
-        var format = PakFormat.Of(Convert.FromHexString("00112233445566778899AABBCCDDEEFF"), PakVariant.Standard);
+        var format = PakFormat.Of(Convert.FromHexString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"), PakVariant.Standard);
 
-        Assert.Equal(Convert.FromHexString("00112233445566778899AABBCCDDEEFF"), format.CopyCipherKey());
+        Assert.Equal(Convert.FromHexString("00112233445566778899AABBCCDDEEFF00112233445566778899AABBCCDDEEFF"), format.CopyCipherKey());
     }
 
     [Fact]
@@ -99,28 +99,30 @@ public sealed class PakFormatTests
     }
 
     [Fact]
-    public void ARivalsKeyThatIsNotWholeWords_IsRefused_NotReversedPartway()
-    {
-        Assert.Throws<FormatException>(() => PakFormat.Of([1, 2, 3, 4, 5], PakVariant.MarvelRivals).CopyCipherKey());
-    }
-
-    [Fact]
     public void TheCipherKeyBytes_CannotBeChangedThroughTheFormat()
     {
-        var format = PakFormat.Of([1, 2, 3, 4], PakVariant.MarvelRivals);
+        var format = PakFormat.Of(KeyStartingWith(1, 2, 3, 4), PakVariant.MarvelRivals);
 
         format.CopyCipherKey()![0] = 9;
 
-        Assert.Equal(new byte[] { 4, 3, 2, 1 }, format.CopyCipherKey());
+        Assert.Equal(KeyStartingWith(4, 3, 2, 1), format.CopyCipherKey());
     }
 
     [Fact]
     public void TheKeyBytes_CannotBeChangedThroughTheFormat()
     {
-        var format = PakFormat.Of([1, 2, 3], PakVariant.Standard);
+        var format = PakFormat.Of(KeyStartingWith(1, 2, 3), PakVariant.Standard);
 
         format.CopyAesKey()![0] = 9;
 
-        Assert.Equal(new byte[] { 1, 2, 3 }, format.CopyAesKey());
+        Assert.Equal(KeyStartingWith(1, 2, 3), format.CopyAesKey());
+    }
+
+    /// <summary>A 32-byte key whose first bytes are <paramref name="head"/> and the rest zero.</summary>
+    private static byte[] KeyStartingWith(params byte[] head)
+    {
+        var key = new byte[32];
+        head.CopyTo(key, 0);
+        return key;
     }
 }
