@@ -38,7 +38,11 @@ public sealed class CleanWorkerFolder : IDisposable
 
     public string WorkerExecutable { get; }
 
-    public void Dispose() => Directory.Delete(_folder, recursive: true);
+    /// <summary>Deletes the folder; a second call, after one that succeeded, does nothing.</summary>
+    public void Dispose()
+    {
+        if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
+    }
 }
 
 /// <summary>
@@ -70,7 +74,7 @@ public sealed class PakWorkerOodleTests : IClassFixture<CleanWorkerFolder>, IDis
         Path.Combine(Path.GetTempPath(), "UAssetEditorTest_NoOodle_" + Guid.NewGuid().ToString("N"), name);
 
     /// <summary>The process id and the REPAK_OODLE_DLL ("" when none) of <paramref name="worker"/>, through its test-only state entry.</summary>
-    private static async Task<(int ProcessId, string Variable)> StateAsync(PakWorkerProcess worker)
+    internal static async Task<(int ProcessId, string Variable)> StateAsync(PakWorkerProcess worker)
     {
         var request = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, EntryPath = "__TEST_STATE__" };
         var (response, payload) = await new PakWorkerClient(worker).SendPooledAsync(request, cancellationToken: TestContext.Current.CancellationToken);
