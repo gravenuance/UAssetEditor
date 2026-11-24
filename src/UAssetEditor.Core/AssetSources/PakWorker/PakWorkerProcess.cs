@@ -41,7 +41,9 @@ public sealed partial class PakWorkerProcess : IDisposable
     private readonly string? _fixedOodlePath;
     private readonly PakWorkerProcess _root;
     private readonly ConcurrentDictionary<string, PakWorkerProcess> _byOodlePath = new(StringComparer.OrdinalIgnoreCase);
+#pragma warning disable CA2213 // Dispose detaches it and disposes it after the shared exit wait, which the analyzer cannot follow
     private Process? _process;
+#pragma warning restore CA2213
     private NamedPipeServerStream? _pipe;
 
     public PakWorkerProcess()
@@ -73,7 +75,8 @@ public sealed partial class PakWorkerProcess : IDisposable
     /// a worker and stomp on each other's Process/pipe fields. Current callers happen to
     /// already serialize themselves (the UI only ever runs one busy operation at a time, and
     /// each <see cref="PakAssetSource"/> serializes its own reads via its own lock), but
-    /// nothing here should rely on that staying true.
+    /// nothing here should rely on that staying true. <see cref="Dispose"/> takes it too, so it never stops a worker
+    /// while a start is still publishing one.
     /// </summary>
     private readonly SemaphoreSlim _ensureLock = new(1, 1);
 
@@ -84,15 +87,35 @@ public sealed partial class PakWorkerProcess : IDisposable
     /// </summary>
     private readonly SemaphoreSlim _requestLock = new(1, 1);
 
-    private volatile bool _disposed;
+    /// <summary>Cancelled when disposal starts, so no caller waits on a lock or a connect of a worker being torn down.</summary>
+    private readonly CancellationTokenSource _disposing = new();
+
+    /// <summary>1 once disposal has started; set by exchange, so disposal runs exactly once.</summary>
+    private int _disposeState;
+
+    private bool IsDisposed => Volatile.Read(ref _disposeState) != 0;
 
     /// <summary>Waits for the pipe; dispose the result to let the next request through.</summary>
     internal async Task<IDisposable> AcquireRequestAsync(CancellationToken cancellationToken)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
 
-        await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitUnlessDisposedAsync(_requestLock, cancellationToken).ConfigureAwait(false);
         return new RequestTurn(() => _requestLock.Release());
+    }
+
+    /// <summary>Waits for <paramref name="gate"/>; a disposal that starts meanwhile ends the wait with an <see cref="ObjectDisposedException"/>.</summary>
+    private async Task WaitUnlessDisposedAsync(SemaphoreSlim gate, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposing.Token);
+        try
+        {
+            await gate.WaitAsync(linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new ObjectDisposedException(nameof(PakWorkerProcess));
+        }
     }
 
     private sealed class RequestTurn(Action release) : IDisposable
@@ -120,13 +143,13 @@ public sealed partial class PakWorkerProcess : IDisposable
     public PakWorkerProcess ForOodleLibrary(string oodlePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(oodlePath);
-        ObjectDisposedException.ThrowIf(_root._disposed, this);
+        ObjectDisposedException.ThrowIf(_root.IsDisposed, this);
 
         if (string.Equals(OodleLibraryPath, oodlePath, StringComparison.OrdinalIgnoreCase)) return this;
         if (string.Equals(_root.OodleLibraryPath, oodlePath, StringComparison.OrdinalIgnoreCase)) return _root;
 
         var worker = _root._byOodlePath.GetOrAdd(oodlePath, static (path, root) => new PakWorkerProcess(root, path), _root);
-        if (_root._disposed)
+        if (_root.IsDisposed)
         {
             // Disposed between the check and the add: the root's Dispose may have missed this worker, so stop it here.
             worker.Dispose();
@@ -139,13 +162,13 @@ public sealed partial class PakWorkerProcess : IDisposable
     /// <summary>The connected pipe to the live worker, spawning one first if none is currently alive.</summary>
     public async Task<NamedPipeServerStream> EnsureAsync(CancellationToken cancellationToken = default)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         if (_pipe != null && !IsDead) return _pipe;
 
-        await _ensureLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await WaitUnlessDisposedAsync(_ensureLock, cancellationToken).ConfigureAwait(false);
         try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this); // disposed while this caller waited: never start a worker nobody will stop
+            ObjectDisposedException.ThrowIf(IsDisposed, this); // Dispose waits for this lock: a start past this check is stopped by it
             if (_pipe != null && !IsDead) return _pipe; // a concurrent caller may have already respawned it while this one waited
 
             await CleanupAsync().ConfigureAwait(false); // leaves IsDead set: it stays so unless a worker starts and connects
@@ -194,9 +217,16 @@ public sealed partial class PakWorkerProcess : IDisposable
             _process = process;
             OodleLibraryPath = oodlePath;
 
+            using var connectOrDispose = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposing.Token);
             try
             {
-                await ConnectAsync(pipe, exited.Task, cancellationToken).ConfigureAwait(false);
+                await ConnectAsync(pipe, exited.Task, connectOrDispose.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Dispose cut the connect short and waits for this lock; the worker is stopped here or by it.
+                await CleanupAsync().ConfigureAwait(false);
+                throw new ObjectDisposedException(nameof(PakWorkerProcess));
             }
             catch
             {
@@ -278,6 +308,7 @@ public sealed partial class PakWorkerProcess : IDisposable
     /// Drops the pipe and kills the worker, then hands it back for the caller to wait for and dispose. Neither a kill nor
     /// <see cref="Process.HasExited"/> (true once an exit code is set, a crashed worker's too) means the process has ended:
     /// the files it loaded (repak_bind.dll) stay locked until its handle is signalled, which only a wait observes.
+    /// Called only under <see cref="_ensureLock"/>.
     /// </summary>
     private Process? Detach()
     {
@@ -311,14 +342,6 @@ public sealed partial class PakWorkerProcess : IDisposable
     }
 
     /// <summary>Stops the worker and returns once it has ended (or <see cref="ExitTimeout"/> passed), so nothing it loaded stays locked.</summary>
-    private void Cleanup()
-    {
-        using var process = Detach();
-        if (process != null && !process.WaitForExit(ExitTimeout))
-            LogExitTimedOut(AppLog.For<PakWorkerProcess>(), process.Id, ExitTimeout);
-    }
-
-    /// <inheritdoc cref="Cleanup"/>
     private async Task CleanupAsync()
     {
         using var process = Detach();
@@ -336,22 +359,76 @@ public sealed partial class PakWorkerProcess : IDisposable
         }
     }
 
-    /// <summary>Stops this worker and every worker it started for another Oodle DLL; returns once they have exited (or <see cref="ExitTimeout"/> passed for one), so their files can be deleted.</summary>
+    /// <summary>Stops this worker and every worker it started for another Oodle DLL; returns once they have exited (or <see cref="ExitTimeout"/> passed), so their files can be deleted.</summary>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-
+        // Every worker is cancelled before any is waited for, so one deadline covers them all. Blocking is deliberate:
+        // callers dispose at shutdown (app, CLI, MCP server), and a worker left running would keep its files locked after it.
+        var disposingSelf = TryBeginDispose();
+        var claimed = new List<PakWorkerProcess>();
         foreach (var worker in _byOodlePath.Values)
-            worker.Dispose();
-        // Blocks briefly, but every caller disposes at shutdown (app, CLI, MCP server), where nothing else needs the thread.
-        Cleanup();
-        _ensureLock.Dispose();
-        _requestLock.Dispose();
+        {
+            if (worker.TryBeginDispose()) claimed.Add(worker);
+        }
+
+        var deadline = Stopwatch.StartNew();
+        var stopping = new List<Process>();
+        if (disposingSelf) Stop(stopping, Remaining(deadline));
+        foreach (var worker in claimed)
+            worker.Stop(stopping, Remaining(deadline));
+
+        foreach (var process in stopping)
+        {
+            using (process)
+            {
+                if (!process.WaitForExit(Remaining(deadline)))
+                    LogExitTimedOut(AppLog.For<PakWorkerProcess>(), process.Id, deadline.Elapsed);
+            }
+        }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Pak worker {ProcessId} was still running {Timeout} after it was killed")]
-    private static partial void LogExitTimedOut(ILogger logger, int processId, TimeSpan timeout);
+    private static TimeSpan Remaining(Stopwatch deadline)
+    {
+        var left = ExitTimeout - deadline.Elapsed;
+        return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+    }
+
+    /// <summary>Marks this worker disposed (true for the one caller that does so) and cancels its pending connect and lock waits.</summary>
+    private bool TryBeginDispose()
+    {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0) return false;
+
+        _disposing.Cancel();
+        return true;
+    }
+
+    /// <summary>Kills this worker's process once no start holds the lock (or <paramref name="lockWait"/> passed), adding it to <paramref name="stopping"/>.</summary>
+    private void Stop(List<Process> stopping, TimeSpan lockWait)
+    {
+        var locked = _ensureLock.Wait(lockWait);
+        if (!locked) LogStartStillRunning(AppLog.For<PakWorkerProcess>(), lockWait);
+
+        try
+        {
+            if (Detach() is { } process) stopping.Add(process);
+        }
+        finally
+        {
+            _requestLock.Dispose();
+            if (locked)
+            {
+                // A start still holding the lock needs both to finish; nothing they hold is unmanaged.
+                _ensureLock.Dispose();
+                _disposing.Dispose();
+            }
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Pak worker {ProcessId} was still running {Waited} after it was killed")]
+    private static partial void LogExitTimedOut(ILogger logger, int processId, TimeSpan waited);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A pak worker start was still running {Waited} into disposal; stopping its worker without waiting for it")]
+    private static partial void LogStartStillRunning(ILogger logger, TimeSpan waited);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Killing the pak worker failed")]
     private static partial void LogKillFailed(ILogger logger, Exception exception);
