@@ -1,6 +1,9 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipes;
+using Microsoft.Extensions.Logging;
+using UAssetEditor.Core.Logging;
 
 namespace UAssetEditor.Core.AssetSources.PakWorker;
 
@@ -17,13 +20,16 @@ namespace UAssetEditor.Core.AssetSources.PakWorker;
 /// <see cref="ForOodleLibrary"/>, so no worker is ever replaced while someone else's session lives in it.
 /// </para>
 /// </summary>
-public sealed class PakWorkerProcess : IDisposable
+public sealed partial class PakWorkerProcess : IDisposable
 {
     /// <summary>When set to 1 in the worker's environment, it answers the test-only entries (<c>__TEST_CRASH__</c>, <c>__TEST_STATE__</c>); production workers never do.</summary>
     public const string TestHooksEnvironmentVariable = "UASSETEDITOR_PAKWORKER_TEST_HOOKS";
 
     /// <summary>How long a started worker has to connect (its own connect gives up after 10 s; the first start also unpacks the embedded exe).</summary>
     internal static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long stopping a worker waits for the killed process to end before logging and moving on.</summary>
+    private static readonly TimeSpan ExitTimeout = TimeSpan.FromSeconds(10);
 
     private const string EmbeddedResourceName = "UAssetEditor.PakWorker.exe";
     private const string EnvVarOverride = "UASSETEDITOR_PAKWORKER_PATH";
@@ -142,7 +148,7 @@ public sealed class PakWorkerProcess : IDisposable
             ObjectDisposedException.ThrowIf(_disposed, this); // disposed while this caller waited: never start a worker nobody will stop
             if (_pipe != null && !IsDead) return _pipe; // a concurrent caller may have already respawned it while this one waited
 
-            Cleanup(); // leaves IsDead set: it stays so unless a worker starts and connects
+            await CleanupAsync().ConfigureAwait(false); // leaves IsDead set: it stays so unless a worker starts and connects
 
             var exePath = ResolveWorkerExecutable();
             var pipeName = $"UAssetEditor.PakWorker.{Environment.ProcessId}.{Guid.NewGuid():N}";
@@ -194,7 +200,7 @@ public sealed class PakWorkerProcess : IDisposable
             }
             catch
             {
-                Cleanup(); // a worker that never connected is of no use to the next caller either
+                await CleanupAsync().ConfigureAwait(false); // a worker that never connected is of no use to the next caller either
                 throw;
             }
 
@@ -268,21 +274,69 @@ public sealed class PakWorkerProcess : IDisposable
             .FirstOrDefault();
     });
 
-    private void Cleanup()
+    /// <summary>
+    /// Drops the pipe and kills the worker, then hands it back for the caller to wait for and dispose. Neither a kill nor
+    /// <see cref="Process.HasExited"/> (true once an exit code is set, a crashed worker's too) means the process has ended:
+    /// the files it loaded (repak_bind.dll) stay locked until its handle is signalled, which only a wait observes.
+    /// </summary>
+    private Process? Detach()
     {
         _pipe?.Dispose();
         _pipe = null;
-
-        if (_process is { HasExited: false })
-        {
-            try { _process.Kill(entireProcessTree: true); }
-            catch { /* best effort */ }
-        }
-        _process?.Dispose();
-        _process = null;
         IsDead = true;
+
+        var process = _process;
+        _process = null;
+        if (process == null) return null;
+
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch (Win32Exception ex)
+        {
+            LogKillFailed(AppLog.For<PakWorkerProcess>(), ex);
+        }
+        catch (AggregateException ex)
+        {
+            // A whole-tree kill reports a descendant it could not stop this way; the worker's own exit is still awaited below.
+            LogKillFailed(AppLog.For<PakWorkerProcess>(), ex);
+        }
+        catch (InvalidOperationException)
+        {
+            // The worker exited between the check and the kill, which is what the kill was for.
+        }
+
+        return process;
     }
 
+    /// <summary>Stops the worker and returns once it has ended (or <see cref="ExitTimeout"/> passed), so nothing it loaded stays locked.</summary>
+    private void Cleanup()
+    {
+        using var process = Detach();
+        if (process != null && !process.WaitForExit(ExitTimeout))
+            LogExitTimedOut(AppLog.For<PakWorkerProcess>(), process.Id, ExitTimeout);
+    }
+
+    /// <inheritdoc cref="Cleanup"/>
+    private async Task CleanupAsync()
+    {
+        using var process = Detach();
+        if (process == null) return;
+
+        using var timeout = new CancellationTokenSource(ExitTimeout);
+        try
+        {
+            // Not the caller's token: a worker left running when the caller gives up would keep its files locked.
+            await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            LogExitTimedOut(AppLog.For<PakWorkerProcess>(), process.Id, ExitTimeout);
+        }
+    }
+
+    /// <summary>Stops this worker and every worker it started for another Oodle DLL; returns once they have exited (or <see cref="ExitTimeout"/> passed for one), so their files can be deleted.</summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -290,8 +344,15 @@ public sealed class PakWorkerProcess : IDisposable
 
         foreach (var worker in _byOodlePath.Values)
             worker.Dispose();
+        // Blocks briefly, but every caller disposes at shutdown (app, CLI, MCP server), where nothing else needs the thread.
         Cleanup();
         _ensureLock.Dispose();
         _requestLock.Dispose();
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Pak worker {ProcessId} was still running {Timeout} after it was killed")]
+    private static partial void LogExitTimedOut(ILogger logger, int processId, TimeSpan timeout);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Killing the pak worker failed")]
+    private static partial void LogKillFailed(ILogger logger, Exception exception);
 }
