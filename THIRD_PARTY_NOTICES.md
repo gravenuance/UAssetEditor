@@ -73,7 +73,7 @@ SOFTWARE.
 - **License**: MIT (`vendor/UAssetAPI-LICENSE.txt`)
 - **Notice**: `vendor/UAssetAPI-NOTICE.md` (attribution for adapted third-party segments,
   e.g. cue4parse, per upstream's own NOTICE)
-- Embeds `repak_bind.dll`/`repak_bind.so`, a native binding to the `repak` Rust crate (also
+- Embeds `repak_bind.dll`, a native binding to the `repak` Rust crate (also
   by trumank). See https://github.com/trumank/repak for that project's own license/attribution.
   The Windows `repak_bind.dll.gz` is built from https://github.com/gravenuance/repak branch
   `feat/marvel-rivals-variant` @ `a347bd3` (`cargo build --release -p repak_bind`; SHA-256 of the
@@ -83,5 +83,4 @@ SOFTWARE.
   only the absolute path in `REPAK_OODLE_DLL` and never downloads (previous vendor:
   `feat/upstream-read-fixes` @ `09dc525`), with the dependencies at their latest majors (aes 0.9,
   sha1/sha2 0.11, ...). `vendor/UAssetAPI/Pak/{Interop,RePak}.cs` follow that branch's `repak_cs/RePak/`.
-  `repak_bind.so.gz` is upstream's older build and does not match these bindings (no `pak_last_error`,
-  `pak_builder_reader_ex` or `pak_builder_variant`); the app is Windows-only.
+  No Linux library is embedded (the app is Windows-only); pak access elsewhere throws `PlatformNotSupportedException`.

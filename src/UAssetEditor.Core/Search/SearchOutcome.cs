@@ -25,7 +25,10 @@ public sealed record SearchOutcome(
         var lines = new List<string>();
         if (AssetsSkipped > 0) lines.Add($"{AssetsSkipped} of {AssetsSearched} asset(s) could not be searched.");
         if (RegexTimeouts > 0) lines.Add($"{RegexTimeouts} of {AssetsSearched} asset(s) hit the regular-expression time limit; their matches may be incomplete.");
-        lines.AddRange(Skips.Select(skip => $"{skip.AssetPath}: {skip.Reason}"));
+        lines.AddRange(SkipLines());
         return lines;
     }
+
+    /// <summary>One <c>path: reason</c> line per named skip, for a front end that words the counts itself.</summary>
+    public IReadOnlyList<string> SkipLines() => [.. Skips.Select(skip => $"{skip.AssetPath}: {skip.Reason}")];
 }

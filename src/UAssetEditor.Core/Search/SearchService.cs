@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
@@ -180,7 +179,7 @@ public static class SearchService
 
         var paths = source.EnumerateAssetPaths().ToList();
         var hits = new FirstHits(maxResults);
-        var skips = new ConcurrentBag<SearchSkip>();
+        var skips = new FirstSkips(MaxSkipsKept);
         var completed = 0;
         var skipped = 0;
         var timeouts = 0;
@@ -200,13 +199,13 @@ public static class SearchService
             catch (RegexMatchTimeoutException ex)
             {
                 Interlocked.Increment(ref timeouts);
-                skips.Add(TimedOut(path, ex));
+                if (skips.WouldKeep(path)) skips.Add(TimedOut(path, ex));
             }
             catch (Exception ex)
             {
                 // One bad asset must not discard every other asset's results; it is counted and named in the outcome, not lost.
                 Interlocked.Increment(ref skipped);
-                skips.Add(new SearchSkip(path, $"{ex.GetType().Name}: {ex.Message}"));
+                if (skips.WouldKeep(path)) skips.Add(new SearchSkip(path, $"{ex.GetType().Name}: {ex.Message}"));
             }
 
             var done = Interlocked.Increment(ref completed);
@@ -215,9 +214,41 @@ public static class SearchService
             return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
 
-        // Which assets fail first depends on thread timing, so the few named are the first by path.
-        var named = skips.OrderBy(s => s.AssetPath, StringComparer.OrdinalIgnoreCase).Take(MaxSkipsKept).ToList();
-        return new SearchOutcome(hits.Take(), hits.Total, paths.Count, skipped, timeouts, named);
+        return new SearchOutcome(hits.Take(), hits.Total, paths.Count, skipped, timeouts, skips.Take());
+    }
+
+    /// <summary>
+    /// Keeps the first <c>cap</c> skips by path while the search runs, so a folder of broken assets cannot pile up reasons.
+    /// Which assets fail first depends on thread timing, which is why the named ones are the first by path.
+    /// </summary>
+    private sealed class FirstSkips(int cap)
+    {
+        private readonly List<SearchSkip> _kept = [];
+
+        /// <summary>Whether a skip for this path would be kept now, so a caller can leave out building a reason that would be dropped.</summary>
+        public bool WouldKeep(string assetPath)
+        {
+            lock (_kept) return Fits(assetPath);
+        }
+
+        public void Add(SearchSkip skip)
+        {
+            lock (_kept)
+            {
+                if (!Fits(skip.AssetPath)) return;
+                _kept.Add(skip);
+                _kept.Sort(static (a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.AssetPath, b.AssetPath));
+                if (_kept.Count > cap) _kept.RemoveAt(cap);
+            }
+        }
+
+        public IReadOnlyList<SearchSkip> Take()
+        {
+            lock (_kept) return [.. _kept];
+        }
+
+        private bool Fits(string assetPath) =>
+            _kept.Count < cap || StringComparer.OrdinalIgnoreCase.Compare(assetPath, _kept[^1].AssetPath) < 0;
     }
 
     /// <summary>Collects matches from many threads, keeping only the first <c>cap</c> in result order while counting them all.</summary>

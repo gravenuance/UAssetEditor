@@ -131,6 +131,17 @@ internal static class NativeError
 
 public class PakBuilder : SafeHandleZeroOrMinusOneIsInvalid
 {
+    private const string NativeLibraryFile = "repak_bind.dll";
+    private const string NativeLibraryResource = "UAssetAPI.repak_bind.dll.gz";
+
+    private static void RequireWindows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Reading and writing paks is supported on Windows only: this build embeds the Windows repak_bind.dll and no native library for " + RuntimeInformation.OSDescription + ".");
+        }
+    }
+
     /// <summary>
     /// The native library ships gzipped inside this assembly and is unpacked next to it on
     /// first use. Extraction used to happen only when loading threw <see cref="DllNotFoundException"/>,
@@ -141,9 +152,9 @@ public class PakBuilder : SafeHandleZeroOrMinusOneIsInvalid
     /// </summary>
     private static void EnsureNativeLibraryCurrent()
     {
-        var isLinux = RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
-        var outPath = Path.Combine(AppContext.BaseDirectory, isLinux ? "repak_bind.so" : "repak_bind.dll");
-        var resourceName = isLinux ? "UAssetAPI.repak_bind.so.gz" : "UAssetAPI.repak_bind.dll.gz";
+        RequireWindows();
+        var outPath = Path.Combine(AppContext.BaseDirectory, NativeLibraryFile);
+        var resourceName = NativeLibraryResource;
 
         using var resource = typeof(PropertyData).Assembly.GetManifestResourceStream(resourceName)
             ?? throw new DllNotFoundException("Failed to find resource: " + resourceName);
@@ -181,8 +192,8 @@ public class PakBuilder : SafeHandleZeroOrMinusOneIsInvalid
             if (ex is DllNotFoundException || ex is BadImageFormatException)
             {
                 // extract dll if needed
-                string outPath = Path.Combine(AppContext.BaseDirectory, RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "repak_bind.so" : "repak_bind.dll");
-                string resourceName = RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? "UAssetAPI.repak_bind.so.gz" : "UAssetAPI.repak_bind.dll.gz";
+                string outPath = Path.Combine(AppContext.BaseDirectory, NativeLibraryFile);
+                string resourceName = NativeLibraryResource;
                 using (var resource = typeof(PropertyData).Assembly.GetManifestResourceStream(resourceName))
                 {
                     if (resource != null)

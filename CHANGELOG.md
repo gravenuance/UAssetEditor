@@ -39,6 +39,7 @@ All notable changes to this project are documented here.
 
 ### Removed
 - The vendored `oo2core_9_win64.dll`: Oodle is proprietary, so the repository and releases no longer carry it (`THIRD_PARTY_NOTICES.md`, `docs/adr/0001-oodle-from-the-game-install.md`). It has been in the repository's public history since 84e788b (2026-09-16), and removing it from the tree does not remove it from old commits.
+- The stale `repak_bind.so.gz` resource and the Linux library path: it lacked the exports the bindings need, so pak access could not have worked on Linux. The app is Windows-only; a pak call on another OS now throws `PlatformNotSupportedException` saying so.
 
 ## [1.11.0] - 2026-10-30
 

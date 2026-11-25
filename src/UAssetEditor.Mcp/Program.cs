@@ -6,6 +6,7 @@ using ModelContextProtocol.Server;
 using UAssetEditor.Core;
 using UAssetEditor.Core.AssetSources.PakWorker;
 using UAssetEditor.Core.Games;
+using UAssetEditor.Core.Search;
 using UAssetEditor.Mcp.Hosting;
 using UAssetEditor.Mcp.Tools;
 
@@ -27,7 +28,7 @@ switch (args)
 }
 
 // Edits and searches take regular expressions from the model; a pattern that backtracks forever must not hang a tool call.
-AppContext.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", TimeSpan.FromSeconds(3));
+AppContext.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", SearchQuery.DefaultRegexTimeout);
 
 var paths = AppPaths.Current;
 var level = McpLogging.ParseLevel(Environment.GetEnvironmentVariable(McpLogging.LevelVariable));
