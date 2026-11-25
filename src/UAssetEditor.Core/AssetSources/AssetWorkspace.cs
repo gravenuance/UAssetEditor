@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using UAssetAPI;
-using UAssetEditor.Core.Concurrency;
 using UAssetEditor.Core.Search;
 using UAssetEditor.Core.Versioning;
 
@@ -60,40 +59,18 @@ public sealed class AssetWorkspace
     }
 
     /// <summary>
-    /// Searches every asset in the underlying source in parallel, opening (or reusing an
-    /// already-open) instance for each one. Assets that fail to open, or whose search
-    /// throws (e.g. an invalid regex pattern in the query), are skipped.
+    /// Searches every asset in the underlying source in parallel, opening (or reusing an already-open) instance for each
+    /// one, and reports it as <see cref="SearchService.SearchAllAsync"/> does: every hit, and the assets that failed to open,
+    /// failed to search or ran a regular expression past its time limit, counted and named rather than dropped.
     /// </summary>
-    public async Task<IReadOnlyList<SearchResult>> SearchAsync(
+    public Task<SearchOutcome> SearchAsync(
         SearchQuery query,
         IProgress<SearchProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
         CancellationToken cancellationToken = default)
     {
-        var paths = _source.EnumerateAssetPaths().ToList();
-        var results = new ConcurrentBag<SearchResult>();
-        var completed = 0;
-
-        await ThrottledParallel.ForEachAsync(paths, maxDegreeOfParallelism, (path, _) =>
-        {
-            try
-            {
-                var asset = GetOrOpen(path);
-                foreach (var result in SearchService.SearchAsset(asset, path, query))
-                    results.Add(result);
-            }
-            catch
-            {
-                // One bad asset/pattern shouldn't discard every other asset's results too.
-            }
-
-            var done = Interlocked.Increment(ref completed);
-            progress?.Report(new SearchProgress(done, paths.Count, path));
-
-            return Task.CompletedTask;
-        }, cancellationToken).ConfigureAwait(false);
-
-        return results.ToList();
+        ArgumentNullException.ThrowIfNull(query);
+        return SearchService.SearchPathsAsync(_source.EnumerateAssetPaths().ToList(), GetOrOpen, query, progress, maxDegreeOfParallelism, maxResults: null, cancellationToken);
     }
 
     /// <summary>Saves only the requested (presumably dirty) already-open assets; paths that were never opened are ignored.</summary>

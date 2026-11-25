@@ -127,6 +127,20 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private SearchQuery? _lastSearchQuery;
     private List<OpenedScope> _lastOpenedExports = new();
 
+    /// <summary>Lines above the results naming the assets the search could not finish; empty when it covered them all.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSearchNotice))]
+    private string _searchNotice = "";
+
+    public bool HasSearchNotice => SearchNotice.Length > 0;
+
+    /// <summary>The results no longer come from a search, so the replay query and the notice about it go too.</summary>
+    private void ForgetLastSearch()
+    {
+        _lastSearchQuery = null;
+        SearchNotice = "";
+    }
+
     // Usmap path and AES key are free-text fields bound with UpdateSourceTrigger=
     // PropertyChanged, so they fire on every keystroke - debounced so a reload doesn't
     // fire (and pop a discard-changes prompt) mid-typing. Engine version is a discrete
@@ -522,10 +536,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         if (_lastSearchQuery != null)
         {
-            var results = await workspace.SearchAsync(_lastSearchQuery, maxDegreeOfParallelism: 0);
+            var outcome = await workspace.SearchAsync(_lastSearchQuery, maxDegreeOfParallelism: 0);
             SearchResults.Clear();
-            foreach (var result in results)
+            foreach (var result in outcome.Results)
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+            SearchNotice = SearchPresentation.Notice(outcome);
         }
         else if (_lastOpenedExports.Count > 0)
         {
@@ -619,7 +634,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             DisposeCurrentSource();
             _dirtyAssetPaths.Clear();
             SearchResults.Clear();
-            _lastSearchQuery = null;
+            ForgetLastSearch();
             _lastOpenedExports = [];
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
@@ -675,7 +690,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var pakSource = opened.Source;
             AdoptPak(opened);
             SearchResults.Clear();
-            _lastSearchQuery = null;
+            ForgetLastSearch();
             _lastOpenedExports = [];
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
@@ -712,7 +727,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             DisposeCurrentSource();
             _dirtyAssetPaths.Clear();
             SearchResults.Clear();
-            _lastSearchQuery = null;
+            ForgetLastSearch();
             _lastOpenedExports = [];
             IsIoStoreBrowsing = false;
             _ioStoreContainerPath = null;
@@ -762,7 +777,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             _workspace = null;
             _dirtyAssetPaths.Clear();
             SearchResults.Clear();
-            _lastSearchQuery = null;
+            ForgetLastSearch();
             _lastOpenedExports = [];
             IsPakBacked = false;
 
@@ -834,7 +849,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             foreach (var result in results)
                 SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
             _lastOpenedExports = [new OpenedScope(fullPath, exportIndex, propertyPath)];
-            _lastSearchQuery = null;
+            ForgetLastSearch();
             var opened = $"Opened {fullPath} [{item.Name}] ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")}).";
             StatusMessage = warnings.Count switch
             {
@@ -1018,7 +1033,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                     SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
             }
             _lastOpenedExports = distinct;
-            _lastSearchQuery = null;
+            ForgetLastSearch();
             StatusMessage = $"Loaded {distinct.Count} item(s) ({SearchResults.Count} propert{(SearchResults.Count == 1 ? "y" : "ies")} total).";
         }
         catch (Exception ex)
@@ -1760,6 +1775,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _lastOpenedExports = [];
 
         SearchResults.Clear();
+        SearchNotice = "";
         IsBusy = true;
         StatusMessage = "Searching...";
         _cts = new CancellationTokenSource();
@@ -1772,10 +1788,11 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var results = await _workspace!.SearchAsync(query, progress, maxDegreeOfParallelism: 0, _cts.Token);
-            foreach (var result in results)
+            var outcome = await _workspace!.SearchAsync(query, progress, maxDegreeOfParallelism: 0, _cts.Token);
+            foreach (var result in outcome.Results)
                 SearchResults.Add(new SearchResultRow(result, _workspace!, OnResultRowDirty));
-            StatusMessage = $"Found {results.Count} match(es).";
+            SearchNotice = SearchPresentation.Notice(outcome);
+            StatusMessage = SearchPresentation.Status(outcome);
         }
         catch (OperationCanceledException)
         {
@@ -1906,7 +1923,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _dirtyAssetPaths.Clear();
         SearchResults.Clear();
         RootTreeItems.Clear();
-        _lastSearchQuery = null;
+        ForgetLastSearch();
         _lastOpenedExports = [];
         IsPakBacked = false;
         IsIoStoreBrowsing = false;
@@ -2213,13 +2230,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         return new ResolverBuild(resolver, ResolverSettings.Create(settings.Version, settings.Game, settings.UsmapPath, mappingsLoaded));
     }
 
-    private SearchQuery BuildScope() => new()
-    {
-        ExportNameTerms = ExportNameTerms.Select(t => t.ToCore()).ToList(),
-        PropertyNameTerms = PropertyNameTerms.Select(t => t.ToCore()).ToList(),
-        ValueTerms = ValueTerms.Select(t => t.ToCore()).ToList(),
-        ReferenceTerms = ReferenceTerms.Select(t => t.ToCore()).ToList(),
-    };
+    private SearchQuery BuildScope() => SearchPresentation.BuildQuery(ExportNameTerms, PropertyNameTerms, ValueTerms, ReferenceTerms);
 
     private RuleSet BuildRuleSet() => new()
     {
