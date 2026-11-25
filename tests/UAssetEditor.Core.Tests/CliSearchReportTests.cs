@@ -28,7 +28,7 @@ public class CliSearchReportTests
     }
 
     [Fact]
-    public void Every_front_end_limits_a_search_regex_to_three_seconds()
+    public void DefaultRegexTimeout_IsThreeSeconds()
     {
         Assert.Equal(TimeSpan.FromSeconds(3), SearchQuery.DefaultRegexTimeout);
     }
