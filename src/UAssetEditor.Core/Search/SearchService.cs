@@ -175,9 +175,25 @@ public static class SearchService
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(versions);
         ArgumentNullException.ThrowIfNull(query);
+
+        return await SearchPathsAsync(
+            source.EnumerateAssetPaths().ToList(),
+            path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game),
+            query, progress, maxDegreeOfParallelism, maxResults, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The search behind <see cref="SearchAllAsync"/>, over assets a caller opens itself (a workspace reuses the instances it already holds).</summary>
+    internal static async Task<SearchOutcome> SearchPathsAsync(
+        IReadOnlyList<string> paths,
+        Func<string, UAsset> openAsset,
+        SearchQuery query,
+        IProgress<SearchProgress>? progress = null,
+        int? maxDegreeOfParallelism = null,
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
         if (maxResults is < 0) throw new ArgumentOutOfRangeException(nameof(maxResults), maxResults, "The hit cap cannot be negative.");
 
-        var paths = source.EnumerateAssetPaths().ToList();
         var hits = new FirstHits(maxResults);
         var skips = new FirstSkips(MaxSkipsKept);
         var completed = 0;
@@ -188,7 +204,7 @@ public static class SearchService
         {
             try
             {
-                var asset = source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game);
+                var asset = openAsset(path);
                 foreach (var result in SearchAsset(asset, path, query))
                     hits.Add(result);
             }

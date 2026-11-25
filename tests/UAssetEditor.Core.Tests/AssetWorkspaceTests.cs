@@ -55,11 +55,46 @@ public class AssetWorkspaceTests
         });
         var workspace = new AssetWorkspace(source, new EngineVersionResolver());
 
-        var results = await workspace.SearchAsync(new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
+        var outcome = await workspace.SearchAsync(new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, results.Count);
+        Assert.Equal(["a.uasset", "b.uasset"], outcome.Results.Select(r => r.AssetPath));
+        Assert.Empty(outcome.Warnings());
         Assert.True(workspace.IsOpen("a.uasset"));
         Assert.True(workspace.IsOpen("b.uasset"));
+    }
+
+    [Fact]
+    public async Task SearchAsync_NamesTheAssetsItCouldNotOpen_SoPartialResultsAreNotTakenForComplete()
+    {
+        var goodAsset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(goodAsset);
+        var source = new FailingOpenAssetSource("bad.uasset", "good.uasset", goodAsset);
+        var workspace = new AssetWorkspace(source, new EngineVersionResolver());
+
+        var outcome = await workspace.SearchAsync(new SearchQuery { PropertyNameTerms = ["Count"] }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("good.uasset", Assert.Single(outcome.Results).AssetPath);
+        Assert.Equal(1, outcome.AssetsSkipped);
+        Assert.Contains("bad.uasset: InvalidOperationException: simulated parse failure", outcome.Warnings());
+    }
+
+    [Fact]
+    public async Task SearchAsync_CountsARegexThatRunsOutOfTime_AndKeepsTheOtherAssetsHits()
+    {
+        var slowAsset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(slowAsset, new string('a', 40) + "b");
+        var quickAsset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(quickAsset, "aaa");
+        var source = new CountingAssetSource(new Dictionary<string, UAsset> { ["slow.uasset"] = slowAsset, ["quick.uasset"] = quickAsset });
+        var workspace = new AssetWorkspace(source, new EngineVersionResolver());
+        var query = new SearchQuery { ExportNameTerms = ["^(a+)+$"], ExportNameCompare = TextCompare.Regex, RegexTimeout = TimeSpan.FromMilliseconds(1) };
+
+        var outcome = await workspace.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, outcome.RegexTimeouts);
+        Assert.Equal(0, outcome.AssetsSkipped);
+        Assert.All(outcome.Results, r => Assert.Equal("quick.uasset", r.AssetPath));
+        Assert.Contains(outcome.Skips, skip => skip.AssetPath == "slow.uasset");
     }
 
     [Fact]
@@ -119,6 +154,16 @@ public class AssetWorkspaceTests
         workspace.SaveAll(["a.uasset"], createBackup: false, backupFolder: null);
 
         Assert.Empty(source.SavedPaths);
+    }
+
+    private sealed class FailingOpenAssetSource(string badPath, string goodPath, UAsset goodAsset) : IAssetSource
+    {
+        public IEnumerable<string> EnumerateAssetPaths() => [badPath, goodPath];
+
+        public UAsset OpenAsset(string assetPath, UAssetAPI.UnrealTypes.EngineVersion engineVersion, UAssetAPI.Unversioned.Usmap? mappings, UAssetEditor.Core.Games.Game game) =>
+            assetPath == badPath ? throw new InvalidOperationException("simulated parse failure") : goodAsset;
+
+        public void SaveAsset(UAsset asset, string assetPath, bool createBackup, string? backupFolder) { }
     }
 
     private sealed class CountingAssetSource(Dictionary<string, UAsset> assets) : IAssetSource

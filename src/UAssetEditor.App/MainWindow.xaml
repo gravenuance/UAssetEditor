@@ -409,10 +409,20 @@
                     </GroupBox.Header>
                     <Grid>
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <DataGrid x:Name="ResultsGrid" Grid.Row="0" ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" IsEnabled="{Binding IsIdle}"
+                        <!-- Shown only when a search could not finish some assets, so partial results never pass for complete. -->
+                        <Border Grid.Row="0" Margin="0,0,0,6" Padding="9,6" CornerRadius="4" Background="{StaticResource Mono.Surface}"
+                                BorderBrush="{StaticResource Mono.Orange}" BorderThickness="1"
+                                Visibility="{Binding HasSearchNotice, Converter={StaticResource BoolToVisibility}}">
+                            <ScrollViewer MaxHeight="96" VerticalScrollBarVisibility="Auto">
+                                <TextBlock Text="{Binding SearchNotice}" TextWrapping="Wrap" Foreground="{StaticResource Mono.Orange}"
+                                           FontSize="{StaticResource Mono.Type.Caption}" AutomationProperties.Name="Search notice" />
+                            </ScrollViewer>
+                        </Border>
+                        <DataGrid x:Name="ResultsGrid" Grid.Row="1" ItemsSource="{Binding SearchResults}" AutoGenerateColumns="False" IsEnabled="{Binding IsIdle}"
                                   HorizontalScrollBarVisibility="Auto">
                             <DataGrid.RowStyle>
                                 <!-- No visible "dirty" indicator/column - just a quiet highlight on rows with an
@@ -465,7 +475,7 @@
 
                         <!-- Compact summary of already-added rules - the builder form itself lives in
                              the Preview pane, matching the mockup's .rules-strip/.rule-chip. -->
-                        <Border Grid.Row="1" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,1,0,0" Padding="9,7">
+                        <Border Grid.Row="2" Background="{StaticResource Mono.Panel}" BorderBrush="{StaticResource Mono.Border}" BorderThickness="0,1,0,0" Padding="9,7">
                             <StackPanel>
                                 <TextBlock Text="BATCH EDIT RULES" Foreground="{StaticResource Mono.Muted}" FontSize="{StaticResource Mono.Type.Caption}" FontWeight="SemiBold" Margin="0,0,0,5" />
                                 <ItemsControl ItemsSource="{Binding Rules}" MaxHeight="90">
