@@ -69,6 +69,19 @@ public class SearchPresentationTests
     }
 
     [Fact]
+    public void Notice_SaysHowManyMoreAssetsThanTheOnesNamed_WereNotSearched()
+    {
+        var outcome = new SearchOutcome([], 0, 500, 498, 2, [new SearchSkip("x.uasset", "IOException: locked"), new SearchSkip("y.uasset", "IOException: locked")]);
+
+        var lines = SearchPresentation.Notice(outcome).Split(Environment.NewLine);
+
+        Assert.Equal(
+            ["498 of 500 asset(s) could not be searched.", "2 of 500 asset(s) hit the regular-expression time limit; their matches may be incomplete.",
+             "x.uasset: IOException: locked", "y.uasset: IOException: locked", "...and 498 more not listed."],
+            lines);
+    }
+
+    [Fact]
     public void Status_CountsBothKindsOfTrouble()
     {
         var outcome = new SearchOutcome([], 0, 10, 2, 3, []);

@@ -23,7 +23,10 @@ public static class SearchPresentation
     public static string Notice(SearchOutcome outcome)
     {
         ArgumentNullException.ThrowIfNull(outcome);
-        return string.Join(Environment.NewLine, outcome.Warnings());
+        var lines = outcome.Warnings().ToList();
+        var unlisted = outcome.AssetsSkipped + outcome.RegexTimeouts - outcome.Skips.Count;
+        if (unlisted > 0) lines.Add($"...and {unlisted} more not listed.");
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>The status-bar line for a finished search; it says so when the matches may be incomplete.</summary>

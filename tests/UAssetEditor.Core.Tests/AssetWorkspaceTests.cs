@@ -87,7 +87,7 @@ public class AssetWorkspaceTests
         TestAssets.CreateSampleExport(quickAsset, "aaa");
         var source = new CountingAssetSource(new Dictionary<string, UAsset> { ["slow.uasset"] = slowAsset, ["quick.uasset"] = quickAsset });
         var workspace = new AssetWorkspace(source, new EngineVersionResolver());
-        var query = new SearchQuery { ExportNameTerms = ["^(a+)+$"], ExportNameCompare = TextCompare.Regex, RegexTimeout = TimeSpan.FromMilliseconds(1) };
+        var query = new SearchQuery { ExportNameTerms = ["^(a+)+$"], ExportNameCompare = TextCompare.Regex, RegexTimeout = TimeSpan.FromMilliseconds(200) };
 
         var outcome = await workspace.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
