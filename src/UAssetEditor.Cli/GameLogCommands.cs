@@ -37,7 +37,7 @@ internal static class GameLogCommands
 
     private static int Decode(string logPath, string? outPath)
     {
-        var blob = RivalsLogs.ReadAll(logPath);
+        var blob = GameLogs.Read(logPath);
         if (outPath != null)
         {
             using var file = new FileStream(outPath, FileMode.Create, FileAccess.Write, FileShare.None);
@@ -96,10 +96,7 @@ internal static class GameLogCommands
     {
         var name = Path.GetFileName(logPath);
         Console.Error.WriteLine($"{name}: {result.Records} records");
-        if (result.InflateFailures > 0)
-            Console.Error.WriteLine($"Warning: {name}: {result.InflateFailures} record(s) failed to inflate; their text is cut short or missing.");
-        if (result.StoppedAtOffset is { } offset)
-            Console.Error.WriteLine($"Warning: {name}: stopped at 0x{offset:x}, which is not a whole record (truncated or damaged log); the rest was not decoded.");
+        foreach (var problem in result.Problems()) Console.Error.WriteLine($"Warning: {name}: {problem}");
     }
 
     private static void WriteSummary(TextWriter output, string logPath, RivalsLogSummary summary)

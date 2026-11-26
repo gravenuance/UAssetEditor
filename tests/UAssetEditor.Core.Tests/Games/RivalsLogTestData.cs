@@ -1,4 +1,6 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace UAssetEditor.Core.Tests.Games;
@@ -51,4 +53,34 @@ internal static class RivalsLogTestData
     }
 
     public static byte[] Log(params byte[][] parts) => [.. Encoding.ASCII.GetBytes(Magic), .. parts.SelectMany(part => part)];
+
+    /// <summary>
+    /// AES-128-CTR with the log key, for payloads too large to keep as fixtures; a test pins it to <see cref="TwoLinesCipher"/>.
+    /// CTR is its own inverse, so this also decrypts.
+    /// </summary>
+    public static byte[] Encrypt(byte[] plain)
+    {
+        using var aes = Aes.Create();
+        aes.Key = "ezFAgrXnhBOZgFFD"u8.ToArray();
+        var counter = "_NMxNi0DK7_qHC_i"u8.ToArray();
+        var result = new byte[plain.Length];
+        for (var at = 0; at < plain.Length; at += 16)
+        {
+            var keystream = aes.EncryptEcb(counter, PaddingMode.None);
+            for (var i = at; i < Math.Min(at + 16, plain.Length); i++) result[i] = (byte)(plain[i] ^ keystream[i - at]);
+            for (var i = 15; i >= 0; i--)
+            {
+                if (++counter[i] != 0) break;
+            }
+        }
+        return result;
+    }
+
+    /// <summary>zlib of <paramref name="plain"/>, which starts with the 0x78 header the decoder looks for.</summary>
+    public static byte[] Zlib(byte[] plain)
+    {
+        using var packed = new MemoryStream();
+        using (var zlib = new ZLibStream(packed, CompressionLevel.SmallestSize, leaveOpen: true)) zlib.Write(plain);
+        return packed.ToArray();
+    }
 }
