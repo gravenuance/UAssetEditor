@@ -58,8 +58,8 @@ public static class InlineDataResources
 /// <summary>What became of the backups a write asked for.</summary>
 /// <param name="Placed">Every ".bak" (and the first save's ".orig.bak") is where it belongs; false when one could not be put there.</param>
 /// <param name="Stranded">Copies of the previous files still under their temporary names, the only good copy when <paramref name="Placed"/> is false.</param>
-/// <param name="Backup">Where the package file's ".bak" goes (its .uexp's sits beside it); null when there was no file to back up.</param>
-/// <param name="Original">Where the package file's ".orig.bak" goes; null when there was no file to back up.</param>
+/// <param name="Backup">Where the package file's ".bak" goes (its .uexp's sits beside it); null when the package file was not backed up (it did not exist yet, or the write failed and changed nothing).</param>
+/// <param name="Original">Where the package file's ".orig.bak" goes; null whenever <paramref name="Backup"/> is.</param>
 public sealed record BackupResult(bool Placed, IReadOnlyList<string> Stranded, string? Backup, string? Original);
 
 /// <summary>Writes a package to disk, keeping inline data resources pointed at their bytes.</summary>
@@ -175,7 +175,9 @@ public static partial class PackageWriter
             foreach (var copy in staged) SweepStaleStaging(copy, clock);
         }
         var main = staged.Find(copy => copy.Original == path);
-        return main == default ? new BackupResult(placed, stranded, null, null) : new BackupResult(placed, stranded, main.Backup, main.Vanilla);
+        return untouched || main == default
+            ? new BackupResult(placed, stranded, null, null)
+            : new BackupResult(placed, stranded, main.Backup, main.Vanilla);
     }
 
     // No save holds its staged copy this long, so an older one was left by a save that was killed or could not place it.

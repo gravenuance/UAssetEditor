@@ -164,6 +164,7 @@ public sealed class AssetReadToolTests : IDisposable
         var warning = Assert.Single(result.Warnings);
         Assert.Contains("no usmap is given or stored for rivals", warning, StringComparison.Ordinal);
         Assert.EndsWith("Pass usmap, or store one with usmap_add.", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("uacli", warning, StringComparison.Ordinal);
         Assert.DoesNotContain("--usmap", warning, StringComparison.Ordinal);
     }
 

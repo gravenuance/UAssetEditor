@@ -23,13 +23,24 @@ public static class PakPacker
 
     /// <summary>
     /// The mount point every front end assumes for a pak built from <paramref name="sourceFolder"/>: the folder is taken to be
-    /// named after the game's project folder ("../../../&lt;name&gt;/"). Null when the path has no folder name.
+    /// named after the game's project folder ("../../../&lt;name&gt;/"). Null when the path has no folder name (a drive or
+    /// share root) or is not yet a whole path, as while it is being typed.
     /// </summary>
     public static string? DefaultMountPoint(string sourceFolder)
     {
         ArgumentNullException.ThrowIfNull(sourceFolder);
-        var trimmed = sourceFolder.TrimEnd('\\', '/');
-        var name = trimmed.Length == 0 ? "" : new DirectoryInfo(trimmed).Name;
+        if (string.IsNullOrWhiteSpace(sourceFolder)) return null;
+        string full;
+        try
+        {
+            full = Path.GetFullPath(sourceFolder);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+        // A root keeps its separator, so it has no file name.
+        var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(full));
         return name.Length == 0 ? null : $"../../../{name}/";
     }
 

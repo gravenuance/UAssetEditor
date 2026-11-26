@@ -47,9 +47,8 @@ internal sealed class ArgReader
     /// <summary>Where the game's own logs are read for the stale-usmap check: the game's default folder unless the host names another.</summary>
     public string GameLogs { get; init; } = RivalsLogs.DefaultDirectory;
 
-    /// <summary>What to do when a game has no stored usmap, in the host's own terms: uacli's options unless the host names others.</summary>
-    public Func<GameProfile, string> NoStoredUsmapAdvice { get; init; } =
-        profile => $"Pass --usmap or run 'uacli usmap add <file> --game {profile.CliName}'.";
+    /// <summary>How the caller passes and stores a usmap, for the warnings that tell them to: uacli's options unless the host names its own.</summary>
+    public UsmapHints UsmapHints { get; init; } = UsmapHints.Cli;
 
     /// <summary>
     /// The newest stored usmap per game, looked up once per run (one notice however many assets a --plan run opens) and shared
@@ -108,7 +107,7 @@ internal sealed class ArgReader
     public ArgReader WithOpenSettingsFrom(ArgReader run)
     {
         ArgumentNullException.ThrowIfNull(run);
-        var merged = new ArgReader([]) { Diagnostics = run.Diagnostics, Mappings = run.Mappings, StoredUsmaps = run.StoredUsmaps, GameLogs = run.GameLogs, NoStoredUsmapAdvice = run.NoStoredUsmapAdvice };
+        var merged = new ArgReader([]) { Diagnostics = run.Diagnostics, Mappings = run.Mappings, StoredUsmaps = run.StoredUsmaps, GameLogs = run.GameLogs, UsmapHints = run.UsmapHints };
         merged._positional.AddRange(_positional);
         foreach (var (key, value) in _options) merged._options[key] = value;
         merged._flags.UnionWith(_flags);

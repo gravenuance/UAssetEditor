@@ -19,6 +19,8 @@ internal sealed class OpenSettings
 {
     private const int MaxWarnings = 20;
 
+    private static readonly UsmapHints McpUsmapHints = new("usmap", _ => "usmap_add");
+
     private readonly StringWriter _diagnostics;
 
     private OpenSettings(ArgReader args, StringWriter diagnostics, GameProfile? profile, string? usmapPath)
@@ -67,7 +69,7 @@ internal sealed class OpenSettings
         if (strict) arguments.Add("--strict");
 
         var diagnostics = new StringWriter(CultureInfo.InvariantCulture);
-        var args = new ArgReader(arguments) { Diagnostics = diagnostics, Mappings = store, NoStoredUsmapAdvice = _ => "Pass usmap, or store one with usmap_add." };
+        var args = new ArgReader(arguments) { Diagnostics = diagnostics, Mappings = store, UsmapHints = McpUsmapHints };
         // Resolved up front, so the call reports the usmap it uses even when it opens nothing; the reader keeps the answer for the open.
         var usmapPath = AssetIo.ResolveUsmapPath(args);
 
