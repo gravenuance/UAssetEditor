@@ -49,6 +49,39 @@ public sealed class RetocStagingTests : IDisposable
     }
 
     [Fact]
+    public async Task AContainerFileHeldOpen_LeavesTheOldContainerWhole_NotMixedWithTheNewOne()
+    {
+        // The .utoc moves last, so the .ucas and .pak are already set aside when it fails and must be put back.
+        var output = Path.Combine(_dir, "mod_P.utoc");
+        await WriteContainerAsync(output, "old");
+
+        await using (new FileStream(output, FileMode.Open, FileAccess.Read, FileShare.Read))
+            await Assert.ThrowsAnyAsync<SystemException>(() => RetocProcess.StagedAsync(output, writesCompanionPak: true, Build("new")));
+
+        Assert.Equal(
+            new Dictionary<string, string> { ["mod_P.utoc"] = "old.utoc", ["mod_P.ucas"] = "old.ucas", ["mod_P.pak"] = "old.pak" },
+            Contents(_dir));
+    }
+
+    [Fact]
+    public async Task ABuildThatWritesAFolder_IsRefused_AndPlacesNothing()
+    {
+        var output = Path.Combine(_dir, "mod_P.utoc");
+        await WriteContainerAsync(output, "old");
+
+        var error = await Assert.ThrowsAsync<IOException>(() => RetocProcess.StagedAsync(output, writesCompanionPak: true, async utoc =>
+        {
+            await Build("new")(utoc);
+            Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(utoc)!, "extra"));
+        }));
+
+        Assert.Contains("which a container does not have; nothing was moved into place.", error.Message, StringComparison.Ordinal);
+        Assert.Equal(
+            new Dictionary<string, string> { ["mod_P.utoc"] = "old.utoc", ["mod_P.ucas"] = "old.ucas", ["mod_P.pak"] = "old.pak" },
+            Contents(_dir));
+    }
+
+    [Fact]
     public async Task APack_BuildsUnderTheOutputsOwnName_AndMovesTheWholeContainerIntoPlace()
     {
         // The .utoc's name sets the container ID (Marvel Rivals' <mod>_9999999_P), so it must not be built under another name.

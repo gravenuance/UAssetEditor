@@ -251,28 +251,81 @@ public static partial class RetocProcess
         var owned = new HashSet<string>([target, .. CompanionsOf(target, writesCompanionPak)], StringComparer.OrdinalIgnoreCase);
         var staging = Path.Combine(folder, $".{Path.GetFileNameWithoutExtension(target)}.{Guid.NewGuid():N}.partial");
         Directory.CreateDirectory(staging);
+        var aside = Path.Combine(staging, "replaced");
+        var placed = false;
         try
         {
             await build(Path.Combine(staging, Path.GetFileName(target))).ConfigureAwait(false);
-            // The .utoc, which indexes the rest, goes last. Anything else retoc writes (its standard .pak) only fills a free name,
-            // since a file already there is not the container's.
-            foreach (var file in Directory.GetFiles(staging).OrderBy(IsUtoc))
-            {
-                var placed = Path.Combine(folder, Path.GetFileName(file));
-                if (owned.Contains(placed)) File.Move(file, placed, overwrite: true);
-                else if (!File.Exists(placed)) File.Move(file, placed);
-            }
+            if (Directory.EnumerateDirectories(staging).Any())
+                throw new IOException($"retoc wrote folders into {staging}, which a container does not have; nothing was moved into place.");
+
+            // The .utoc, which indexes the rest, goes last. Anything else retoc writes (its standard .pak, the same bytes for
+            // every container) only fills a free name, since a file already there is not the container's.
+            var moves = Directory.GetFiles(staging).OrderBy(IsUtoc)
+                .Select(file => (From: file, To: Path.Combine(folder, Path.GetFileName(file))))
+                .Where(move => owned.Contains(move.To) || !File.Exists(move.To))
+                .ToList();
+            Place(moves, aside);
+            placed = true;
         }
         finally
         {
-            DeleteStaging(staging);
+            // After a failed undo the replaced files are only in the aside folder, so the staging folder stays.
+            if (placed || !Directory.Exists(aside) || !Directory.EnumerateFileSystemEntries(aside).Any()) DeleteStaging(staging);
         }
     }
 
+    /// <summary>Moves the files a container replaces aside, then the new ones into place, and on failure undoes both, so a file
+    /// the game or a scanner holds leaves the old container whole instead of mixed with the new one.</summary>
+    private static void Place(List<(string From, string To)> moves, string aside)
+    {
+        Directory.CreateDirectory(aside);
+        var setAside = new List<(string Original, string Aside)>();
+        var placed = new List<string>();
+        try
+        {
+            foreach (var (_, to) in moves.Where(move => File.Exists(move.To)))
+            {
+                var copy = Path.Combine(aside, Path.GetFileName(to));
+                File.Move(to, copy);
+                setAside.Add((to, copy));
+            }
+            foreach (var (from, to) in moves)
+            {
+                File.Move(from, to);
+                placed.Add(to);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (!TryUndo(placed, setAside, ex))
+                throw new IOException($"The new container could not be moved into place ({ex.Message}), and the files it was to replace could not all be put back; they are in {aside}.", ex);
+            throw;
+        }
+    }
+
+    private static bool TryUndo(List<string> placed, List<(string Original, string Aside)> setAside, Exception cause)
+    {
+        try
+        {
+            foreach (var path in placed) File.Delete(path);
+            foreach (var (original, copy) in setAside) File.Move(copy, original);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogUndoFailed(AppLog.For(typeof(RetocProcess)), cause.Message, ex);
+            return false;
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Putting back a container after a failed move ({Cause}) failed")]
+    private static partial void LogUndoFailed(ILogger logger, string cause, Exception exception);
+
     private static bool IsUtoc(string path) => string.Equals(Path.GetExtension(path), ".utoc", StringComparison.OrdinalIgnoreCase);
 
-    // A no-op once the container was moved out. A folder that cannot go (retoc still closing, a scanner) stays under its
-    // staging name, so the error the caller sees is the pack's own, not the clean-up's.
+    // A no-op once the container was moved out. A folder that cannot go (a scanner) stays under its staging name, so the
+    // error the caller sees is the pack's own, not the clean-up's.
     private static void DeleteStaging(string staging)
     {
         try
@@ -281,7 +334,7 @@ public static partial class RetocProcess
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            LogStagingNotDeleted(AppLog.For<RetocZenOptions>(), staging, ex);
+            LogStagingNotDeleted(AppLog.For(typeof(RetocProcess)), staging, ex);
         }
     }
 
@@ -303,6 +356,26 @@ public static partial class RetocProcess
     }
 
     /// <summary>Returns the process's captured stderr text on success (exit code 0) - <see cref="ConvertToLegacyAsync"/> needs it even then, since retoc can report per-package failures there without a nonzero exit. Throws (with stderr already folded into the exception) on any other exit code.</summary>
+    private static readonly TimeSpan KilledExitWait = TimeSpan.FromSeconds(10);
+
+    // The wait can end before the kill callback ran, and a killed retoc still holds its output until it is gone, so a
+    // cancelled pack kills it here too and waits (bounded) before its caller deletes what retoc was writing.
+    private static async Task AwaitKilledAsync(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync(CancellationToken.None).WaitAsync(KilledExitWait).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or TimeoutException)
+        {
+            LogRetocNotEnded(AppLog.For(typeof(RetocProcess)), process.Id, ex);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A cancelled retoc (process {ProcessId}) could not be seen to end")]
+    private static partial void LogRetocNotEnded(ILogger logger, int processId, Exception exception);
+
     private static async Task<string> RunAsync(List<string> args, Action<string> onStdOutLine, CancellationToken cancellationToken)
     {
         var exePath = ResolveExecutable();
@@ -339,7 +412,15 @@ public static partial class RetocProcess
         var stdOutTask = ReadLinesAsync(process.StandardOutput, onStdOutLine, cancellationToken);
         var stdErrTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await AwaitKilledAsync(process).ConfigureAwait(false);
+            throw;
+        }
         await stdOutTask.ConfigureAwait(false);
         var stdErr = await stdErrTask.ConfigureAwait(false);
 
