@@ -355,7 +355,6 @@ public static partial class RetocProcess
         }
     }
 
-    /// <summary>Returns the process's captured stderr text on success (exit code 0) - <see cref="ConvertToLegacyAsync"/> needs it even then, since retoc can report per-package failures there without a nonzero exit. Throws (with stderr already folded into the exception) on any other exit code.</summary>
     private static readonly TimeSpan KilledExitWait = TimeSpan.FromSeconds(10);
 
     // The wait can end before the kill callback ran, and a killed retoc still holds its output until it is gone, so a
@@ -376,6 +375,7 @@ public static partial class RetocProcess
     [LoggerMessage(Level = LogLevel.Warning, Message = "A cancelled retoc (process {ProcessId}) could not be seen to end")]
     private static partial void LogRetocNotEnded(ILogger logger, int processId, Exception exception);
 
+    /// <summary>Returns the process's captured stderr text on success (exit code 0) - <see cref="ConvertToLegacyAsync"/> needs it even then, since retoc can report per-package failures there without a nonzero exit. Throws (with stderr already folded into the exception) on any other exit code.</summary>
     private static async Task<string> RunAsync(List<string> args, Action<string> onStdOutLine, CancellationToken cancellationToken)
     {
         var exePath = ResolveExecutable();
