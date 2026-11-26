@@ -100,52 +100,83 @@ public sealed class BackupWriteTests : IDisposable
         }
     }
 
-    private string Leftover(string name, TimeSpan age)
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
-        var path = Path.Combine(_dir, name);
-        File.WriteAllText(path, "left by an interrupted save");
-        File.SetCreationTimeUtc(path, DateTime.UtcNow - age);
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private static readonly DateTime Now = new(2026, 1, 10, 12, 0, 0, DateTimeKind.Utc);
+    private static readonly TimeProvider Clock = new FixedClock(Now);
+    private static readonly TimeSpan Old = TimeSpan.FromDays(2);
+    private const string StagingId = "0123456789abcdef0123456789abcdef";
+
+    private string Leftover(string name, string contents, TimeSpan age, string? folder = null)
+    {
+        var path = Path.Combine(folder ?? _dir, name);
+        File.WriteAllText(path, contents);
+        File.SetLastWriteTimeUtc(path, Now - age);
         return path;
     }
 
-    private const string StagingId = "0123456789abcdef0123456789abcdef";
+    private BackupResult Save(string? backupFolder = null) => PackageWriter.WithBackup(_uasset, backupFolder, WriteBoth, Clock);
 
     [Fact]
-    public void StagedCopiesLeftByAnInterruptedSave_AreRemovedByTheNextSave()
+    public void StagedCopiesThatDuplicateABackup_AreRemovedByTheNextSave()
     {
-        Leftover($"A.uasset.bak.{StagingId}.tmp", TimeSpan.FromDays(2));
-        Leftover($"A.uexp.bak.{StagingId}.tmp", TimeSpan.FromDays(2));
+        // A save killed before it wrote anything leaves copies of the files as they still are, which this save's .bak now holds.
+        Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", Old);
+        Leftover($"A.uexp.bak.{StagingId}.tmp", "exports v1", Old);
 
-        var result = PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+        var result = Save();
 
         Assert.True(result.Placed);
         Assert.Equal(["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak"], FileNames());
     }
 
     [Fact]
+    public void AStagedCopyMatchingNoFileOnDisk_IsKept_AsItMayBeTheOnlyCopy()
+    {
+        // What a stranded save reported to the user, or what a save killed mid-write left of the state before it.
+        var stranded = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v0", Old);
+
+        Save();
+
+        Assert.Equal("header v0", File.ReadAllText(stranded));
+    }
+
+    [Fact]
     public void ARecentStagedCopy_IsLeftAlone_SinceAnotherSaveMayStillBeUsingIt()
     {
-        var recent = Leftover($"A.uasset.bak.{StagingId}.tmp", TimeSpan.FromMinutes(1));
+        var recent = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", TimeSpan.FromMinutes(59));
 
-        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+        Save();
 
         Assert.True(File.Exists(recent));
     }
 
     [Fact]
+    public void TheStagedCopy_IsStampedWithTheSaveTime_NotTheSourceFilesTime()
+    {
+        File.SetLastWriteTimeUtc(_uasset, Now - TimeSpan.FromDays(300));
+
+        Save();
+
+        Assert.Equal(Now, File.GetLastWriteTimeUtc(_uasset + ".bak"));
+    }
+
+    [Fact]
     public void OnlyThisFilesStagingNames_AreSwept()
     {
-        var old = TimeSpan.FromDays(2);
         string[] kept =
         [
-            Leftover("A.uasset.bak.tmp", old),
-            Leftover("A.uasset.bak.notastagingid.tmp", old),
-            Leftover($"A.uasset.bak.{StagingId}0.tmp", old),
-            Leftover($"B.uasset.bak.{StagingId}.tmp", old),
-            Leftover($"A.uasset.orig.bak.{StagingId}.tmp", old),
+            Leftover("A.uasset.bak.tmp", "header v1", Old),
+            Leftover("A.uasset.bak.notastagingid.tmp", "header v1", Old),
+            Leftover($"A.uasset.bak.{StagingId}0.tmp", "header v1", Old),
+            Leftover($"B.uasset.bak.{StagingId}.tmp", "header v1", Old),
+            Leftover($"A.uasset.orig.bak.{StagingId}.tmp", "header v1", Old),
         ];
 
-        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+        Save();
 
         Assert.All(kept, path => Assert.True(File.Exists(path), path));
     }
@@ -153,25 +184,25 @@ public sealed class BackupWriteTests : IDisposable
     [Fact]
     public void ASaveThatPlacesNoBackup_SweepsNothing()
     {
-        var old = Leftover($"A.uasset.bak.{StagingId}.tmp", TimeSpan.FromDays(2));
+        var old = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", Old);
 
-        Assert.Throws<InvalidDataException>(() => PackageWriter.WithBackup(_uasset, backupFolder: null, () => throw new InvalidDataException("refused")));
+        Assert.Throws<InvalidDataException>(() => PackageWriter.WithBackup(_uasset, backupFolder: null, () => throw new InvalidDataException("refused"), Clock));
 
         Assert.True(File.Exists(old));
     }
 
     [Fact]
-    public void StagedCopiesInTheBackupFolder_AreSweptToo()
+    public void DuplicateStagedCopiesInTheBackupFolder_AreSweptToo()
     {
         var backups = Path.Combine(_dir, "backups");
         Directory.CreateDirectory(backups);
-        var old = Path.Combine(backups, $"A.uasset.bak.{StagingId}.tmp");
-        File.WriteAllText(old, "left by an interrupted save");
-        File.SetCreationTimeUtc(old, DateTime.UtcNow.AddDays(-2));
+        var duplicate = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", Old, backups);
+        var anotherFiles = Leftover($"A.uexp.bak.{StagingId}.tmp", "another A.uexp's exports", Old, backups);
 
-        PackageWriter.WithBackup(_uasset, backups, WriteBoth);
+        Save(backups);
 
-        Assert.False(File.Exists(old));
+        Assert.False(File.Exists(duplicate));
+        Assert.True(File.Exists(anotherFiles));
     }
 
     [Fact]
