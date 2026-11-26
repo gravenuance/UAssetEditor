@@ -1,6 +1,7 @@
 using ModelContextProtocol;
 using UAssetAPI;
 using UAssetEditor.Mcp.Tests.Rig;
+using UAssetEditor.Mcp.Tools;
 using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tests;
@@ -193,6 +194,43 @@ public sealed class RulesetToolTests : IDisposable
         Assert.Contains(AssetFixtures.ReadProperty(path, "Count"), new[] { "7", "9" });
         Assert.Equal(vanilla[0], await File.ReadAllBytesAsync(path + ".orig.bak", _ct));
         Assert.Empty(Directory.GetFiles(_rig.Folder.Path, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task ApplyRulesetOverAFolder_SavesTheAssetsNobodyHolds_WhileAnotherCallHoldsOne()
+    {
+        var free = Sample("Sub/A.uasset");
+        var held = Sample("Sub/B.uasset");
+        var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holder = Task.Run(() => PathLocks.RunAsync([held], async () =>
+        {
+            holding.SetResult();
+            await release.Task;
+            return 0;
+        }, _ct), _ct);
+        await holding.Task;
+
+        var run = _rig.Rulesets.ApplyRulesetAsync(_rig.Folder.Path, SetCountTo9, cancellationToken: _ct);
+        bool savedWhileHeld;
+        try
+        {
+            // The first save of an asset writes its .orig.bak; a run that waits for every lock up front writes none.
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (!File.Exists(free + ".orig.bak") && DateTime.UtcNow < deadline) await Task.Delay(50, _ct);
+            savedWhileHeld = File.Exists(free + ".orig.bak");
+            Assert.False(run.IsCompleted);
+        }
+        finally
+        {
+            release.SetResult();
+        }
+
+        await holder;
+        var result = await run;
+        Assert.True(savedWhileHeld);
+        Assert.Equal(2, result.AssetsChanged);
+        Assert.Equal("9", AssetFixtures.ReadProperty(held, "Count"));
     }
 
     [Fact]

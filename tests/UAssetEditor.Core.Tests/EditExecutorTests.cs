@@ -52,6 +52,32 @@ public class EditExecutorTests
     }
 
     [Fact]
+    public async Task ApplyAsync_AGuardThatRefusesOneAsset_SkipsIt_AndTheRunGoesOn()
+    {
+        var assets = new Dictionary<string, UAsset>();
+        foreach (var name in (string[])["a.uasset", "b.uasset"])
+        {
+            assets[name] = TestAssets.CreateAsset();
+            TestAssets.CreateSampleExport(assets[name]);
+        }
+        var source = new InMemoryAssetSource(assets);
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"] },
+            Rules = { new SetPropertyValueRule { NewValue = "42" } },
+        };
+        AssetGuard guard = (path, work, _) => path == "b.uasset" ? throw new IOException("b is locked by another process") : work();
+
+        var changeSets = await EditExecutor.ApplyAsync(
+            source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null, guard: guard, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, source.SaveCount);
+        var refused = Assert.Single(changeSets, set => set.AssetPath == "b.uasset");
+        Assert.True(refused.Skipped);
+        Assert.Equal("b is locked by another process", refused.Error);
+    }
+
+    [Fact]
     public async Task StageAsync_MutatesWhateverOpenAssetReturnsButNeverSaves()
     {
         // Regression test: Apply used to open a fresh, throwaway UAsset per asset and save it
