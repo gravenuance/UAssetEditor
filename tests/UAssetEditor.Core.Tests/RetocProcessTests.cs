@@ -261,7 +261,7 @@ public class RetocProcessTests
     [Fact]
     public async Task ListAsync_ARelativePathStartingWithAHyphen_IsReadAsAPath_NotAnOption()
     {
-        // retoc's parser (clap) reads "-name" as an unknown option and exits 2 before opening anything.
+        // retoc's parser (clap) reads "-name" as an unknown option and exits 2 before opening anything; a missing file is exit 1.
         var relative = "-UAssetEditorTest_Retoc_Missing_" + Guid.NewGuid() + ".utoc";
 
         var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>

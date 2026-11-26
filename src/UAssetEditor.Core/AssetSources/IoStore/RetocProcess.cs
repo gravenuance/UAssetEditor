@@ -45,10 +45,10 @@ public static class RetocProcess
             // PathTreeBuilder.Build (shared with the pak/loose-folder trees, whose paths never
             // start with '/') splits on '/' with RemoveEmptyEntries and would silently drop a
             // leading one when reconstructing each node's FullPath - which CollectSelectedZenAssetPaths
-            // later feeds straight back into ConvertToLegacyAsync's -f filter. Stripping it here,
+            // later feeds straight back into ConvertToLegacyAsync's --filter. Stripping it here,
             // once, at the single source of truth, means the tree and the filter always agree
             // with each other on the same (slash-less) form - if that form's actually still
-            // "-f"-matchable is unverified against real cooked content (see RetocProcessTests'
+            // filter-matchable is unverified against real cooked content (see RetocProcessTests'
             // own remarks on why), but the two no longer silently disagree with each other.
             paths.Add(path.TrimStart('/'));
         }, cancellationToken).ConfigureAwait(false);
@@ -139,7 +139,7 @@ public static class RetocProcess
     }
 
     // Windows' CreateProcess has a hard ~32,767-character command-line limit - a single retoc
-    // call with enough -f filters (a big checked folder/container can mean hundreds of long
+    // call with enough --filter words (a big checked folder/container can mean hundreds of long
     // asset paths) can exceed it, confirmed by a real Win32Exception(206) "The filename or
     // extension is too long" converting a large selection. Splits into as many sequential
     // batches as needed to stay safely under that limit. An empty filter list (convert every
@@ -149,8 +149,9 @@ public static class RetocProcess
 
     private const string FilterPrefix = "--filter=";
 
-    // Absolute, so a relative path that starts with '-' cannot reach retoc's parser looking like an option.
-    private static string PathArgument(string path) => Path.GetFullPath(path);
+    // A path starting with '-' is relative (absolute ones start with a root), so ".\" keeps it naming the same file while
+    // retoc's parser no longer reads it as an option. Anything else goes as given, so messages show the caller's path.
+    private static string PathArgument(string path) => path.StartsWith('-', StringComparison.Ordinal) ? "." + Path.DirectorySeparatorChar + path : path;
 
     private static List<List<string>> BatchFilters(IReadOnlyList<string> filters, int fixedLength)
     {
