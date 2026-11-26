@@ -32,39 +32,95 @@ public sealed class ProtocolTests : IAsyncLifetime
 
     private readonly TempFolder _folder = new();
     private readonly TestLinks _links = new();
+    private readonly CancellationTokenSource _stopRelay = new();
+    private readonly List<string> _sentByServer = [];
+    private Task _relay = Task.CompletedTask;
     private IHost? _host;
     private McpClient? _client;
 
     public async ValueTask InitializeAsync()
     {
         var toServer = new Pipe();
+        var fromServer = new Pipe();
         var toClient = new Pipe();
 
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
         builder.Services.AddUAssetMcpServices(new MappingsStore(_folder.Combine("maps")));
         builder.Services.AddMcpServer(options => options.ServerInstructions = ServerInstructions.Text)
-            .WithStreamServerTransport(toServer.Reader.AsStream(), toClient.Writer.AsStream())
+            .WithStreamServerTransport(toServer.Reader.AsStream(), fromServer.Writer.AsStream())
             .WithRequestFilters(filters => filters.AddCallToolFilter(ToolErrorFilter.Wrap))
             .WithTools(toolTypes: ServiceRegistration.ToolTypes);
 
         _host = builder.Build();
         await _host.StartAsync(TestContext.Current.CancellationToken);
+        _relay = RelayAsync(fromServer.Reader, toClient.Writer, _stopRelay.Token);
         _client = await McpClient.CreateAsync(
             new StreamClientTransport(toServer.Writer.AsStream(), toClient.Reader.AsStream()),
             cancellationToken: TestContext.Current.CancellationToken);
     }
 
+    // Records each message in the order the server wrote it: the SDK client handles messages concurrently, so the order
+    // its progress callback sees says nothing about the server's.
+    private async Task RelayAsync(PipeReader from, PipeWriter to, CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(from.AsStream());
+        var writer = to.AsStream();
+        Exception? failure = null;
+        try
+        {
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            {
+                lock (_sentByServer) _sentByServer.Add(line);
+                await writer.WriteAsync(System.Text.Encoding.UTF8.GetBytes(line + "\n"), cancellationToken);
+                await writer.FlushAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // the test is over
+        }
+        catch (Exception ex)
+        {
+            failure = ex; // the client fails with it at once instead of waiting for a result that never comes
+            throw;
+        }
+        finally
+        {
+            await to.CompleteAsync(failure);
+        }
+    }
+
+    private List<JsonElement> SentByServer()
+    {
+        lock (_sentByServer) return [.. _sentByServer.Select(Parse)];
+
+        static JsonElement Parse(string line)
+        {
+            using var message = JsonDocument.Parse(line);
+            return message.RootElement.Clone();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
-        if (_client is not null) await _client.DisposeAsync();
-        if (_host is not null)
+        try
         {
-            await _host.StopAsync();
-            _host.Dispose();
+            if (_client is not null) await _client.DisposeAsync();
+            if (_host is not null)
+            {
+                await _host.StopAsync();
+                _host.Dispose();
+            }
+            await _stopRelay.CancelAsync();
+            await _relay;
         }
-        _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
-        _folder.Dispose();
+        finally
+        {
+            _stopRelay.Dispose();
+            _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
+            _folder.Dispose();
+        }
     }
 
     private McpClient Client => _client ?? throw new InvalidOperationException("Not started.");
@@ -231,11 +287,11 @@ public sealed class ProtocolTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ASearchOverAFolder_ReportsProgressToTheClient()
+    public async Task ASearchOverAFolder_ReportsProgressToTheClient_InOrder_AndAllOfItBeforeTheResult()
     {
         const int files = 40;
         for (var i = 0; i < files; i++) AssetFixtures.WriteSample(_folder, $"A{i}.uasset");
-        var progress = new CollectedProgress();
+        var progress = new CollectedProgress(); // asks for progress: without it the call carries no progress token
 
         var result = await Client.CallToolAsync(
             "search_assets",
@@ -246,13 +302,21 @@ public sealed class ProtocolTests : IAsyncLifetime
         Assert.NotEqual(true, result.IsError);
         using var json = JsonDocument.Parse(Text(result));
         Assert.Equal(files, json.RootElement.GetProperty("total").GetInt32());
-        // Notifications are sent without waiting, and the client drops any that arrive after the call's result, so the
-        // last ones are not guaranteed (CI run 43761359040 lost them all with 2 files). They can also arrive out of the
-        // order the server sent them in (see TODO.md). With 40 files the early ones land before the result: check that
-        // some arrived, each within the total.
-        var values = progress.Values;
-        Assert.NotEmpty(values);
-        Assert.All(values, p => Assert.True(p.Total == files && p.Progress >= 1 && p.Progress <= files));
+        // Read on the wire, since the SDK client starts a task per incoming message: every notification before the result
+        // (the client drops a later one), rising (parallel workers may skip a count), up to the last file. The SDK (2.4.0)
+        // does not await a progress send, but each one runs synchronously up to the transport's one-slot SemaphoreSlim,
+        // whose waiters go first in, first out, so a send reported before the tool returns is written before its result.
+        var sent = SentByServer();
+        var resultAt = sent.FindIndex(message => message.TryGetProperty("result", out var body) && body.TryGetProperty("content", out _));
+        var notified = sent.Take(resultAt)
+            .Where(message => message.TryGetProperty("method", out var method) && method.GetString() == NotificationMethods.ProgressNotification)
+            .Select(message => message.GetProperty("params"))
+            .ToList();
+        var counts = notified.Select(p => p.GetProperty("progress").GetInt32()).ToList();
+        Assert.True(resultAt > 0, "no result was sent");
+        Assert.Equal(files, counts.LastOrDefault());
+        Assert.Equal(counts.Order().Distinct(), counts);
+        Assert.All(notified, p => Assert.Equal(files, p.GetProperty("total").GetInt32()));
     }
 
     [Fact]
