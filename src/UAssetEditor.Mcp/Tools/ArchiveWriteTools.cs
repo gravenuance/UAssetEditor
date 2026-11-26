@@ -228,10 +228,9 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         LegacyConversion.RefuseOutput(container, target, overwrite, LegacyNames);
         var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
 
-        var outcome = await LegacyConversion.RunAsync(container, target, filters, settings.AesKey, resolve, LegacyNames, cancellationToken).ConfigureAwait(false);
-        // The log names every base-game bulk file removed, which can run to thousands; the last line says where it went.
-        var log = outcome.Log.Count > MaxLogLines + 1 ? [.. outcome.Log.Take(MaxLogLines), outcome.Log[^1]] : outcome.Log;
-        return new ConvertResult(target, [.. log.Select(l => Untrusted.Clean(l, 400))], [.. settings.Warnings().Concat(outcome.Warnings).Select(w => Untrusted.Clean(w, 400))]);
+        var warnings = new List<string>(settings.Warnings());
+        var outcome = await LegacyConversion.RunAsync(container, target, filters, settings.AesKey, resolve, LegacyNames, warnings.Add, cancellationToken).ConfigureAwait(false);
+        return new ConvertResult(target, [.. outcome.Lines(MaxLogLines).Select(l => Untrusted.Clean(l, 400))], [.. warnings.Select(w => Untrusted.Clean(w, 400))]);
     }
 
     [McpServerTool(Name = "repack", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]

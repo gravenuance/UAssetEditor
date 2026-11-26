@@ -301,7 +301,9 @@ static void PrintUsage()
               that resolution returns: "modded" (default) keeps <utoc>'s own edits; "original" discards them for the base game's
               vanilla content instead - useful for diffing a mod against what it actually changed. "modded" writes only the
               .ubulk/.uptnl files <utoc> ships: base-game bulk files of a package it replaces are removed (not possible for a .pak
-              output, which warns instead).
+              output, which warns instead). An existing .pak or a folder that already holds files is replaced only with
+              --overwrite; a .pak output that is one of <utoc>'s own files is always refused, and so are --layer or --paks
+              together with --no-paks-resolve.
 
           uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>] [--overwrite]
               Rebuild a .pak, optionally applying a RuleSet's edits first (same JSON as 'batch') - the pak counterpart to editing a loose

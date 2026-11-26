@@ -8,18 +8,29 @@ internal sealed record LegacyNames(string Utoc, string Output, string Layer, str
 /// <summary>Imports resolve through a Paks folder: <see cref="PaksFolder"/>, or the one enclosing the container when null.</summary>
 internal sealed record LegacyResolve(RetocLayer Layer, string? PaksFolder);
 
-/// <summary>What a conversion did, and what its caller should be warned about.</summary>
-internal sealed record LegacyOutcome(IReadOnlyList<string> Log, IReadOnlyList<string> Warnings);
+/// <summary>What a conversion wrote: how its imports resolved (null when they did not go through a Paks folder), and the
+/// base-game bulk files it removed because the container does not ship them.</summary>
+internal sealed record LegacyOutcome(string Output, string? Resolved, IReadOnlyList<string> RemovedBulkFiles)
+{
+    /// <summary>The outcome as log lines, naming at most <paramref name="maxRemoved"/> removed files and counting the rest.</summary>
+    public IEnumerable<string> Lines(int maxRemoved = int.MaxValue)
+    {
+        if (Resolved != null) yield return Resolved;
+        foreach (var removed in RemovedBulkFiles.Take(maxRemoved))
+            yield return $"Removed base-game bulk the container does not ship: {removed}";
+        if (RemovedBulkFiles.Count > maxRemoved)
+            yield return $"... and {RemovedBulkFiles.Count - maxRemoved} more base-game bulk files removed.";
+        yield return $"Converted to {Output}";
+    }
+}
 
 /// <summary>Converts an IoStore container to legacy format through retoc, with the same checks and messages for every front end.</summary>
 internal static class LegacyConversion
 {
-    /// <summary>An output ending in .pak is written as a pak; anything else is a folder.</summary>
-    public static bool WritesPak(string output)
-    {
-        ArgumentNullException.ThrowIfNull(output);
-        return output.TrimEnd().EndsWith(".pak", StringComparison.OrdinalIgnoreCase);
-    }
+    /// <summary>An output with the .pak extension is written as a pak, the same test <see cref="IoStoreLegacyConverter"/> makes;
+    /// anything else is a folder.</summary>
+    public static bool WritesPak(string output) =>
+        string.Equals(Path.GetExtension(output), ".pak", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// How imports resolve, or null for the container on its own; a layer or Paks folder with <paramref name="noPaksResolve"/>
@@ -60,8 +71,11 @@ internal static class LegacyConversion
             throw new ArgException($"{names.Output} already exists: {output}. Pass {names.Overwrite} to replace it, or choose another path.");
     }
 
-    /// <summary>Converts <paramref name="utoc"/>'s entries (all of them when <paramref name="filters"/> is empty) into <paramref name="output"/>,
-    /// which the caller has checked with <see cref="RefuseOutput"/>.</summary>
+    /// <summary>
+    /// Converts <paramref name="utoc"/>'s entries (all of them when <paramref name="filters"/> is empty) into <paramref name="output"/>,
+    /// which the caller has checked with <see cref="RefuseOutput"/>. Each warning goes to <paramref name="warn"/> when it is known,
+    /// so one about how imports resolve is out before retoc starts, and still out when it fails.
+    /// </summary>
     public static async Task<LegacyOutcome> RunAsync(
         string utoc,
         string output,
@@ -69,34 +83,29 @@ internal static class LegacyConversion
         byte[]? aesKey,
         LegacyResolve? resolve,
         LegacyNames names,
+        Action<string> warn,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(names);
+        ArgumentNullException.ThrowIfNull(warn);
         Directory.CreateDirectory(WritesPak(output) ? Path.GetDirectoryName(Path.GetFullPath(output))! : output);
-        var log = new List<string>();
-        var warnings = new List<string>();
 
         if (resolve == null)
         {
             await RetocProcess.ConvertToLegacyAsync(utoc, output, filters, aesKey, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            if (resolve.PaksFolder == null && RetocPaksFolderResolver.FindEnclosingPaksFolder(utoc) == null)
-                warnings.Add($"No enclosing Paks folder, so imports into the game can't resolve; pass {names.Paks} for a container outside the game's Paks folder.");
-
-            var result = await IoStoreLegacyConverter.ConvertAsync(utoc, output, resolve.Layer, filters, aesKey, resolve.PaksFolder, cancellationToken).ConfigureAwait(false);
-            if (result.ResolvedThroughPaksFolder)
-            {
-                var scoped = result.OwnEntryCount > 0 ? $", {result.OwnEntryCount} entries of the container" : "";
-                log.Add($"Resolved imports via {resolve.PaksFolder ?? "the enclosing Paks folder"} ({resolve.Layer} layer{scoped}).");
-            }
-            log.AddRange(result.RemovedBaseGameBulkFiles.Select(removed => $"Removed base-game bulk the container does not ship: {removed}"));
-            if (result.BaseGameBulkKept)
-                warnings.Add("A .pak output can't be pruned, so it may hold base-game bulk files the container doesn't ship; convert to a folder to drop them.");
+            return new LegacyOutcome(output, null, []);
         }
 
-        log.Add($"Converted to {output}");
-        return new LegacyOutcome(log, warnings);
+        if (resolve.PaksFolder == null && RetocPaksFolderResolver.FindEnclosingPaksFolder(utoc) == null)
+            warn($"No enclosing Paks folder, so imports into the game can't resolve; pass {names.Paks} for a container outside the game's Paks folder.");
+
+        var result = await IoStoreLegacyConverter.ConvertAsync(utoc, output, resolve.Layer, filters, aesKey, resolve.PaksFolder, cancellationToken).ConfigureAwait(false);
+        if (result.BaseGameBulkKept)
+            warn("A .pak output can't be pruned, so it may hold base-game bulk files the container doesn't ship; convert to a folder to drop them.");
+        var scoped = result.OwnEntryCount > 0 ? $", {result.OwnEntryCount} entries of the container" : "";
+        var resolved = result.ResolvedThroughPaksFolder
+            ? $"Resolved imports via {resolve.PaksFolder ?? "the enclosing Paks folder"} ({resolve.Layer} layer{scoped})."
+            : null;
+        return new LegacyOutcome(output, resolved, result.RemovedBaseGameBulkFiles);
     }
 }

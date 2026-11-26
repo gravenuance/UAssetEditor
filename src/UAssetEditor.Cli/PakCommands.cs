@@ -219,13 +219,14 @@ internal static class PakCommands
         IReadOnlyList<string> filters = args.Option("filter")
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
-        var outcome = LegacyConversion.RunAsync(utocPath, output, filters, aesKey, resolve, LegacyNames, CancellationToken.None).GetAwaiter().GetResult();
-        foreach (var warning in outcome.Warnings) Console.Error.WriteLine($"warning: {warning}");
-        foreach (var line in outcome.Log) Console.WriteLine($"-- {line}");
+        var outcome = LegacyConversion.RunAsync(
+            utocPath, output, filters, aesKey, resolve, LegacyNames, warning => Console.Error.WriteLine($"warning: {warning}"), CancellationToken.None)
+            .GetAwaiter().GetResult();
+        foreach (var line in outcome.Lines()) Console.WriteLine($"-- {line}");
         return 0;
     }
 
-    private static readonly LegacyNames LegacyNames = new("utoc", "--output", "--layer", "--paks", "--no-paks-resolve", "--overwrite");
+    private static readonly LegacyNames LegacyNames = new("<utoc>", "<output>", "--layer", "--paks", "--no-paks-resolve", "--overwrite");
 
     private static RetocLayer? ResolveLayer(ArgReader args) => args.Option("layer") switch
     {
