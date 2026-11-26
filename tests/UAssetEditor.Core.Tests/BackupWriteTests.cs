@@ -100,6 +100,111 @@ public sealed class BackupWriteTests : IDisposable
         }
     }
 
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private static readonly DateTime Now = new(2026, 1, 10, 12, 0, 0, DateTimeKind.Utc);
+    private static readonly TimeProvider Clock = new FixedClock(Now);
+    private static readonly TimeSpan Old = TimeSpan.FromDays(2);
+    private const string StagingId = "0123456789abcdef0123456789abcdef";
+
+    private string Leftover(string name, string contents, TimeSpan age, string? folder = null)
+    {
+        var path = Path.Combine(folder ?? _dir, name);
+        File.WriteAllText(path, contents);
+        File.SetLastWriteTimeUtc(path, Now - age);
+        return path;
+    }
+
+    private BackupResult Save(string? backupFolder = null) => PackageWriter.WithBackup(_uasset, backupFolder, WriteBoth, Clock);
+
+    [Fact]
+    public void StagedCopiesThatDuplicateABackup_AreRemovedByTheNextSave()
+    {
+        // A save killed before it wrote anything leaves copies of the files as they still are, which this save's .bak now holds.
+        Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", Old);
+        Leftover($"A.uexp.bak.{StagingId}.tmp", "exports v1", Old);
+
+        var result = Save();
+
+        Assert.True(result.Placed);
+        Assert.Equal(["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak"], FileNames());
+    }
+
+    [Fact]
+    public void AStagedCopyMatchingNoFileOnDisk_IsKept_AsItMayBeTheOnlyCopy()
+    {
+        // What a stranded save reported to the user, or what a save killed mid-write left of the state before it.
+        var stranded = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v0", Old);
+
+        Save();
+
+        Assert.Equal("header v0", File.ReadAllText(stranded));
+    }
+
+    [Fact]
+    public void ARecentStagedCopy_IsLeftAlone_SinceAnotherSaveMayStillBeUsingIt()
+    {
+        var recent = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", TimeSpan.FromMinutes(59));
+
+        Save();
+
+        Assert.True(File.Exists(recent));
+    }
+
+    [Fact]
+    public void TheStagedCopy_IsStampedWithTheSaveTime_NotTheSourceFilesTime()
+    {
+        File.SetLastWriteTimeUtc(_uasset, Now - TimeSpan.FromDays(300));
+
+        Save();
+
+        Assert.Equal(Now, File.GetLastWriteTimeUtc(_uasset + ".bak"));
+    }
+
+    [Fact]
+    public void OnlyThisFilesStagingNames_AreSwept()
+    {
+        string[] kept =
+        [
+            Leftover("A.uasset.bak.tmp", "header v1", Old),
+            Leftover("A.uasset.bak.notastagingid.tmp", "header v1", Old),
+            Leftover($"A.uasset.bak.{StagingId}0.tmp", "header v1", Old),
+            Leftover($"B.uasset.bak.{StagingId}.tmp", "header v1", Old),
+            Leftover($"A.uasset.orig.bak.{StagingId}.tmp", "header v1", Old),
+        ];
+
+        Save();
+
+        Assert.All(kept, path => Assert.True(File.Exists(path), path));
+    }
+
+    [Fact]
+    public void ASaveThatPlacesNoBackup_SweepsNothing()
+    {
+        var old = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", Old);
+
+        Assert.Throws<InvalidDataException>(() => PackageWriter.WithBackup(_uasset, backupFolder: null, () => throw new InvalidDataException("refused"), Clock));
+
+        Assert.True(File.Exists(old));
+    }
+
+    [Fact]
+    public void DuplicateStagedCopiesInTheBackupFolder_AreSweptToo()
+    {
+        var backups = Path.Combine(_dir, "backups");
+        Directory.CreateDirectory(backups);
+        var duplicate = Leftover($"A.uasset.bak.{StagingId}.tmp", "header v1", Old, backups);
+        var anotherFiles = Leftover($"A.uexp.bak.{StagingId}.tmp", "another A.uexp's exports", Old, backups);
+
+        Save(backups);
+
+        Assert.False(File.Exists(duplicate));
+        Assert.True(File.Exists(anotherFiles));
+    }
+
     [Fact]
     public void StagingNameIsUnique_SoAnotherSaversStagedCopyIsNotClobbered()
     {

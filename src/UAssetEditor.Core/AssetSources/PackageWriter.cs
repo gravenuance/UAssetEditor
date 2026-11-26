@@ -1,3 +1,4 @@
+using System.Buffers;
 using Microsoft.Extensions.Logging;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
@@ -92,11 +93,12 @@ public static partial class PackageWriter
     private readonly record struct StagedBackup(string Original, string Staged, string Backup, string Vanilla);
 
     /// <summary>The backup handling of <see cref="WriteWithBackup"/> around any <paramref name="write"/> of the package at <paramref name="path"/>.</summary>
-    internal static BackupResult WithBackup(string path, string? backupFolder, Action write)
+    internal static BackupResult WithBackup(string path, string? backupFolder, Action write, TimeProvider? clock = null)
     {
+        clock ??= TimeProvider.System;
         // Staged under a name of this save's own, so an existing backup is only replaced once there is reason to and
         // another save of the same file cannot pick up or overwrite this copy.
-        var stagingId = Guid.NewGuid().ToString("N");
+        var stagingId = Guid.NewGuid().ToString("N"); // StagingIdLength lowercase hex digits, which SweepStaleStaging relies on
         var staged = new List<StagedBackup>();
         try
         {
@@ -107,6 +109,8 @@ public static partial class PackageWriter
                 var stagedPath = $"{backup}.{stagingId}.tmp";
                 File.Copy(file, stagedPath, overwrite: true);
                 staged.Add(new StagedBackup(file, stagedPath, backup, BackupPathResolver.ResolveOriginal(file, backupFolder)));
+                // Copy keeps the source's write time; stamping it says when this save began, which the sweep reads as its age.
+                File.SetLastWriteTimeUtc(stagedPath, clock.GetUtcNow().UtcDateTime);
             }
         }
         catch
@@ -124,13 +128,13 @@ public static partial class PackageWriter
         }
         finally
         {
-            result = SettleBackups(staged, written);
+            result = SettleBackups(staged, written, clock);
         }
         return result;
     }
 
     /// <summary>Never throws, so the write's own outcome is what the caller sees. When in doubt the copy is kept as the backup.</summary>
-    private static BackupResult SettleBackups(List<StagedBackup> staged, bool written)
+    private static BackupResult SettleBackups(List<StagedBackup> staged, bool written, TimeProvider clock)
     {
         bool untouched;
         try
@@ -164,8 +168,66 @@ public static partial class PackageWriter
                 LogBackupNotPlaced(AppLog.For<UAsset>(), copy.Backup, copy.Staged, ex);
             }
         }
+        if (placed && !untouched)
+        {
+            foreach (var copy in staged) SweepStaleStaging(copy, clock);
+        }
         return new BackupResult(placed, stranded);
     }
+
+    // No save holds its staged copy this long, so an older one was left by a save that was killed or could not place it.
+    private static readonly TimeSpan StaleStagingAge = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Deletes "&lt;backup&gt;.&lt;staging id&gt;.tmp" copies that earlier saves left next to <paramref name="copy"/>'s backup, but
+    /// only those byte for byte the same as the file, its ".bak" or its ".orig.bak": any other may be the only copy of some
+    /// state (a save reported it stranded, or was killed mid-write, or it belongs to a same-named file sharing the backup
+    /// folder), so it is kept and logged.
+    /// </summary>
+    private static void SweepStaleStaging(StagedBackup copy, TimeProvider clock)
+    {
+        var folder = Path.GetDirectoryName(copy.Backup)!; // Resolve returns a full file path, so it has a folder
+        var prefix = Path.GetFileName(copy.Backup) + ".";
+        List<string> candidates;
+        try
+        {
+            candidates = [.. Directory.EnumerateFiles(folder, prefix + "*.tmp")
+                .Where(path => IsStagingName(Path.GetFileName(path), prefix) && !string.Equals(path, copy.Staged, StringComparison.OrdinalIgnoreCase))];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogStagingNotSwept(AppLog.For<UAsset>(), folder, ex);
+            return;
+        }
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        foreach (var path in candidates)
+        {
+            try
+            {
+                if (now - File.GetLastWriteTimeUtc(path) <= StaleStagingAge) continue;
+                if (IsDuplicate(path, copy)) File.Delete(path);
+                else LogStagingKept(AppLog.For<UAsset>(), path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                LogStagingNotSwept(AppLog.For<UAsset>(), path, ex);
+            }
+        }
+    }
+
+    private static bool IsDuplicate(string leftover, StagedBackup copy) =>
+        ((string[])[copy.Original, copy.Backup, copy.Vanilla]).Any(file => File.Exists(file) && SameContents(leftover, file));
+
+    private const int StagingIdLength = 32;
+
+    private static bool IsStagingName(string name, string prefix) =>
+        name.Length == prefix.Length + StagingIdLength + ".tmp".Length
+        && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+        && name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
+        && !name.AsSpan(prefix.Length, StagingIdLength).ContainsAnyExcept(LowerHex);
+
+    private static readonly SearchValues<char> LowerHex = SearchValues.Create("0123456789abcdef");
 
     /// <summary>Copies the earliest state at hand to the file's ".orig.bak", unless an earlier save already did: a ".bak" left by
     /// a save from before ".orig.bak" existed, else the file as it was before this save.</summary>
@@ -198,6 +260,12 @@ public static partial class PackageWriter
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Backup {Backup} could not be put in place; the copy stays at {Staged}")]
     private static partial void LogBackupNotPlaced(ILogger logger, string backup, string staged, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Leftover staged backups at {Path} could not be checked or removed")]
+    private static partial void LogStagingNotSwept(ILogger logger, string path, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Path} was left by an earlier save and matches no file or backup now on disk; it is kept, as it may be the only copy of that state")]
+    private static partial void LogStagingKept(ILogger logger, string path);
 
     private static bool SameContents(string first, string second)
     {
