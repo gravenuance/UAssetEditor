@@ -20,6 +20,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
     private const int MaxUnpackFiles = 20_000;
     private const int MaxFailuresListed = 20;
     private const int MaxLogLines = 200;
+    private static readonly LegacyNames LegacyNames = new("utoc", "output", "layer", "paks", "noPaksResolve", "overwrite=true");
 
     private static readonly string[] RivalsPackSwitches = ["obfuscate", "kawaiiPhysics", "patchDefaultHiddenMats", "defaultHiddenMaterialBitmaps"];
 
@@ -217,48 +218,20 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
     {
         ToolRuntime.RequireWindows("to_legacy");
         var container = ToolPaths.ExistingFile(utoc, nameof(utoc), ".utoc");
-        var asPak = output?.TrimEnd().EndsWith(".pak", StringComparison.OrdinalIgnoreCase) == true;
-        var target = asPak
-            ? ToolPaths.NewFile(output, nameof(output), overwrite, ".pak")
-            : ToolPaths.NewFolder(output, nameof(output), overwrite);
-        if (asPak)
-        {
-            // retoc writes the .pak while it reads the container, whose own files include a Marvel Rivals companion .pak.
-            foreach (var containerFile in (string[])[container, .. PackOutputs.CompanionsOf(container, writesCompanionPak: true)])
-                OutputPaths.RefuseSame(target, containerFile, nameof(output), $"{nameof(utoc)}'s {Path.GetExtension(containerFile)}");
-        }
+        var target = ToolPaths.Absolute(output, nameof(output));
         var filters = ToolInput.Optional(filter, nameof(filter), 20_000)
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
-        var retocLayer = ToolInput.OneOf(layer ?? "modded", nameof(layer), "modded", "original") == "modded" ? RetocLayer.Modded : RetocLayer.Original;
+        RetocLayer? retocLayer = layer == null ? null
+            : ToolInput.OneOf(layer, nameof(layer), "modded", "original") == "modded" ? RetocLayer.Modded : RetocLayer.Original;
         var paksFolder = ToolInput.Optional(paks, nameof(paks)) is { } folder ? ToolPaths.ExistingFolder(folder, nameof(paks)) : null;
-        if (noPaksResolve && (layer != null || paksFolder != null))
-            throw new McpException("layer and paks choose how imports resolve through a Paks folder, so they cannot be combined with noPaksResolve.");
+        var resolve = LegacyConversion.Resolve(noPaksResolve, retocLayer, paksFolder, LegacyNames);
+        LegacyConversion.RefuseOutput(container, target, overwrite, LegacyNames);
         var settings = OpenSettings.Create(store, game, null, null, aesKey: aesKey);
-        var key = settings.AesKey;
 
-        Directory.CreateDirectory(asPak ? Path.GetDirectoryName(target)! : target);
-        var log = new List<string>();
-        var warnings = new List<string>(settings.Warnings());
-
-        if (noPaksResolve)
-        {
-            await RetocProcess.ConvertToLegacyAsync(container, target, filters, key, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            if (paksFolder == null && RetocPaksFolderResolver.FindEnclosingPaksFolder(container) == null)
-                warnings.Add("No enclosing Paks folder, so imports into the game can't resolve; pass paks for a container outside the game's Paks folder.");
-
-            var result = await IoStoreLegacyConverter.ConvertAsync(container, target, retocLayer, filters, key, paksFolder, cancellationToken).ConfigureAwait(false);
-            if (result.ResolvedThroughPaksFolder)
-                log.Add($"Resolved imports via {paksFolder ?? "the enclosing Paks folder"} ({retocLayer} layer{(result.OwnEntryCount > 0 ? $", {result.OwnEntryCount} entries of the container" : "")}).");
-            log.AddRange(result.RemovedBaseGameBulkFiles.Take(MaxLogLines).Select(removed => $"Removed base-game bulk the container does not ship: {removed}"));
-            if (result.BaseGameBulkKept)
-                warnings.Add("A .pak output can't be pruned, so it may hold base-game bulk files the container doesn't ship; convert to a folder to drop them.");
-        }
-
-        log.Add($"Converted to {target}");
-        return new ConvertResult(target, [.. log.Select(l => Untrusted.Clean(l, 400))], [.. warnings.Select(w => Untrusted.Clean(w, 400))]);
+        var outcome = await LegacyConversion.RunAsync(container, target, filters, settings.AesKey, resolve, LegacyNames, cancellationToken).ConfigureAwait(false);
+        // The log names every base-game bulk file removed, which can run to thousands; the last line says where it went.
+        var log = outcome.Log.Count > MaxLogLines + 1 ? [.. outcome.Log.Take(MaxLogLines), outcome.Log[^1]] : outcome.Log;
+        return new ConvertResult(target, [.. log.Select(l => Untrusted.Clean(l, 400))], [.. settings.Warnings().Concat(outcome.Warnings).Select(w => Untrusted.Clean(w, 400))]);
     }
 
     [McpServerTool(Name = "repack", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]

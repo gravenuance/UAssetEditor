@@ -526,7 +526,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
 
         var error = await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, companion, overwrite: true, noPaksResolve: true, cancellationToken: _ct));
 
-        Assert.Equal("output and utoc's .pak are the same file.", error.Message);
+        Assert.Equal("output and the utoc's .pak are the same file.", error.Message);
         Assert.Equal("pak", await File.ReadAllTextAsync(companion, _ct));
     }
 

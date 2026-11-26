@@ -209,41 +209,27 @@ internal static class PakCommands
         var utocPath = args.Positional(0, "utoc");
         var output = args.Positional(1, "output");
         if (!File.Exists(utocPath)) throw new ArgException($"File not found: {utocPath}");
+        var overwrite = args.Switch("overwrite");
+        var paksFolder = args.Option("paks");
+        if (paksFolder != null && !Directory.Exists(paksFolder)) throw new ArgException($"Paks folder not found: {paksFolder}");
+        var resolve = LegacyConversion.Resolve(args.Switch("no-paks-resolve"), ResolveLayer(args), paksFolder, LegacyNames);
+        LegacyConversion.RefuseOutput(utocPath, output, overwrite, LegacyNames);
 
         var aesKey = AssetIo.ResolveAesKey(args);
         IReadOnlyList<string> filters = args.Option("filter")
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
-        if (args.Flag("no-paks-resolve"))
-        {
-            RetocProcess.ConvertToLegacyAsync(utocPath, output, filters, aesKey).GetAwaiter().GetResult();
-            Console.WriteLine($"-- converted to {output}");
-            return 0;
-        }
-
-        var layer = ResolveLayer(args);
-        var paksFolder = args.Option("paks");
-        if (paksFolder != null && !Directory.Exists(paksFolder)) throw new ArgException($"Paks folder not found: {paksFolder}");
-        if (paksFolder == null && RetocPaksFolderResolver.FindEnclosingPaksFolder(utocPath) == null)
-            Console.Error.WriteLine("warning: no enclosing Paks folder, so imports into the game can't resolve; pass --paks <game Paks folder> for a container outside it");
-        var result = IoStoreLegacyConverter.ConvertAsync(utocPath, output, layer, filters, aesKey, paksFolder).GetAwaiter().GetResult();
-        if (result.ResolvedThroughPaksFolder)
-        {
-            var scoped = result.OwnEntryCount > 0 ? $", {result.OwnEntryCount} entr(y/ies) of '{Path.GetFileName(utocPath)}'" : "";
-            Console.WriteLine($"-- resolved imports via {(paksFolder ?? "enclosing Paks folder")} ({layer} layer{scoped})");
-        }
-        foreach (var removed in result.RemovedBaseGameBulkFiles)
-            Console.WriteLine($"-- not shipped by the container, removed base-game bulk: {removed}");
-        if (result.BaseGameBulkKept)
-            Console.Error.WriteLine("warning: a .pak output can't be pruned, so it may hold base-game bulk files the container doesn't ship; convert to a folder to drop them");
-
-        Console.WriteLine($"-- converted to {output}");
+        var outcome = LegacyConversion.RunAsync(utocPath, output, filters, aesKey, resolve, LegacyNames, CancellationToken.None).GetAwaiter().GetResult();
+        foreach (var warning in outcome.Warnings) Console.Error.WriteLine($"warning: {warning}");
+        foreach (var line in outcome.Log) Console.WriteLine($"-- {line}");
         return 0;
     }
 
-    private static RetocLayer ResolveLayer(ArgReader args) => args.Option("layer") switch
+    private static readonly LegacyNames LegacyNames = new("utoc", "--output", "--layer", "--paks", "--no-paks-resolve", "--overwrite");
+
+    private static RetocLayer? ResolveLayer(ArgReader args) => args.Option("layer") switch
     {
-        null => RetocLayer.Modded,
+        null => null,
         "modded" => RetocLayer.Modded,
         "original" => RetocLayer.Original,
         var other => throw new ArgException($"Unknown --layer '{other}' (expects 'original' or 'modded')."),

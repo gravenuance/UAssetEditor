@@ -292,7 +292,7 @@ static void PrintUsage()
           uacli iostore-list <utoc> [--aes <hex>] [--filter <substring>]
               List every chunk path in a .utoc container via retoc. Use this to find the exact entry path 'to-legacy''s --filter expects.
 
-          uacli to-legacy <utoc> <output> [--aes <hex>] [--filter <path1,path2,...>] [--layer original|modded] [--paks <dir>] [--no-paks-resolve]
+          uacli to-legacy <utoc> <output> [--aes <hex>] [--filter <path1,path2,...>] [--layer original|modded] [--paks <dir>] [--no-paks-resolve] [--overwrite]
               Convert an IoStore .utoc to legacy format via retoc, into a loose folder or a .pak. Converts every entry by default, or
               only the comma-separated entry paths passed via --filter (e.g. to pull one specific asset out of a large shared chunk
               like pakchunkCharacter-Windows.utoc). Auto-resolves imports through the enclosing "Paks" folder when found; --paks
