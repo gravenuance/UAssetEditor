@@ -63,11 +63,12 @@ internal static class PakCommands
         // 30GB / 216k entries) means a multi-minute run and a full-disk extraction when all
         // the caller wanted was one asset.
         var filter = args.Option("filter");
+        var overwrite = args.Switch("overwrite");
         using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args), variant: AssetIo.ResolvePakVariant(args));
-        var result = PakUnpacker.Unpack(
-            source,
-            destination,
-            filter == null ? null : e => e.Contains(filter, StringComparison.OrdinalIgnoreCase));
+        Func<string, bool>? matches = filter == null ? null : e => e.Contains(filter, StringComparison.OrdinalIgnoreCase);
+        if (!overwrite)
+            PakUnpacking.RefuseExisting(source.ListAllEntries().Where(e => matches?.Invoke(e) ?? true), destination, "--overwrite");
+        var result = PakUnpacker.Unpack(source, destination, matches);
 
         foreach (var (entry, reason) in result.FailedEntries)
             Console.WriteLine($"FAILED {entry}: {reason}");

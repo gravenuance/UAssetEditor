@@ -271,10 +271,11 @@ static void PrintUsage()
           uacli pak-list <pak> [--aes <hex>] [--filter <substring>]
               List every entry in a .pak ('*' marks a .uasset).
 
-          uacli unpack <pak> <destFolder> [--aes <hex>] [--filter <substring>]
+          uacli unpack <pak> <destFolder> [--aes <hex>] [--filter <substring>] [--overwrite]
               Extract a .pak's entries to a loose folder - every entry, or only those whose path contains
               --filter. Always pass --filter when you want a few specific assets: a real game pak can be
               tens of GB and hundreds of thousands of entries, and the unfiltered run extracts all of it.
+              Refuses, writing nothing, if an entry would replace an existing file, unless --overwrite.
 
           uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>]
               Build a new archive from a loose folder: a legacy .pak if <output> ends in ".pak" (--mount defaults to "../../../<folderName>/",

@@ -102,7 +102,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(existing)!);
         await File.WriteAllTextAsync(existing, "mine", _ct);
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A.txt", cancellationToken: _ct));
+        var error = await Assert.ThrowsAsync<ArgException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A.txt", cancellationToken: _ct));
         Assert.Contains("already exists", error.Message, StringComparison.Ordinal);
         Assert.Equal("mine", await File.ReadAllTextAsync(existing, _ct));
 

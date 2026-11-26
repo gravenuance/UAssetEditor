@@ -57,8 +57,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
             var matched = entries.Count;
             if (matched > maxFiles)
                 throw new McpException($"filter matches {matched} entries, more than maxFiles ({maxFiles}). Narrow the filter; pak_list shows what it matches.");
-            if (!overwrite && entries.Find(entry => ExistsIn(folder, entry)) is { } existing)
-                throw new McpException($"{Untrusted.Clean(existing, 300)} already exists in the destination. Pass overwrite=true to replace existing files.");
+            if (!overwrite) PakUnpacking.RefuseExisting(entries, folder, "overwrite=true");
 
             var result = PakUnpacker.Unpack(source, folder, Matches, sink, cancellationToken);
             var failed = result.FailedEntries
@@ -70,18 +69,6 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
                 : result.HasFailures ? $"{result.FailedEntries.Count} entr(y/ies) could not be extracted." : "";
             return new UnpackResult(path, folder, matched, result.SucceededCount, failed, note);
         }, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool ExistsIn(string folder, string entry)
-    {
-        try
-        {
-            return File.Exists(Path.GetFullPath(Path.Combine(folder, entry.Replace('/', Path.DirectorySeparatorChar))));
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false; // the unpacker records such an entry as failed
-        }
     }
 
     [McpServerTool(Name = "pack", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]
