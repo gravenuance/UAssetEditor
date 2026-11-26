@@ -11,10 +11,11 @@ public sealed class PakWorkerJobTests(CleanWorkerFolder folder) : IClassFixture<
     [Fact]
     public async Task AWorker_EndsWhenItsHostsJobCloses_ThoughItsPipeIsStillOpen()
     {
-        var job = new KillOnCloseJob();
+        using var job = new KillOnCloseJob();
         using var worker = new PakWorkerProcess(folder.WorkerExecutable, job);
         var (processId, _) = await PakWorkerOodleTests.StateAsync(worker);
         using var process = Process.GetProcessById(processId);
+        Assert.True(job.Contains(process), $"pak worker {processId} is not in its host's job");
 
         job.Dispose();
 
