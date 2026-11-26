@@ -1,7 +1,6 @@
 using System.Text;
 using UAssetEditor.Cli;
 using UAssetEditor.Core.AssetSources.IoStore;
-using UAssetEditor.Core.Editing;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Tooling;
 
@@ -104,18 +103,28 @@ public sealed class CliPakTests : IDisposable
     }
 
     [Fact]
-    public void Repack_WithoutARuleSet_ExtractsNothingUpFront_AndWithOneExtractsTheAssets()
+    public void Repack_ExtractsNothingUpFront_AndWritesEveryEntryAsTheSourceHasIt()
     {
-        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]>
+        var entries = new Dictionary<string, byte[]>
         {
             ["Content/A.uasset"] = [1, 2, 3],
             ["Content/A.uexp"] = [4, 5, 6],
-        });
+            ["Content/B.txt"] = Encoding.UTF8.GetBytes("b"),
+        };
+        using var pak = TestPaks.CreateTemp(entries);
+        using (var opened = PakRepack.OpenSource(pak.Path, null, UAssetAPI.PakVariant.Standard, tempRoot: _folder.Path))
+            Assert.Empty(Directory.EnumerateFiles(opened.TempExtractionDirectory, "*", SearchOption.AllDirectories));
+        var output = _folder.Combine("new.pak");
 
-        using (var plain = PakRepack.OpenSource(pak.Path, null, UAssetAPI.PakVariant.Standard, rules: null, tempRoot: _folder.Path))
-            Assert.Empty(Directory.EnumerateFiles(plain.TempExtractionDirectory, "*", SearchOption.AllDirectories));
-        using var edited = PakRepack.OpenSource(pak.Path, null, UAssetAPI.PakVariant.Standard, new RuleSet { Scope = new() }, tempRoot: _folder.Path);
-        Assert.NotEmpty(Directory.EnumerateFiles(edited.TempExtractionDirectory, "*", SearchOption.AllDirectories));
+        Assert.Equal(0, PakCommands.Repack(new ArgReader([pak.Path, output])));
+
+        using var written = PakRepack.OpenSource(output, null, UAssetAPI.PakVariant.Standard, tempRoot: _folder.Path);
+        Assert.Equal(entries.Keys.Order(StringComparer.Ordinal), written.ListAllEntries().Order(StringComparer.Ordinal));
+        foreach (var (entry, bytes) in entries)
+        {
+            using var read = written.ReadOriginalBytes(entry);
+            Assert.Equal(bytes, read.Memory.ToArray());
+        }
     }
 
     [Fact]

@@ -18,11 +18,11 @@ internal sealed record RepackNote(bool Failed, string AssetPath, string? Error)
 internal static class PakRepack
 {
     /// <summary>
-    /// Opens <paramref name="pakPath"/> for a repack. Without <paramref name="rules"/> nothing is extracted up front, whatever the
-    /// pak's size, since <see cref="PakRepacker"/> reads each entry it was not handed from the pak itself; a rule set opens every asset.
+    /// Opens <paramref name="pakPath"/> for a repack with nothing extracted up front, whatever the pak's size: a rule set extracts each
+    /// asset as it opens it, and <see cref="PakRepacker"/> reads every entry nobody extracted from the pak itself.
     /// </summary>
-    public static PakAssetSource OpenSource(string pakPath, byte[]? aesKey, PakVariant variant, RuleSet? rules, string? tempRoot = null) =>
-        new(pakPath, aesKey, rules == null ? 0 : PakAssetSource.LargePakThresholdBytes, tempRoot, variant);
+    public static PakAssetSource OpenSource(string pakPath, byte[]? aesKey, PakVariant variant, string? tempRoot = null) =>
+        new(pakPath, aesKey, largePakThresholdBytes: 0, tempRoot, variant);
 
     /// <summary>
     /// Applies <paramref name="rules"/> (when given) to <paramref name="source"/>'s assets, then writes every entry to <paramref name="output"/>.
