@@ -145,6 +145,19 @@ public sealed class RulesetToolTests : IDisposable
         Assert.Equal("5", AssetFixtures.ReadProperty(path, "Count"));
     }
 
+    [Theory]
+    [InlineData("00:00:00")]
+    [InlineData("-00:00:01")]
+    [InlineData("25.00:00:00")]
+    public async Task Ruleset_WithARegexTimeoutRegexCannotTake_IsRefusedByName(string timeout)
+    {
+        var ruleset = $$"""{"name":"t","scope":{"propertyNameTerms":[{"text":"Count"}],"regexTimeout":"{{timeout}}"},"rules":[{"kind":"setValue","newValue":"9"}]}""";
+
+        var error = await Assert.ThrowsAsync<McpException>(() => _rig.Rulesets.PreviewRulesetAsync(Sample(), ruleset, cancellationToken: _ct));
+
+        Assert.Contains("regexTimeout must be more than zero and at most 24 days", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Ruleset_NamingAFileThatIsNotThere_SaysSo()
     {

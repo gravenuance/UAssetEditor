@@ -332,10 +332,11 @@ public class EditExecutorTests
         Assert.All(changeSets, c => Assert.True(c.Failed));
     }
 
-    // "^(a+)+$" against 40 a's and a b backtracks for far longer than any test runs, so only a time limit ends it.
+    // "^(a+)+$" against 40 a's and a b backtracks for far longer than any test runs, so only a time limit ends it. The
+    // tests' own Timeout turns a missing limit into a failure; the abandoned match keeps a core busy until the run ends.
     private static readonly string Backtracking = new string('a', 40) + "b";
 
-    [Fact]
+    [Fact(Timeout = 60_000)]
     public async Task PreviewAsync_AScopeRegexThatRunsOutOfTime_IsReportedAsATimeout()
     {
         var asset = TestAssets.CreateAsset();
@@ -352,7 +353,38 @@ public class EditExecutorTests
         Assert.Equal("regular expression timed out after 0.2 s", Assert.Single(changeSets).Error);
     }
 
-    // The time limit ends the test on the unfixed code, where the rule's pattern ran with no limit at all.
+    [Fact(Timeout = 60_000)]
+    public async Task PreviewAsync_ARuleSetWithNoLimitOfItsOwn_StopsARuleRegexAtTheDefaultLimit()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        export.Data.OfType<StrPropertyData>().Single(p => p.Name.ToString() == "DisplayName").Value = new FString(Backtracking);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["slow.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["DisplayName"] },
+            Rules = { new ReplaceTextRule { Pattern = "^(a+)+$", Replacement = "x", IsRegex = true } },
+        };
+
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("regular expression timed out after 3 s", Assert.Single(changeSets).Error);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-5)]
+    public void SearchQuery_RefusesARegexTimeoutRegexCannotTake(int milliseconds) =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SearchQuery { RegexTimeout = TimeSpan.FromMilliseconds(milliseconds) });
+
+    [Fact]
+    public void SearchQuery_TakesNoLimitAndTheLongestLimitRegexAccepts()
+    {
+        Assert.Equal(System.Text.RegularExpressions.Regex.InfiniteMatchTimeout, new SearchQuery { RegexTimeout = System.Text.RegularExpressions.Regex.InfiniteMatchTimeout }.RegexTimeout);
+        Assert.Equal(TimeSpan.FromMilliseconds(int.MaxValue), new SearchQuery { RegexTimeout = TimeSpan.FromMilliseconds(int.MaxValue) }.RegexTimeout);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new SearchQuery { RegexTimeout = TimeSpan.FromMilliseconds(int.MaxValue + 1L) });
+    }
+
     [Fact(Timeout = 60_000)]
     public async Task ApplyAsync_ARuleRegexThatRunsOutOfTime_StopsAtTheScopesLimit_AndSavesNothing()
     {

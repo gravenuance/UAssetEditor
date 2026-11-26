@@ -27,7 +27,7 @@ internal static class RulesetInput
                 ?? throw new McpException("ruleset did not contain a rule set.");
             return parsed.Rules.Count > 0 ? parsed : throw new McpException("ruleset has no rules.");
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or ArgumentOutOfRangeException)
         {
             throw new McpException($"ruleset is not a valid rule set: {Untrusted.Clean(ex.Message, 300)}", ex);
         }

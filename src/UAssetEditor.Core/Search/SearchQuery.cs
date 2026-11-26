@@ -57,11 +57,19 @@ public sealed class SearchQuery
     public IReadOnlyList<ConditionTerm> ReferenceTerms { get; init; } = Array.Empty<ConditionTerm>();
     public TextCompare ReferenceCompare { get; init; } = TextCompare.Contains;
 
-    /// <summary>The limit the command line and the MCP server give a search's regular expressions (the MCP server also as its process default), so a pattern that backtracks forever cannot hang a run.</summary>
+    /// <summary>The limit a query without its own gives each regular-expression match (the MCP server also sets it as its process default), so a pattern that backtracks forever cannot hang a run.</summary>
     public static TimeSpan DefaultRegexTimeout { get; } = TimeSpan.FromSeconds(3);
 
-    /// <summary>How long one regular-expression match may run before the asset's search is abandoned; null takes the process default. As a rule set's scope it also limits the rules' own patterns.</summary>
-    public TimeSpan? RegexTimeout { get; init; }
+    private readonly TimeSpan? _regexTimeout;
+
+    /// <summary>How long one regular-expression match may run before the asset's search is abandoned; null takes <see cref="DefaultRegexTimeout"/>. As a rule set's scope it also limits the rules' own patterns.</summary>
+    public TimeSpan? RegexTimeout
+    {
+        get => _regexTimeout;
+        init => _regexTimeout = value is not { } limit || RegexLimit.IsValid(limit)
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(RegexTimeout), limit, "regexTimeout must be more than zero and at most 24 days.");
+    }
 
     internal bool HasPropertyCriteria =>
         ExportNameTerms.Count > 0 || PropertyNameTerms.Count > 0 || ValueTerms.Count > 0;
