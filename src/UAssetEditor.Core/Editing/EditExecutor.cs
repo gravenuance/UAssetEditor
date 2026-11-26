@@ -14,6 +14,10 @@ using UAssetEditor.Core.Versioning;
 
 namespace UAssetEditor.Core.Editing;
 
+/// <summary>Runs <paramref name="work"/> on one asset (its path as the source names it) when the caller allows it, such as
+/// once a lock on its file is held; each asset is guarded on its own, so a long run never holds the ones it is not working on.</summary>
+public delegate Task<AssetChangeSet?> AssetGuard(string assetPath, Func<Task<AssetChangeSet?>> work, CancellationToken cancellationToken);
+
 /// <summary>
 /// Runs a <see cref="RuleSet"/> across an <see cref="IAssetSource"/>, processing assets in
 /// parallel. <see cref="PreviewAsync"/> computes what would change without writing anything;
@@ -28,12 +32,13 @@ public static class EditExecutor
         RuleSet ruleSet,
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
+        AssetGuard? guard = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(versions);
 
-        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game), ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, guard, cancellationToken);
     }
 
     public static Task<IReadOnlyList<AssetChangeSet>> ApplyAsync(
@@ -44,12 +49,13 @@ public static class EditExecutor
         string? backupFolder,
         IProgress<EditProgress>? progress = null,
         int? maxDegreeOfParallelism = null,
+        AssetGuard? guard = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(versions);
 
-        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, cancellationToken);
+        return RunAsync(source, path => source.OpenAsset(path, versions.Resolve(path), versions.Mappings, versions.Game), ruleSet, save: true, createBackup, backupFolder, progress, maxDegreeOfParallelism, guard, cancellationToken);
     }
 
     /// <summary>
@@ -69,7 +75,7 @@ public static class EditExecutor
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        return RunAsync(source, openAsset, ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, cancellationToken);
+        return RunAsync(source, openAsset, ruleSet, save: false, createBackup: false, backupFolder: null, progress, maxDegreeOfParallelism, guard: null, cancellationToken);
     }
 
     private static async Task<IReadOnlyList<AssetChangeSet>> RunAsync(
@@ -81,22 +87,24 @@ public static class EditExecutor
         string? backupFolder,
         IProgress<EditProgress>? progress,
         int? maxDegreeOfParallelism,
+        AssetGuard? guard,
         CancellationToken cancellationToken)
     {
         var paths = source.EnumerateAssetPaths().ToList();
         var results = new ConcurrentBag<AssetChangeSet>();
         var completed = 0;
 
-        await ThrottledParallel.ForEachAsync(paths, maxDegreeOfParallelism, (path, _) =>
+        await ThrottledParallel.ForEachAsync(paths, maxDegreeOfParallelism, async (path, token) =>
         {
-            var changeSet = ProcessAsset(source, openAsset, ruleSet, path, save, createBackup, backupFolder);
+            AssetChangeSet? Process() => ProcessAsset(source, openAsset, ruleSet, path, save, createBackup, backupFolder);
+            var changeSet = guard == null
+                ? Process()
+                : await guard(path, () => Task.FromResult(Process()), token).ConfigureAwait(false);
             if (changeSet != null)
                 results.Add(changeSet);
 
             var done = Interlocked.Increment(ref completed);
             progress?.Report(new EditProgress(done, paths.Count, path));
-
-            return Task.CompletedTask;
         }, cancellationToken).ConfigureAwait(false);
 
         return results.ToList();

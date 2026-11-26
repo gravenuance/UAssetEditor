@@ -61,16 +61,16 @@ internal sealed class RulesetTools(MappingsStore store)
             () => AssetIo.ResolveVersions(settings.Args),
             cancellationToken).ConfigureAwait(false);
         IAssetSource source = isFolder ? new LooseFolderAssetSource(target) : new SingleFileAssetSource(target);
-        var assetFiles = isFolder ? Directory.EnumerateFiles(target, "*.uasset", SearchOption.AllDirectories) : [target];
-
         var sink = new ProgressSink(progress, apply ? "Edited assets" : "Checked assets");
         var editProgress = new InlineProgress<EditProgress>(p => sink.Report((p.Completed, p.Total)));
 
-        // Every asset it may open, so an edit_asset on one of them waits for the run (and the run for it).
-        var results = await PathLocks.RunAsync(assetFiles, async () => apply
-            ? await EditExecutor.ApplyAsync(source, versions, rules, backup, backupFolder: null, editProgress, cancellationToken: cancellationToken).ConfigureAwait(false)
-            : await EditExecutor.PreviewAsync(source, versions, rules, editProgress, cancellationToken: cancellationToken).ConfigureAwait(false),
-            cancellationToken).ConfigureAwait(false);
+        // Each asset is locked while it is opened, edited and saved, so an edit_asset on it waits for that asset (and the run for
+        // the edit), and nobody waits for the rest of the run.
+        AssetGuard guard = (assetPath, work, token) =>
+            PathLocks.RunAsync([isFolder ? Path.Combine(target, assetPath) : target], work, token);
+        var results = apply
+            ? await EditExecutor.ApplyAsync(source, versions, rules, backup, backupFolder: null, editProgress, guard: guard, cancellationToken: cancellationToken).ConfigureAwait(false)
+            : await EditExecutor.PreviewAsync(source, versions, rules, editProgress, guard: guard, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         return ToResult(target, apply, results, maxChanges, settings);
     }
