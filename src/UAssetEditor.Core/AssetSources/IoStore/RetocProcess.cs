@@ -394,6 +394,7 @@ public static partial class RetocProcess
         cancellationToken.ThrowIfCancellationRequested();
         using var process = new Process { StartInfo = startInfo };
         process.Start();
+        KillOnCloseJob.ChildProcesses.Assign(process);
 
         // Cancellation only stops this method from waiting - it doesn't touch the child process,
         // so a canceled convert/pack would otherwise leave retoc.exe running (and still writing
