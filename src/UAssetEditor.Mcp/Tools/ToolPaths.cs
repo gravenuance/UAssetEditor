@@ -77,6 +77,14 @@ internal static class ToolPaths
             throw new McpException($"{candidateName} must not be inside {folderName}.");
     }
 
+    /// <summary>Refuses an output written in place (not staged and moved over it) when that write would change a file in
+    /// <paramref name="folder"/>: it lies inside, or is a hard link to a file there.</summary>
+    public static void RefuseWriteInto(string candidate, string folder, string candidateName, string folderName)
+    {
+        if (Placed(() => FinalPaths.ReachesInto(candidate, folder)))
+            throw new McpException($"{candidateName} must not be inside {folderName} or a hard link to a file in it.");
+    }
+
     /// <summary>Refuses two paths that name the same file, however they are spelled: through a link or junction, by an 8.3
     /// name, in another letter case, or as a hard link.</summary>
     public static void RefuseSame(string first, string second, string firstName, string secondName)

@@ -74,6 +74,20 @@ public sealed class PathLocksTests : IDisposable
     }
 
     [Fact]
+    public async Task CallsOnTwoHardLinksToOneFile_RunOneAtATime()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var original = _folder.Combine("A.uasset");
+        await File.WriteAllTextAsync(original, "x", _ct);
+        var hardLink = _folder.Combine("B.uasset");
+        TestLinks.MakeHardLink(hardLink, original);
+
+        var most = await MostInsideAtOnce(20, i => [i % 2 == 0 ? original : hardLink]);
+
+        Assert.Equal(1, most);
+    }
+
+    [Fact]
     public async Task CallsOnDifferentPaths_DoNotWaitForEachOther()
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

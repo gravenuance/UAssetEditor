@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -150,8 +151,19 @@ public static class FinalPaths
         ArgumentException.ThrowIfNullOrWhiteSpace(second);
 
         if (string.Equals(Resolve(first), Resolve(second), PathComparison)) return true;
-        return OperatingSystem.IsWindows() && File.Exists(first) && File.Exists(second)
-            && FileIdOf(first) is { } firstId && FileIdOf(second) is { } secondId && firstId == secondId;
+        return FileKey(first) is { } firstKey && firstKey == FileKey(second);
+    }
+
+    /// <summary>A name for the file itself, shared by every hard link to it (volume and file id); null when no file is there
+    /// or on a system other than Windows.</summary>
+    /// <exception cref="PathNotPlaceableException">A file is there but its id cannot be read.</exception>
+    public static string? FileKey(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (!OperatingSystem.IsWindows() || !File.Exists(path)) return null;
+        var info = InformationOf(path);
+        return string.Create(CultureInfo.InvariantCulture, $"{info.VolumeSerialNumber:x8}:{info.FileIndexHigh:x8}{info.FileIndexLow:x8}");
     }
 
     /// <summary>True when <paramref name="path"/> lies inside <paramref name="folder"/> once both are resolved; the folder itself is not inside.</summary>
@@ -160,11 +172,83 @@ public static class FinalPaths
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
 
-        // A root such as C:\ keeps its separator when trimmed, so one is added only where it is missing.
-        var root = Path.TrimEndingDirectorySeparator(Resolve(folder));
-        if (!Path.EndsInDirectorySeparator(root)) root += Path.DirectorySeparatorChar;
-        return Resolve(path).StartsWith(root, PathComparison);
+        return Resolve(path).StartsWith(FolderRoot(folder), PathComparison);
     }
+
+    /// <summary>True when writing <paramref name="path"/> in place changes a file inside <paramref name="folder"/>: it lies
+    /// inside, or is a hard link to a file there. A file written to a staging name and moved over the path changes no other
+    /// link, so <see cref="IsInside"/> is the check for that.</summary>
+    /// <exception cref="PathNotPlaceableException">The path is a file with other hard links on the folder's volume whose names cannot be listed.</exception>
+    public static bool ReachesInto(string path, string folder)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+
+        var root = FolderRoot(folder);
+        var resolved = Resolve(path);
+        if (resolved.StartsWith(root, PathComparison)) return true;
+        // Hard links never leave their volume, so a folder on another volume holds none of them.
+        if (!OperatingSystem.IsWindows() || !File.Exists(resolved) || !string.Equals(Path.GetPathRoot(resolved), Path.GetPathRoot(root), PathComparison)) return false;
+        return HardLinkNamesOf(resolved).Any(name => name.StartsWith(root, PathComparison));
+    }
+
+    // A root such as C:\ keeps its separator when trimmed, so one is added only where it is missing.
+    private static string FolderRoot(string folder)
+    {
+        var root = Path.TrimEndingDirectorySeparator(Resolve(folder));
+        return Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
+    }
+
+    private static ByHandleFileInformation InformationOf(string path)
+    {
+        using var handle = OpenForQuery(path);
+        return !handle.IsInvalid && GetFileInformationByHandle(handle, out var info)
+            ? info
+            : throw PathNotPlaceableException.Unplaceable(path, $"its file id cannot be read: {Marshal.GetPInvokeErrorMessage(Marshal.GetLastPInvokeError())}");
+    }
+
+    // Every name of a file with more than one, as drive paths; none for a file with one name.
+    private static List<string> HardLinkNamesOf(string resolved)
+    {
+        if (InformationOf(resolved).NumberOfLinks <= 1) return [];
+
+        // The names come relative to the volume, which Resolve has already given as a drive; a network path has none.
+        if (!(resolved.Length >= 3 && char.IsAsciiLetter(resolved[0]) && resolved[1] == ':'))
+            throw PathNotPlaceableException.Unplaceable(resolved, "it has other hard links on a network volume, whose names cannot be listed");
+        var drive = resolved[..2];
+        return ListHardLinks(resolved)?.Select(name => drive + name).ToList()
+            ?? throw PathNotPlaceableException.Unplaceable(resolved, $"its other hard links cannot be listed: {Marshal.GetPInvokeErrorMessage(Marshal.GetLastPInvokeError())}");
+    }
+
+    private const int ErrorHandleEof = 38;
+
+    // Room for the longest path Windows has, so no name is ever cut short and retried; any failure but the end is "cannot list".
+    private static List<string>? ListHardLinks(string path)
+    {
+        var buffer = new char[short.MaxValue + 1];
+        var length = (uint)buffer.Length;
+        var find = FindFirstFileNameW(path, 0, ref length, buffer);
+        if (find == InvalidHandle) return null;
+
+        try
+        {
+            var names = new List<string>();
+            do
+            {
+                var end = Array.IndexOf(buffer, '\0');
+                names.Add(new string(buffer, 0, end < 0 ? buffer.Length : end));
+                length = (uint)buffer.Length;
+            }
+            while (FindNextFileNameW(find, ref length, buffer));
+            return Marshal.GetLastPInvokeError() == ErrorHandleEof ? names : null;
+        }
+        finally
+        {
+            FindClose(find);
+        }
+    }
+
+    private static readonly IntPtr InvalidHandle = new(-1);
 
     /// <summary>The comparison the platform's file names follow.</summary>
     public static StringComparison PathComparison =>
@@ -262,13 +346,6 @@ public static class FinalPaths
         : path.StartsWith(@"\\?\", StringComparison.Ordinal) ? path[4..]
         : path;
 
-    private static (uint Volume, uint High, uint Low)? FileIdOf(string path)
-    {
-        using var handle = OpenForQuery(path);
-        if (handle.IsInvalid || !GetFileInformationByHandle(handle, out var info)) return null;
-        return (info.VolumeSerialNumber, info.FileIndexHigh, info.FileIndexLow);
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     private struct ByHandleFileInformation
     {
@@ -302,4 +379,18 @@ public static class FinalPaths
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetFileInformationByHandle(SafeFileHandle file, out ByHandleFileInformation information);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr FindFirstFileNameW(string fileName, uint flags, ref uint stringLength, [Out] char[] linkName);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool FindNextFileNameW(IntPtr findStream, ref uint stringLength, [Out] char[] linkName);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool FindClose(IntPtr findHandle);
 }
