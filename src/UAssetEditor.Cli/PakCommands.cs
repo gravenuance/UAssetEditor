@@ -260,7 +260,7 @@ internal static class PakCommands
 
     private static async Task<RepackOutcome> RepackAsync(string pakPath, string output, RuleSet? rules, ArgReader args)
     {
-        using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args), variant: AssetIo.ResolvePakVariant(args));
+        using var source = PakRepack.OpenSource(pakPath, AssetIo.ResolveAesKey(args), AssetIo.ResolvePakVariant(args));
         return await PakRepack.RunAsync(
             source, output, rules, args, note => Console.WriteLine($"{(note.Failed ? "FAILED" : "SKIPPED")} {note.Detail}"), progress: null, CancellationToken.None).ConfigureAwait(false);
     }
