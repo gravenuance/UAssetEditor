@@ -29,10 +29,17 @@ public static class RivalsLogs
     internal static byte[] ReadAll(string path, long maxBytes)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        if (stream.Length > maxBytes) throw new InvalidDataException($"{path} is {stream.Length} bytes; a game log over {maxBytes} bytes is not read.");
-        var bytes = new byte[stream.Length];
-        stream.ReadExactly(bytes);
-        return bytes;
+        return ReadAll(stream, path, maxBytes);
+    }
+
+    /// <summary>Up to the length the stream had when opened: a log the game truncates or rotates meanwhile gives what is left.</summary>
+    internal static byte[] ReadAll(Stream stream, string path, long maxBytes)
+    {
+        var length = stream.Length;
+        if (length > maxBytes) throw new InvalidDataException($"{path} is {length} bytes; a game log over {maxBytes} bytes is not read.");
+        var bytes = new byte[length];
+        var read = stream.ReadAtLeast(bytes, bytes.Length, throwOnEndOfStream: false);
+        return read == bytes.Length ? bytes : bytes[..read];
     }
 
     /// <summary>

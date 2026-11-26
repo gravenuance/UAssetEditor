@@ -21,7 +21,7 @@ public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int
         if (StoppedAtOffset is { } offset)
             problems.Add($"stopped at 0x{offset:x}, which is not a whole record (truncated or damaged log); the rest was not decoded.");
         if (CutAtLimit is { } limit)
-            problems.Add($"stopped after {limit} bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.");
+            problems.Add($"stopped at the {limit}-byte limit on the text one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.");
         return problems;
     }
 }
@@ -114,6 +114,7 @@ public static class RivalsLogDecoder
                 cut = plain.Length > room;
                 if (cut) plain = plain[..(int)room];
             }
+            if (cut) plain = plain[..WholeUtf8Length(plain.Span)];
             room -= plain.Length;
             records++;
             offset += 8 + size;
@@ -131,6 +132,25 @@ public static class RivalsLogDecoder
 
         RivalsLogDecodeResult Finish(bool trailerEmitted, long? cutAt = null) =>
             new(records, inflateFailures, StoppedAtOffset: null, HasTrailer: trailerEmitted, CutAtLimit: cutAt);
+    }
+
+    /// <summary>The length of <paramref name="text"/> without a UTF-8 character its end cut short; bytes that are no UTF-8 are left as they are.</summary>
+    private static int WholeUtf8Length(ReadOnlySpan<byte> text)
+    {
+        // The last lead byte is at most three continuation bytes (10xxxxxx) back from the end.
+        var lead = text.Length - 1;
+        while (lead >= 0 && text.Length - lead <= 4 && (text[lead] & 0xC0) == 0x80) lead--;
+        if (lead < 0 || text.Length - lead > 4) return text.Length;
+
+        var needs = text[lead] switch
+        {
+            < 0xC0 => 1,
+            < 0xE0 => 2,
+            < 0xF0 => 3,
+            < 0xF8 => 4,
+            _ => 1,
+        };
+        return text.Length - lead < needs ? lead : text.Length;
     }
 
     /// <summary>Adds one to a 16-byte big-endian counter, wrapping to zero after all 0xFF.</summary>

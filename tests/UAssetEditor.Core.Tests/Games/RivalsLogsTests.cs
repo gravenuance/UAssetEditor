@@ -30,6 +30,20 @@ public sealed class RivalsLogsTests : IDisposable
         Assert.Equal(100, RivalsLogs.ReadAll(WriteLog("fits.log", DateTime.UtcNow, new byte[100]), maxBytes: 100).Length);
     }
 
+    // What a FileStream gives when the game truncates or rotates the log between the size check and the read.
+    private sealed class ShrunkStream(byte[] left, long lengthBefore) : MemoryStream(left)
+    {
+        public override long Length => lengthBefore;
+    }
+
+    [Fact]
+    public void ReadAll_ALogThatShrinksBeforeItIsRead_GivesWhatIsLeft_InsteadOfFailing()
+    {
+        using var stream = new ShrunkStream([1, 2, 3, 4], lengthBefore: 10);
+
+        Assert.Equal([1, 2, 3, 4], RivalsLogs.ReadAll(stream, "game.log", maxBytes: 100));
+    }
+
     [Fact]
     public void InstalledBuild_ComesFromTheNewestLog_NotTheLastInTheAlphabet()
     {

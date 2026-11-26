@@ -92,7 +92,9 @@ public static partial class PackageWriter
         return WithBackup(path, backupFolder, () => Write(asset, path));
     }
 
-    private readonly record struct StagedBackup(string Original, string Staged, string Backup, string Vanilla);
+    /// <summary>One file's backup in progress: <see cref="Staged"/> becomes <see cref="Backup"/>, and <see cref="VanillaStaged"/> the
+    /// <see cref="Vanilla"/> ".orig.bak" on a first save; both staging names are the target's plus ".&lt;staging id&gt;.tmp".</summary>
+    private readonly record struct StagedBackup(string Original, string Staged, string Backup, string Vanilla, string VanillaStaged);
 
     /// <summary>The backup handling of <see cref="WriteWithBackup"/> around any <paramref name="write"/> of the package at <paramref name="path"/>.</summary>
     internal static BackupResult WithBackup(string path, string? backupFolder, Action write, TimeProvider? clock = null)
@@ -110,7 +112,8 @@ public static partial class PackageWriter
                 var backup = BackupPathResolver.Resolve(file, backupFolder);
                 var stagedPath = $"{backup}.{stagingId}.tmp";
                 File.Copy(file, stagedPath, overwrite: true);
-                staged.Add(new StagedBackup(file, stagedPath, backup, BackupPathResolver.ResolveOriginal(file, backupFolder)));
+                var vanilla = BackupPathResolver.ResolveOriginal(file, backupFolder);
+                staged.Add(new StagedBackup(file, stagedPath, backup, vanilla, $"{vanilla}.{stagingId}.tmp"));
                 // Copy keeps the source's write time; stamping it says when this save began, which the sweep reads as its age.
                 File.SetLastWriteTimeUtc(stagedPath, clock.GetUtcNow().UtcDateTime);
             }
@@ -160,7 +163,7 @@ public static partial class PackageWriter
                     continue;
                 }
 
-                placed &= KeepVanilla(copy);
+                placed &= KeepVanilla(copy, clock);
                 File.Move(copy.Staged, copy.Backup, overwrite: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -184,15 +187,21 @@ public static partial class PackageWriter
     private static readonly TimeSpan StaleStagingAge = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Deletes "&lt;backup&gt;.&lt;staging id&gt;.tmp" copies that earlier saves left next to <paramref name="copy"/>'s backup, but
-    /// only those byte for byte the same as the file, its ".bak" or its ".orig.bak": any other may be the only copy of some
-    /// state (a save reported it stranded, or was killed mid-write, or it belongs to a same-named file sharing the backup
-    /// folder), so it is kept and logged.
+    /// Deletes "&lt;backup&gt;.&lt;staging id&gt;.tmp" copies (and the same for its ".orig.bak") that earlier saves left next to <paramref name="copy"/>'s backup, but
+    /// only those byte for byte the same as the file, its ".bak" or its ".orig.bak", and ".orig.bak" copies a killed save cut
+    /// short of one of those backups: any other may be the only copy of some state (a save reported it stranded, or was killed
+    /// mid-write, or it belongs to a same-named file sharing the backup folder), so it is kept and logged.
     /// </summary>
     private static void SweepStaleStaging(StagedBackup copy, TimeProvider clock)
     {
-        var folder = Path.GetDirectoryName(copy.Backup)!; // Resolve returns a full file path, so it has a folder
-        var prefix = Path.GetFileName(copy.Backup) + ".";
+        foreach (var target in (string[])[copy.Backup, copy.Vanilla]) SweepStaleStaging(copy, target, clock);
+    }
+
+    /// <summary>Sweeps the staging copies left for <paramref name="target"/>, the backup or the ".orig.bak" of <paramref name="copy"/>.</summary>
+    private static void SweepStaleStaging(StagedBackup copy, string target, TimeProvider clock)
+    {
+        var folder = Path.GetDirectoryName(target)!; // Resolve returns a full file path, so it has a folder
+        var prefix = Path.GetFileName(target) + ".";
         List<string> candidates;
         try
         {
@@ -211,7 +220,7 @@ public static partial class PackageWriter
             try
             {
                 if (now - File.GetLastWriteTimeUtc(path) <= StaleStagingAge) continue;
-                if (IsDuplicate(path, copy)) File.Delete(path);
+                if (IsDuplicate(path, copy) || (target == copy.Vanilla && IsCutShortBackup(path, copy))) File.Delete(path);
                 else LogStagingKept(AppLog.For<UAsset>(), path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -224,6 +233,10 @@ public static partial class PackageWriter
     private static bool IsDuplicate(string leftover, StagedBackup copy) =>
         ((string[])[copy.Original, copy.Backup, copy.Vanilla]).Any(file => File.Exists(file) && SameContents(leftover, file));
 
+    // An ".orig.bak" copy is only ever made from a backup, so one that is the start of a backup still on disk holds nothing else.
+    private static bool IsCutShortBackup(string leftover, StagedBackup copy) =>
+        ((string[])[copy.Backup, copy.Vanilla]).Any(file => File.Exists(file) && StartsWithContents(file, leftover));
+
     private const int StagingIdLength = 32;
 
     private static bool IsStagingName(string name, string prefix) =>
@@ -235,19 +248,27 @@ public static partial class PackageWriter
     private static readonly SearchValues<char> LowerHex = SearchValues.Create("0123456789abcdef");
 
     /// <summary>Copies the earliest state at hand to the file's ".orig.bak", unless an earlier save already did: a ".bak" left by
-    /// a save from before ".orig.bak" existed, else the file as it was before this save.</summary>
-    private static bool KeepVanilla(StagedBackup copy)
+    /// a save from before ".orig.bak" existed, else the file as it was before this save. The copy is staged and moved into place,
+    /// so a save killed mid-copy leaves a staging file for a later sweep, never a cut-short ".orig.bak" no save would replace.</summary>
+    private static bool KeepVanilla(StagedBackup copy, TimeProvider clock)
     {
         if (File.Exists(copy.Vanilla)) return true;
+        var staging = copy.VanillaStaged;
         try
         {
-            File.Copy(File.Exists(copy.Backup) ? copy.Backup : copy.Staged, copy.Vanilla, overwrite: false);
+            File.Copy(File.Exists(copy.Backup) ? copy.Backup : copy.Staged, staging, overwrite: true);
+            // As for the staged backup: a copy keeps an old .bak's write time, which another save's sweep would read as stale.
+            File.SetLastWriteTimeUtc(staging, clock.GetUtcNow().UtcDateTime);
+            File.Move(staging, copy.Vanilla, overwrite: false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Also when another save placed its ".orig.bak" first: theirs stays.
+            TryDelete(staging);
+            if (File.Exists(copy.Vanilla)) return true;
             LogBackupNotPlaced(AppLog.For<UAsset>(), copy.Vanilla, copy.Staged, ex);
-            return File.Exists(copy.Vanilla);
+            return false;
         }
     }
 
@@ -272,11 +293,14 @@ public static partial class PackageWriter
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Path} was left by an earlier save and matches no file or backup now on disk; it is kept, as it may be the only copy of that state")]
     private static partial void LogStagingKept(ILogger logger, string path);
 
-    private static bool SameContents(string first, string second)
+    private static bool SameContents(string first, string second) => new FileInfo(first).Length == new FileInfo(second).Length && StartsWithContents(first, second);
+
+    /// <summary>Whether <paramref name="file"/> begins with all of <paramref name="prefix"/>'s bytes.</summary>
+    private static bool StartsWithContents(string file, string prefix)
     {
-        using var a = File.OpenRead(first);
-        using var b = File.OpenRead(second);
-        if (a.Length != b.Length) return false;
+        using var a = File.OpenRead(prefix);
+        using var b = File.OpenRead(file);
+        if (a.Length > b.Length) return false;
 
         Span<byte> bufferA = stackalloc byte[8192];
         Span<byte> bufferB = stackalloc byte[8192];

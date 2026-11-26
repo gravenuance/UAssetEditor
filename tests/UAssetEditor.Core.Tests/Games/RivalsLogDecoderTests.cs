@@ -130,7 +130,23 @@ public class RivalsLogDecoderTests
 
         Assert.Equal(new string('a', 1000), Encoding.ASCII.GetString(output.ToArray()));
         Assert.Equal(new RivalsLogDecodeResult(1, 0, null, false, CutAtLimit: 1000), result);
-        Assert.Contains("stopped after 1000 bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
+        Assert.Contains("stopped at the 1000-byte limit on the text one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
+    }
+
+    [Theory]
+    [InlineData(false, 2, new byte[] { 0x61 })]
+    [InlineData(true, 2, new byte[] { 0x61 })]
+    [InlineData(false, 4, new byte[] { 0x61, 0xC3, 0xA9 })]
+    [InlineData(true, 5, new byte[] { 0x61, 0xC3, 0xA9 })]
+    public void ACutAtTheLimit_NeverEndsInHalfACharacter(bool zlib, int limit, byte[] expected)
+    {
+        // "aé€": 0x61, then é in two bytes and € in three.
+        byte[] text = [0x61, 0xC3, 0xA9, 0xE2, 0x82, 0xAC];
+        using var output = new MemoryStream();
+
+        RivalsLogDecoder.Decode(Log(Frame(Encrypt(zlib ? Zlib(text) : text))), output, maxDecodedBytes: limit);
+
+        Assert.Equal(expected, output.ToArray());
     }
 
     [Fact]

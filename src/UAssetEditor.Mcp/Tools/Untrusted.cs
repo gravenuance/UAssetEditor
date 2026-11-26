@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Text;
 
@@ -15,7 +16,8 @@ internal static class Untrusted
 
     /// <summary>The text with control characters (newlines, escapes) and invisible ones (bidi overrides, zero-width and tag
     /// characters, private-use and lone surrogates) turned into spaces, so one value stays on one line and hides nothing
-    /// from the user, and anything past <paramref name="maxLength"/> cut with an ellipsis. Ordinary spacing is kept.</summary>
+    /// from the user, and anything past <paramref name="maxLength"/> cut with an ellipsis. Ordinary spacing is kept, and so
+    /// are the joiners that shape emoji and scripts such as Persian, which hide no text.</summary>
     public static string Clean(string? text, int maxLength = DefaultMaxLength)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLength);
@@ -24,21 +26,35 @@ internal static class Untrusted
         var builder = new StringBuilder(Math.Min(text.Length, maxLength));
         Span<char> units = stackalloc char[2];
         var cut = false;
-        // Lone surrogates come out of EnumerateRunes as U+FFFD, and a pair is kept or cut whole.
-        foreach (var rune in text.EnumerateRunes())
+        var rest = text.AsSpan();
+        while (!rest.IsEmpty)
         {
+            // A lone surrogate decodes as invalid (one unit), apart from a U+FFFD the text really holds; a pair is kept or cut whole.
+            var status = Rune.DecodeFromUtf16(rest, out var rune, out var consumed);
+            rest = rest[consumed..];
             if (builder.Length + rune.Utf16SequenceLength > maxLength)
             {
                 cut = true;
                 break;
             }
 
-            if (IsHidden(rune) || rune == Rune.ReplacementChar) builder.Append(' ');
-            else builder.Append(units[..rune.EncodeToUtf16(units)]);
+            var shown = status == OperationStatus.Done && (IsJoiner(rune) ? JoinsTwoCharacters(builder, rest) : !IsHidden(rune));
+            if (shown) builder.Append(units[..rune.EncodeToUtf16(units)]);
+            else builder.Append(' ');
         }
 
         var cleaned = builder.ToString().TrimEnd();
         return cut ? cleaned + "..." : cleaned;
+    }
+
+    private static bool IsJoiner(Rune rune) => rune.Value is 0x200C or 0x200D; // ZWNJ, ZWJ
+
+    // A joiner kept anywhere else would be an invisible difference between two values that look the same.
+    private static bool JoinsTwoCharacters(StringBuilder before, ReadOnlySpan<char> after)
+    {
+        if (before.Length == 0 || before[^1] == ' ') return false;
+        return Rune.DecodeFromUtf16(after, out var next, out _) == OperationStatus.Done
+            && !IsJoiner(next) && !IsHidden(next) && !Rune.IsWhiteSpace(next);
     }
 
     private static bool IsHidden(Rune rune) => Rune.GetUnicodeCategory(rune) is
