@@ -197,7 +197,6 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
             lock (gate) progress?.Report(new ProgressNotificationValue { Progress = ++lines, Message = Untrusted.Clean(line, 200) });
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var request = new IoStorePackRequest(source, target, retocVersion, settings.AesKey, new RetocZenOptions(settings.Game, obfuscate), patches, settings.UsmapPath);
         await IoStorePacker.PackAsync(request, Info, warnings.Add, cancellationToken).ConfigureAwait(false);
 

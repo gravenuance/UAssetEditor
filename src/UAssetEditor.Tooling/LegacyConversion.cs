@@ -57,7 +57,7 @@ internal static class LegacyConversion
         {
             if (Directory.Exists(output)) throw new ArgException($"{names.Output} is a folder: {output}");
             // A Marvel Rivals container's own files include a companion .pak.
-            foreach (var containerFile in (string[])[utoc, .. PackOutputs.CompanionsOf(utoc, writesCompanionPak: true)])
+            foreach (var containerFile in (string[])[utoc, .. RetocProcess.CompanionsOf(utoc, writesCompanionPak: true)])
                 OutputPaths.RefuseSame(output, containerFile, names.Output, $"the {names.Utoc}'s {Path.GetExtension(containerFile)}");
             exists = File.Exists(output);
         }
