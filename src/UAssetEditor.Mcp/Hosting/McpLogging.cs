@@ -75,7 +75,7 @@ internal static class McpLogging
         };
     }
 
-    /// <summary>Logs <paramref name="exception"/> with its stack as text, redacted: a failed retoc call's message repeats the AES key it was given.</summary>
+    /// <summary>Logs <paramref name="exception"/> with its stack as text, redacted, so no layer's message can carry an AES key into the log.</summary>
     public static void LogFailure(ILogger log, LogLevel level, string what, Exception? exception)
     {
         ArgumentNullException.ThrowIfNull(log);

@@ -259,6 +259,23 @@ public class RetocProcessTests
     }
 
     [Fact]
+    public async Task ListAsync_OnFailure_KeepsTheAesKeyOutOfTheMessages()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_Missing_" + Guid.NewGuid() + ".utoc");
+        // A made-up key: 32 bytes counting up from 0xA0.
+        var key = Enumerable.Range(0xA0, 32).Select(static b => (byte)b).ToArray();
+        const string keyHex = "A0A1A2A3A4A5A6A7A8A9AAABACADAEAFB0B1B2B3B4B5B6B7B8B9BABBBCBDBEBF";
+
+        var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
+            RetocProcess.ListAsync(missingPath, key, TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain(keyHex, exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(keyHex, exception.UserMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("--aes-key [redacted]", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(missingPath, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ConvertToZenAsync_PassesRetocsOutputLinesToTheCaller()
     {
         var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
