@@ -1,3 +1,4 @@
+using System.Buffers;
 using Microsoft.Extensions.Logging;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
@@ -96,7 +97,7 @@ public static partial class PackageWriter
     {
         // Staged under a name of this save's own, so an existing backup is only replaced once there is reason to and
         // another save of the same file cannot pick up or overwrite this copy.
-        var stagingId = Guid.NewGuid().ToString("N");
+        var stagingId = Guid.NewGuid().ToString("N"); // StagingIdLength lowercase hex digits, which SweepStaleStaging relies on
         var staged = new List<StagedBackup>();
         try
         {
@@ -164,8 +165,48 @@ public static partial class PackageWriter
                 LogBackupNotPlaced(AppLog.For<UAsset>(), copy.Backup, copy.Staged, ex);
             }
         }
+        if (placed && !untouched)
+        {
+            foreach (var copy in staged) SweepStaleStaging(copy);
+        }
         return new BackupResult(placed, stranded);
     }
+
+    // No save holds its staged copy this long, so an older one was left by a save that was killed before it settled.
+    private static readonly TimeSpan StaleStagingAge = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// Deletes "&lt;backup&gt;.&lt;staging id&gt;.tmp" copies that interrupted saves left next to <paramref name="copy"/>'s backup.
+    /// Runs only once this save's backup is in place, so what it removes is older than the backup now there.
+    /// </summary>
+    private static void SweepStaleStaging(StagedBackup copy)
+    {
+        var folder = Path.GetDirectoryName(copy.Backup)!; // Resolve returns a full file path, so it has a folder
+        var prefix = Path.GetFileName(copy.Backup) + ".";
+        try
+        {
+            foreach (var path in Directory.EnumerateFiles(folder, prefix + "*.tmp"))
+            {
+                if (!IsStagingName(Path.GetFileName(path), prefix) || string.Equals(path, copy.Staged, StringComparison.OrdinalIgnoreCase)) continue;
+                // The file system's own clock stamps the creation time, so this compares against that clock, not an injected one.
+                if (DateTime.UtcNow - File.GetCreationTimeUtc(path) > StaleStagingAge) TryDelete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogStagingNotSwept(AppLog.For<UAsset>(), folder, ex);
+        }
+    }
+
+    private const int StagingIdLength = 32;
+
+    private static bool IsStagingName(string name, string prefix) =>
+        name.Length == prefix.Length + StagingIdLength + ".tmp".Length
+        && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+        && name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
+        && !name.AsSpan(prefix.Length, StagingIdLength).ContainsAnyExcept(LowerHex);
+
+    private static readonly SearchValues<char> LowerHex = SearchValues.Create("0123456789abcdef");
 
     /// <summary>Copies the earliest state at hand to the file's ".orig.bak", unless an earlier save already did: a ".bak" left by
     /// a save from before ".orig.bak" existed, else the file as it was before this save.</summary>
@@ -198,6 +239,9 @@ public static partial class PackageWriter
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Backup {Backup} could not be put in place; the copy stays at {Staged}")]
     private static partial void LogBackupNotPlaced(ILogger logger, string backup, string staged, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Leftover staged backups in {Folder} could not be checked")]
+    private static partial void LogStagingNotSwept(ILogger logger, string folder, Exception exception);
 
     private static bool SameContents(string first, string second)
     {

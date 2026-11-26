@@ -100,6 +100,80 @@ public sealed class BackupWriteTests : IDisposable
         }
     }
 
+    private string Leftover(string name, TimeSpan age)
+    {
+        var path = Path.Combine(_dir, name);
+        File.WriteAllText(path, "left by an interrupted save");
+        File.SetCreationTimeUtc(path, DateTime.UtcNow - age);
+        return path;
+    }
+
+    private const string StagingId = "0123456789abcdef0123456789abcdef";
+
+    [Fact]
+    public void StagedCopiesLeftByAnInterruptedSave_AreRemovedByTheNextSave()
+    {
+        Leftover($"A.uasset.bak.{StagingId}.tmp", TimeSpan.FromDays(2));
+        Leftover($"A.uexp.bak.{StagingId}.tmp", TimeSpan.FromDays(2));
+
+        var result = PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+        Assert.True(result.Placed);
+        Assert.Equal(["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak"], FileNames());
+    }
+
+    [Fact]
+    public void ARecentStagedCopy_IsLeftAlone_SinceAnotherSaveMayStillBeUsingIt()
+    {
+        var recent = Leftover($"A.uasset.bak.{StagingId}.tmp", TimeSpan.FromMinutes(1));
+
+        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+        Assert.True(File.Exists(recent));
+    }
+
+    [Fact]
+    public void OnlyThisFilesStagingNames_AreSwept()
+    {
+        var old = TimeSpan.FromDays(2);
+        string[] kept =
+        [
+            Leftover("A.uasset.bak.tmp", old),
+            Leftover("A.uasset.bak.notastagingid.tmp", old),
+            Leftover($"A.uasset.bak.{StagingId}0.tmp", old),
+            Leftover($"B.uasset.bak.{StagingId}.tmp", old),
+            Leftover($"A.uasset.orig.bak.{StagingId}.tmp", old),
+        ];
+
+        PackageWriter.WithBackup(_uasset, backupFolder: null, WriteBoth);
+
+        Assert.All(kept, path => Assert.True(File.Exists(path), path));
+    }
+
+    [Fact]
+    public void ASaveThatPlacesNoBackup_SweepsNothing()
+    {
+        var old = Leftover($"A.uasset.bak.{StagingId}.tmp", TimeSpan.FromDays(2));
+
+        Assert.Throws<InvalidDataException>(() => PackageWriter.WithBackup(_uasset, backupFolder: null, () => throw new InvalidDataException("refused")));
+
+        Assert.True(File.Exists(old));
+    }
+
+    [Fact]
+    public void StagedCopiesInTheBackupFolder_AreSweptToo()
+    {
+        var backups = Path.Combine(_dir, "backups");
+        Directory.CreateDirectory(backups);
+        var old = Path.Combine(backups, $"A.uasset.bak.{StagingId}.tmp");
+        File.WriteAllText(old, "left by an interrupted save");
+        File.SetCreationTimeUtc(old, DateTime.UtcNow.AddDays(-2));
+
+        PackageWriter.WithBackup(_uasset, backups, WriteBoth);
+
+        Assert.False(File.Exists(old));
+    }
+
     [Fact]
     public void StagingNameIsUnique_SoAnotherSaversStagedCopyIsNotClobbered()
     {
