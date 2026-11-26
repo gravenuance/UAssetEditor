@@ -29,7 +29,7 @@ public static class RetocProcess
         // ContainerHeader, script objects, etc.) has no real per-package path to show. Real
         // package paths never contain whitespace, so splitting on whitespace and taking the
         // last token is safe even though the name/type columns are otherwise free-form.
-        var args = new List<string> { "list", utocPath, "--path" };
+        var args = new List<string> { "list", PathArgument(utocPath), "--path" };
         AddAesKey(args, aesKey);
 
         var paths = new List<string>();
@@ -76,6 +76,8 @@ public static class RetocProcess
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
 
+        utocPath = PathArgument(utocPath);
+        output = PathArgument(output);
         var fixedArgs = new List<string> { "to-legacy", utocPath, output, "--no-script-objects" };
         AddAesKey(fixedArgs, aesKey);
         var batches = BatchFilters(filters, string.Join(' ', fixedArgs).Length);
@@ -110,11 +112,8 @@ public static class RetocProcess
         foreach (var batch in batches)
         {
             var args = new List<string> { "to-legacy", utocPath, output, "--no-script-objects" };
-            foreach (var filter in batch)
-            {
-                args.Add("-f");
-                args.Add(filter);
-            }
+            // One "--filter=value" word: retoc reads a value after a separate "-f" as an option when it starts with '-'.
+            foreach (var filter in batch) args.Add(FilterPrefix + filter);
             AddAesKey(args, aesKey);
 
             var stdOutLines = new List<string>();
@@ -148,6 +147,11 @@ public static class RetocProcess
     // everything" into "convert everything, N times".
     private const int MaxCommandLineLength = 30_000;
 
+    private const string FilterPrefix = "--filter=";
+
+    // Absolute, so a relative path that starts with '-' cannot reach retoc's parser looking like an option.
+    private static string PathArgument(string path) => Path.GetFullPath(path);
+
     private static List<List<string>> BatchFilters(IReadOnlyList<string> filters, int fixedLength)
     {
         if (filters.Count == 0)
@@ -158,7 +162,7 @@ public static class RetocProcess
         var length = fixedLength;
         foreach (var filter in filters)
         {
-            var entryLength = filter.Length + 4; // "-f " plus the filter text itself, roughly
+            var entryLength = FilterPrefix.Length + filter.Length + 3; // the word, its separating space and room for quotes
             if (batch.Count > 0 && length + entryLength > MaxCommandLineLength)
             {
                 batches.Add(batch);
@@ -216,7 +220,7 @@ public static class RetocProcess
         ArgumentNullException.ThrowIfNull(outputUtocPath);
         ArgumentNullException.ThrowIfNull(retocEngineVersion);
 
-        var args = new List<string> { "to-zen", input, outputUtocPath, "--version", retocEngineVersion };
+        var args = new List<string> { "to-zen", PathArgument(input), PathArgument(outputUtocPath), "--version", retocEngineVersion };
         if (options?.Obfuscate == true) args.Add("--obfuscate");
         // --game is global like --aes-key, so it goes before the subcommand too.
         if (options?.Game == Game.MarvelRivals) args.InsertRange(0, ["--game", "rivals"]);
