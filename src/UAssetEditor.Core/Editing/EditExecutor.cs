@@ -140,7 +140,7 @@ public static class EditExecutor
             {
                 if (rule is ReplaceReferenceRule referenceRule)
                 {
-                    changes.AddRange(ApplyReferenceRule(asset, path, referenceRule));
+                    changes.AddRange(ApplyReferenceRule(asset, path, referenceRule, ruleSet.Scope.RegexTimeout));
                     continue;
                 }
 
@@ -151,7 +151,7 @@ public static class EditExecutor
                     var node = LocateCached(asset, nodeCache, match.ExportIndex, match.PropertyPath);
                     if (node == null) continue;
 
-                    var change = ApplyPropertyRule(asset, path, match, rule, node);
+                    var change = ApplyPropertyRule(asset, path, match, rule, node, ruleSet.Scope.RegexTimeout);
                     if (change == null) continue;
 
                     changes.Add(change);
@@ -166,6 +166,10 @@ public static class EditExecutor
                 source.SaveAsset(asset, path, createBackup, backupFolder);
 
             return new AssetChangeSet(path, changes);
+        }
+        catch (RegexMatchTimeoutException ex)
+        {
+            return new AssetChangeSet(path, changes, RegexLimit.Describe(ex));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -201,7 +205,7 @@ public static class EditExecutor
         return byPath;
     }
 
-    private static PropertyChange? ApplyPropertyRule(UAsset asset, string path, SearchResult match, EditRule rule, PropertyNode node)
+    private static PropertyChange? ApplyPropertyRule(UAsset asset, string path, SearchResult match, EditRule rule, PropertyNode node, TimeSpan? regexTimeout)
     {
         var oldValue = PropertyValueAccessor.AsSearchableString(node.Property, asset) ?? "";
 
@@ -240,7 +244,7 @@ public static class EditExecutor
             case ReplaceTextRule textRule:
                 if (oldValue.Length == 0) return null;
                 var replaced = textRule.IsRegex
-                    ? Regex.Replace(oldValue, textRule.Pattern, textRule.Replacement)
+                    ? RegexLimit.Replace(oldValue, textRule.Pattern, textRule.Replacement, regexTimeout)
                     : oldValue.Replace(textRule.Pattern, textRule.Replacement, StringComparison.Ordinal);
                 if (replaced == oldValue) return null;
                 if (!PropertyValueAccessor.TrySetStringValue(node.Property, replaced, asset))
@@ -346,15 +350,15 @@ public static class EditExecutor
         }
     }
 
-    private static IEnumerable<PropertyChange> ApplyReferenceRule(UAsset asset, string path, ReplaceReferenceRule rule)
+    private static IEnumerable<PropertyChange> ApplyReferenceRule(UAsset asset, string path, ReplaceReferenceRule rule, TimeSpan? regexTimeout)
     {
         foreach (var import in asset.Imports)
         {
             var full = ImportPathResolver.GetFullPath(import, asset);
-            var isMatch = rule.IsRegex ? Regex.IsMatch(full, rule.OldReference) : full == rule.OldReference;
+            var isMatch = rule.IsRegex ? RegexLimit.IsMatch(full, rule.OldReference, regexTimeout) : full == rule.OldReference;
             if (!isMatch) continue;
 
-            var newFull = rule.IsRegex ? Regex.Replace(full, rule.OldReference, rule.NewReference) : rule.NewReference;
+            var newFull = rule.IsRegex ? RegexLimit.Replace(full, rule.OldReference, rule.NewReference, regexTimeout) : rule.NewReference;
             var dot = newFull.LastIndexOf('.', StringComparison.Ordinal);
             var newLeaf = dot >= 0 ? newFull[(dot + 1)..] : newFull;
 

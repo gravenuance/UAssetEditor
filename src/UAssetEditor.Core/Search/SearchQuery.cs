@@ -60,7 +60,7 @@ public sealed class SearchQuery
     /// <summary>The limit the command line and the MCP server give a search's regular expressions (the MCP server also as its process default), so a pattern that backtracks forever cannot hang a run.</summary>
     public static TimeSpan DefaultRegexTimeout { get; } = TimeSpan.FromSeconds(3);
 
-    /// <summary>How long one regular-expression match may run before the asset's search is abandoned; null takes the process default.</summary>
+    /// <summary>How long one regular-expression match may run before the asset's search is abandoned; null takes the process default. As a rule set's scope it also limits the rules' own patterns.</summary>
     public TimeSpan? RegexTimeout { get; init; }
 
     internal bool HasPropertyCriteria =>

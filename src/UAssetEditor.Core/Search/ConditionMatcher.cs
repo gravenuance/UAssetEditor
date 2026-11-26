@@ -44,7 +44,7 @@ public static class ConditionMatcher
     {
         TextCompare.Equals => string.Equals(text, pattern, StringComparison.OrdinalIgnoreCase),
         TextCompare.Contains => text.Contains(pattern, StringComparison.OrdinalIgnoreCase),
-        TextCompare.Regex => regexTimeout is { } limit ? Regex.IsMatch(text, pattern, RegexOptions.None, limit) : Regex.IsMatch(text, pattern),
+        TextCompare.Regex => RegexLimit.IsMatch(text, pattern, regexTimeout),
         _ => false,
     };
 }

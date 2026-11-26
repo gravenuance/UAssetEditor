@@ -154,7 +154,7 @@ public static class SearchService
     }
 
     private static SearchSkip TimedOut(string assetPath, RegexMatchTimeoutException ex) =>
-        new(assetPath, $"regular expression timed out after {ex.MatchTimeout.TotalSeconds:0.###} s");
+        new(assetPath, RegexLimit.Describe(ex));
 
     /// <summary>
     /// Opens and searches every asset in <paramref name="source"/> in parallel. An asset that cannot be opened or searched

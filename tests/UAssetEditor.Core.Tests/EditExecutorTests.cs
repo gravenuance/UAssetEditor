@@ -332,6 +332,64 @@ public class EditExecutorTests
         Assert.All(changeSets, c => Assert.True(c.Failed));
     }
 
+    // "^(a+)+$" against 40 a's and a b backtracks for far longer than any test runs, so only a time limit ends it.
+    private static readonly string Backtracking = new string('a', 40) + "b";
+
+    [Fact]
+    public async Task PreviewAsync_AScopeRegexThatRunsOutOfTime_IsReportedAsATimeout()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset, Backtracking);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["slow.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { ExportNameTerms = ["^(a+)+$"], ExportNameCompare = TextCompare.Regex, PropertyNameTerms = ["Count"], RegexTimeout = TimeSpan.FromMilliseconds(200) },
+            Rules = { new SetPropertyValueRule { NewValue = "42" } },
+        };
+
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("regular expression timed out after 0.2 s", Assert.Single(changeSets).Error);
+    }
+
+    // The time limit ends the test on the unfixed code, where the rule's pattern ran with no limit at all.
+    [Fact(Timeout = 60_000)]
+    public async Task ApplyAsync_ARuleRegexThatRunsOutOfTime_StopsAtTheScopesLimit_AndSavesNothing()
+    {
+        var asset = TestAssets.CreateAsset();
+        var export = TestAssets.CreateSampleExport(asset);
+        export.Data.OfType<StrPropertyData>().Single(p => p.Name.ToString() == "DisplayName").Value = new FString(Backtracking);
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["slow.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["DisplayName"], RegexTimeout = TimeSpan.FromMilliseconds(200) },
+            Rules = { new ReplaceTextRule { Pattern = "^(a+)+$", Replacement = "x", IsRegex = true } },
+        };
+
+        var changeSets = await EditExecutor.ApplyAsync(source, new EngineVersionResolver(), ruleSet, createBackup: false, backupFolder: null, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("regular expression timed out after 0.2 s", Assert.Single(changeSets).Error);
+        Assert.Equal(0, source.SaveCount);
+    }
+
+    [Fact(Timeout = 60_000)]
+    public async Task PreviewAsync_AReferenceRegexThatRunsOutOfTime_StopsAtTheScopesLimit()
+    {
+        var asset = TestAssets.CreateAsset();
+        TestAssets.CreateSampleExport(asset);
+        asset.Imports.Add(new Import("/Script/CoreUObject", "Package", new FPackageIndex(0), Backtracking, false, asset));
+        var source = new InMemoryAssetSource(new Dictionary<string, UAsset> { ["slow.uasset"] = asset });
+        var ruleSet = new RuleSet
+        {
+            Scope = new SearchQuery { PropertyNameTerms = ["Count"], RegexTimeout = TimeSpan.FromMilliseconds(200) },
+            Rules = { new ReplaceReferenceRule { OldReference = "^(a+)+$", NewReference = "x", IsRegex = true } },
+        };
+
+        var changeSets = await EditExecutor.PreviewAsync(source, new EngineVersionResolver(), ruleSet, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("regular expression timed out after 0.2 s", Assert.Single(changeSets).Error);
+    }
+
     [Fact]
     public async Task ApplyAsync_ReportsARefusedSaveAndStillSavesTheOtherAssets()
     {

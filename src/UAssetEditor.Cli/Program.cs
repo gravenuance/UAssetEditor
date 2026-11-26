@@ -1,5 +1,6 @@
 using UAssetEditor.Cli;
 using UAssetEditor.Core.AssetSources.PakWorker;
+using UAssetEditor.Core.Search;
 using UAssetEditor.Tooling;
 
 if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
@@ -9,6 +10,9 @@ if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
 }
 
 var verb = args[0];
+
+// A rule set's patterns come from a file with no time limit of its own; one that backtracks forever must not hang the run.
+AppContext.SetData("REGEX_DEFAULT_MATCH_TIMEOUT", SearchQuery.DefaultRegexTimeout);
 
 // Console output flushes per line by default; dumping a large asset spent most of its time there.
 using var stdout = new StreamWriter(Console.OpenStandardOutput(), bufferSize: 1 << 16) { AutoFlush = false };
