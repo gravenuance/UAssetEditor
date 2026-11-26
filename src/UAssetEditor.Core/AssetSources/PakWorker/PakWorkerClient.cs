@@ -8,7 +8,8 @@ namespace UAssetEditor.Core.AssetSources.PakWorker;
 /// second caller's frames in the middle would hand one caller the other's response, so the exchange (write, read)
 /// holds the process's request turn. Starting the worker is bounded (see <see cref="PakWorkerProcess.EnsureAsync"/>)
 /// and a caller cancelled before it wrote anything leaves the worker alone; one cancelled after that leaves the pipe
-/// mid-frame, so that worker is marked dead rather than reused.
+/// mid-frame, so that worker is marked dead rather than reused. A request that the worker's disposal cuts short throws
+/// <see cref="ObjectDisposedException"/>, not a crash.
 /// </summary>
 public sealed class PakWorkerClient(PakWorkerProcess process)
 {
@@ -61,16 +62,27 @@ public sealed class PakWorkerClient(PakWorkerProcess process)
             await PakWorkerFraming.WriteMessageAsync(pipe, request, payload, cancellationToken).ConfigureAwait(false);
             return await readResponse(pipe, cancellationToken).ConfigureAwait(false);
         }
+        catch (Exception ex) when (process.IsDisposed
+                                   && (ex is IOException or ObjectDisposedException
+                                       || ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            // Disposal (the host shutting down) killed the worker or closed the pipe under this request: not a crash. A
+            // malformed frame stays one, and the caller's own cancellation stays cancellation.
+            if (ex is ObjectDisposedException) throw;
+            throw PakWorkerProcess.Stopped(ex);
+        }
         catch (OperationCanceledException) when (exchanged)
         {
             process.MarkDead(); // the pipe holds half a frame, or a response nobody will read
             throw;
         }
-        catch (Exception ex) when (ex is IOException or EndOfStreamException or InvalidDataException or ObjectDisposedException)
+        catch (Exception ex) when (IsPipeFailure(ex))
         {
             process.MarkDead();
             var suffix = operation != null ? $" while {operation}" : "";
             throw new PakWorkerCrashedException($"The pak worker process crashed{suffix}.", operation, process.LastExitCode, ex);
         }
     }
+
+    private static bool IsPipeFailure(Exception ex) => ex is IOException or EndOfStreamException or InvalidDataException or ObjectDisposedException;
 }

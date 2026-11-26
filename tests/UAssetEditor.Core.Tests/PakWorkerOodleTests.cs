@@ -38,10 +38,29 @@ public sealed class CleanWorkerFolder : IDisposable
 
     public string WorkerExecutable { get; }
 
-    /// <summary>Deletes the folder; a second call, after one that succeeded, does nothing.</summary>
-    public void Dispose()
+    /// <summary>Deletes the folder, and throws while a worker still holds a file in it; a second call, after one that succeeded, does nothing.</summary>
+    public void Delete()
     {
         if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
+    }
+
+    /// <summary>
+    /// For a test that calls <see cref="Delete"/> itself as its check: <see cref="Dispose"/> then never throws, because it
+    /// runs while a failed test unwinds and its error would replace that test's own failure.
+    /// </summary>
+    public bool DisposeQuietly { get; init; }
+
+    /// <summary>Deletes the folder; it throws while a worker still holds a file there, so a fixture that leaks one fails, unless <see cref="DisposeQuietly"/>.</summary>
+    public void Dispose()
+    {
+        try
+        {
+            Delete();
+        }
+        catch (Exception ex) when (DisposeQuietly && ex is IOException or UnauthorizedAccessException)
+        {
+            TestContext.Current.SendDiagnosticMessage($"Could not delete the worker folder {_folder}: {ex.Message}");
+        }
     }
 }
 

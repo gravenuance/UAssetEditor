@@ -133,13 +133,14 @@ public sealed partial class PakReaderHandle : IDisposable
         {
             // Reopen eagerly so the pak stays usable for whatever the caller (or the next
             // caller) reads next - only this one entry's read is lost. A reopen that fails
-            // must not replace the crash the caller needs to see; the next read reopens.
+            // must not replace the crash the caller needs to see; the next read reopens. One
+            // cut short by cancellation or by the worker's disposal ends the read as such.
             _sessionLost = true;
             try
             {
                 await OpenLockedAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception reopenFailure) when (reopenFailure is not OperationCanceledException)
+            catch (Exception reopenFailure) when (reopenFailure is not (OperationCanceledException or ObjectDisposedException))
             {
                 LogReopenFailed(AppLog.For<PakReaderHandle>(), _pakPath, reopenFailure);
             }

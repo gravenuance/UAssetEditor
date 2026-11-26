@@ -99,6 +99,15 @@ try
                     if (testHooks && request.EntryPath == "__TEST_CRASH__")
                         Environment.FailFast("Simulated pak worker crash for testing.");
 
+                    // Test-only: answers nothing until the host closes the pipe (the host sends nothing meanwhile),
+                    // standing in for a long read that disposal cuts short (PakWorkerConcurrencyTests); never
+                    // matches a real pak entry path. A host that dies still ends this worker.
+                    if (testHooks && request.EntryPath == "__TEST_HANG__")
+                    {
+                        _ = await pipe.ReadAsync(new byte[1]).ConfigureAwait(false);
+                        return 0;
+                    }
+
                     // Test-only: reports which process this is and the Oodle path it was started with
                     // (PakWorkerOodleTests); never matches a real pak entry path.
                     if (testHooks && request.EntryPath == "__TEST_STATE__")

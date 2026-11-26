@@ -16,7 +16,7 @@ public sealed class PakWorkerTeardownTests
     {
         var dll = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_NoOodle_" + Guid.NewGuid().ToString("N"), "oo2core_9_win64.dll");
         using var plain = TestPaks.CreateTemp(new Dictionary<string, byte[]> { ["Foo.uasset"] = Encoding.UTF8.GetBytes("foo") });
-        using var folder = new CleanWorkerFolder();
+        using var folder = new CleanWorkerFolder { DisposeQuietly = true };
         var running = new List<Process>();
         try
         {
@@ -38,7 +38,7 @@ public sealed class PakWorkerTeardownTests
             ReleaseAll(running);
 
             Assert.All(ended, e => Assert.True(e, "a worker was still ending when Dispose returned"));
-            folder.Dispose(); // throws UnauthorizedAccessException while a worker still maps repak_bind.dll
+            folder.Delete(); // throws UnauthorizedAccessException while a worker still maps repak_bind.dll
         }
         finally
         {
@@ -56,7 +56,7 @@ public sealed class PakWorkerTeardownTests
     [Fact]
     public async Task Dispose_RightAfterAWorkerCrashed_ReturnsOnlyOnceItHasExited()
     {
-        using var folder = new CleanWorkerFolder();
+        using var folder = new CleanWorkerFolder { DisposeQuietly = true };
         using var plain = TestPaks.CreateTemp(new Dictionary<string, byte[]> { ["Foo.uasset"] = Encoding.UTF8.GetBytes("foo") });
         var crashed = new List<Process>();
         try
@@ -77,7 +77,7 @@ public sealed class PakWorkerTeardownTests
             ReleaseAll(crashed);
 
             Assert.True(ended, "the crashed worker was still ending when Dispose returned");
-            folder.Dispose(); // throws UnauthorizedAccessException while the crashed worker still maps repak_bind.dll
+            folder.Delete(); // throws UnauthorizedAccessException while the crashed worker still maps repak_bind.dll
         }
         finally
         {
