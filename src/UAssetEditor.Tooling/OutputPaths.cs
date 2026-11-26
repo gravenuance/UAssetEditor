@@ -37,8 +37,9 @@ internal static class OutputPaths
     /// <summary><see cref="FinalPaths.Resolve"/>, with a failure to resolve reported as bad input.</summary>
     public static string Resolve(string path) => Placed(() => FinalPaths.Resolve(path));
 
-    // An unplaceable path keeps its own exception, which the front ends report as it is; any other I/O failure of the resolution (a path too long) is bad input.
-    private static T Placed<T>(Func<T> resolve)
+    /// <summary>Runs a path resolution. An unplaceable path keeps its own exception, which the front ends report as it is;
+    /// any other I/O failure of the resolution (a path too long) is bad input.</summary>
+    public static T Placed<T>(Func<T> resolve)
     {
         try
         {

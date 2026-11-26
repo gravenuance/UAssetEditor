@@ -27,6 +27,28 @@ public sealed class IoStoreLegacyConverterTests : IDisposable
 
     private bool Exists(string relativePath) => File.Exists(Path.Combine(_output, relativePath));
 
+    // retoc reads the container's files (a Marvel Rivals one's companion .pak among them) while it writes the output.
+    [Theory]
+    [InlineData("Mod_P.pak", null, ".pak")]
+    [InlineData("MOD_P.PAK", null, ".pak")]
+    [InlineData("Linked.pak", "Mod_P.pak", ".pak")]
+    [InlineData("Linked.pak", "Mod_P.ucas", ".ucas")]
+    [InlineData("Linked.pak", "Mod_P.utoc", ".utoc")]
+    public async Task ConvertAsync_RefusesAPakOutputThatIsOneOfTheContainersOwnFiles_BeforeTouchingIt(string outputName, string? hardLinkTo, string own)
+    {
+        foreach (var file in (string[])["Mod_P.utoc", "Mod_P.ucas", "Mod_P.pak"]) Write(file);
+        var utoc = Path.Combine(_output, "Mod_P.utoc");
+        var output = Path.Combine(_output, outputName);
+        if (hardLinkTo != null) TestLinks.MakeHardLink(output, Path.Combine(_output, hardLinkTo));
+
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => IoStoreLegacyConverter.ConvertAsync(
+            utoc, output, RetocLayer.Modded, [], aesKey: null, paksFolder: null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("output", refused.ParamName);
+        Assert.Contains($"container's own {own},", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("x", await File.ReadAllTextAsync(Path.Combine(_output, "Mod_P" + own), TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public void RemoveBulkFilesNotShipped_DeletesBaseGameBulkOfAReplacedPackage()
     {

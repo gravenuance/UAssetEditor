@@ -43,6 +43,7 @@ All notable changes to this project are documented here.
 - MCP tool output keeps the zero-width joiners of emoji and scripts such as Persian, and a U+FFFD the text really holds, instead of turning them into spaces.
 - A failed or cancelled IoStore pack (`uacli pack` to a `.utoc`, the MCP `pack` tool, the app's **Pack Folder** and repack to IoStore) could leave a partial `.utoc`/`.ucas` and lose the container it was to replace. The container is now built in a `.<name>.<id>.partial` folder beside the output and moved into place only once retoc succeeds. A container file that is a hard link to a file in the source folder is now replaced instead of refused, since the source file is no longer written through it.
 - A host that crashed or was killed (the app, `uacli`, the MCP server) left its `UAssetEditor.PakWorker` processes and any running retoc behind. Both now join a kill-on-close job object, so Windows ends them with their host.
+- The app's **Convert IoStore to Legacy** let a `.pak` output be one of the container's own files (its `.utoc`, `.ucas` or companion `.pak`), which retoc reads while it writes. It is now refused, by any name or hard link that reaches the file, as `uacli` and MCP already did.
 
 ### Removed
 - The vendored `oo2core_9_win64.dll`: Oodle is proprietary, so the repository and releases no longer carry it (`THIRD_PARTY_NOTICES.md`, `docs/adr/0001-oodle-from-the-game-install.md`). It has been in the repository's public history since 84e788b (2026-09-16), and removing it from the tree does not remove it from old commits.

@@ -56,9 +56,8 @@ internal static class LegacyConversion
         if (WritesPak(output))
         {
             if (Directory.Exists(output)) throw new ArgException($"{names.Output} is a folder: {output}");
-            // A Marvel Rivals container's own files include a companion .pak.
-            foreach (var containerFile in (string[])[utoc, .. RetocProcess.CompanionsOf(utoc, writesCompanionPak: true)])
-                OutputPaths.RefuseSame(output, containerFile, names.Output, $"the {names.Utoc}'s {Path.GetExtension(containerFile)}");
+            if (OutputPaths.Placed(() => IoStoreLegacyConverter.ContainerFileReachedBy(utoc, output)) is { } containerFile)
+                throw new ArgException($"{names.Output} and the {names.Utoc}'s {Path.GetExtension(containerFile)} are the same file.");
             exists = File.Exists(output);
         }
         else
