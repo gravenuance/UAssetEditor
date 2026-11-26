@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using UAssetAPI;
 using UAssetAPI.PropertyTypes.Objects;
 using UAssetAPI.UnrealTypes;
@@ -331,11 +330,7 @@ internal static class Commands
     public static int Batch(ArgReader args)
     {
         var path = args.Positional(0, "file-or-folder");
-        var rulesetPath = args.RequireOption("ruleset");
-        if (!File.Exists(rulesetPath)) throw new ArgException($"Ruleset file not found: {rulesetPath}");
-
-        var ruleSet = JsonSerializer.Deserialize<RuleSet>(File.ReadAllText(rulesetPath), AssetIo.RuleSetJsonOptions)
-            ?? throw new ArgException($"'{rulesetPath}' did not contain a valid rule set.");
+        var ruleSet = RuleSets.Load(args.RequireOption("ruleset"), "--ruleset");
 
         var versions = AssetIo.ResolveVersions(args);
         IAssetSource source = Directory.Exists(path) ? new LooseFolderAssetSource(path) : new SingleFileAssetSource(path);

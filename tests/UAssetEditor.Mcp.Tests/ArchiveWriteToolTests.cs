@@ -8,6 +8,7 @@ using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Mcp.Tools;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tests;
 
@@ -477,7 +478,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
 
         var replaced = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, existing, cancellationToken: _ct));
         var same = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, pak, overwrite: true, cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, _rig.Folder.Combine("out.pak"), "{ not json", cancellationToken: _ct));
+        await Assert.ThrowsAsync<ArgException>(() => _rig.ArchiveWrites.RepackAsync(pak, _rig.Folder.Combine("out.pak"), "{ not json", cancellationToken: _ct));
 
         Assert.Contains("already exists", replaced.Message, StringComparison.Ordinal);
         Assert.Contains("same file", same.Message, StringComparison.Ordinal);
