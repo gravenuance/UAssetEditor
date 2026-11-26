@@ -20,6 +20,17 @@ public sealed class RivalsLogsTests : IDisposable
     }
 
     [Fact]
+    public void ReadAll_ALogOverTheSizeLimit_IsRefusedBeforeItIsRead()
+    {
+        var path = WriteLog("big.log", DateTime.UtcNow, new byte[101]);
+
+        var error = Assert.Throws<InvalidDataException>(() => RivalsLogs.ReadAll(path, maxBytes: 100));
+
+        Assert.Equal($"{path} is 101 bytes; a game log over 100 bytes is not read.", error.Message);
+        Assert.Equal(100, RivalsLogs.ReadAll(WriteLog("fits.log", DateTime.UtcNow, new byte[100]), maxBytes: 100).Length);
+    }
+
+    [Fact]
     public void InstalledBuild_ComesFromTheNewestLog_NotTheLastInTheAlphabet()
     {
         var now = DateTime.UtcNow;

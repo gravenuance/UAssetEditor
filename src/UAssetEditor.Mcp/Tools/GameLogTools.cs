@@ -72,10 +72,7 @@ internal static class GameLogTools
     private static void AddDecodeNotes(List<string> notes, string path, RivalsLogDecodeResult decoded)
     {
         var name = Untrusted.Clean(Path.GetFileName(path), 100);
-        if (decoded.InflateFailures > 0)
-            notes.Add($"{name}: {decoded.InflateFailures} record(s) failed to inflate; their text is cut short or missing.");
-        if (decoded.StoppedAtOffset is { } offset)
-            notes.Add($"{name}: stopped at 0x{offset:x}, which is not a whole record (truncated or damaged log); the rest was not decoded.");
+        foreach (var problem in decoded.Problems()) notes.Add($"{name}: {problem}");
     }
 
     private static List<string> Lines(IReadOnlyList<string> source, int max) => [.. source.Take(max).Select(line => Untrusted.Clean(line, MaxLineLength))];

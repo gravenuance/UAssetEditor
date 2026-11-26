@@ -14,9 +14,22 @@ internal static class GameLogs
         ArgumentException.ThrowIfNullOrWhiteSpace(logPath);
 
         using var decoded = new MemoryStream();
-        var result = DecodeInto(logPath, RivalsLogs.ReadAll(logPath), decoded);
+        var result = DecodeInto(logPath, Read(logPath), decoded);
         decoded.Position = 0;
         return (RivalsLogSummary.Parse(ReadLines(decoded)), result);
+    }
+
+    /// <summary>The log's bytes; a file over <see cref="RivalsLogs.MaxLogBytes"/> is an <see cref="ArgException"/>.</summary>
+    public static byte[] Read(string logPath)
+    {
+        try
+        {
+            return RivalsLogs.ReadAll(logPath);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new ArgException(ex.Message, ex);
+        }
     }
 
     public static RivalsLogDecodeResult DecodeInto(string logPath, byte[] blob, Stream output)

@@ -114,6 +114,74 @@ public class RivalsLogDecoderTests
     }
 
     [Fact]
+    public void TheTestEncryptHelper_MatchesTheOpensslFixture()
+    {
+        Assert.Equal(TwoLinesCipher, Convert.ToHexString(Encrypt(Encoding.ASCII.GetBytes(TwoLinesText))));
+    }
+
+    [Fact]
+    public void AZlibBombRecord_StopsInflatingAtTheLimit_AndSaysSo()
+    {
+        // 1 MiB of 'a' packs into about a kilobyte; the limit lets 1000 bytes of it out.
+        var bomb = Frame(Encrypt(Zlib(Enumerable.Repeat((byte)'a', 1 << 20).ToArray())));
+        using var output = new MemoryStream();
+
+        var result = RivalsLogDecoder.Decode(Log(bomb, Frame(SecondCipher)), output, maxDecodedBytes: 1000);
+
+        Assert.Equal(new string('a', 1000), Encoding.ASCII.GetString(output.ToArray()));
+        Assert.Equal(new RivalsLogDecodeResult(1, 0, null, false, CutAtLimit: 1000), result);
+        Assert.Contains("stopped after 1000 bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
+    }
+
+    [Fact]
+    public void TheShmTrailer_IsStillWrittenAfterTheRecordsAreCut()
+    {
+        using var output = new MemoryStream();
+
+        var result = RivalsLogDecoder.Decode(
+            Log(Frame(TwoLinesCipher), Frame(SecondCipher), Encoding.ASCII.GetBytes("<SHM_LOG_BEGIN>crash here\n")), output, maxDecodedBytes: 8);
+
+        Assert.Equal("line one\n----- SHM trailer -----\ncrash here\n", Encoding.UTF8.GetString(output.ToArray()));
+        Assert.Equal(new RivalsLogDecodeResult(1, 0, null, true, CutAtLimit: 8), result);
+    }
+
+    [Fact]
+    public void PlainRecordsPastTheLimit_AreCutAtTheLimit()
+    {
+        using var output = new MemoryStream();
+
+        var result = RivalsLogDecoder.Decode(Log(Frame(SecondCipher), Frame(TwoLinesCipher)), output, maxDecodedBytes: 30);
+
+        // SecondText is 21 bytes, so 9 of the next record fit.
+        Assert.Equal(SecondText + "line one ", Encoding.UTF8.GetString(output.ToArray()));
+        Assert.Equal(2, result.Records);
+        Assert.Equal(30, result.CutAtLimit);
+    }
+
+    [Fact]
+    public void OutputExactlyAtTheLimit_IsNotReportedAsCut()
+    {
+        using var output = new MemoryStream();
+
+        var result = RivalsLogDecoder.Decode(Log(Frame(SecondCipher)), output, maxDecodedBytes: SecondText.Length);
+
+        Assert.Equal(SecondText, Encoding.UTF8.GetString(output.ToArray()));
+        Assert.Null(result.CutAtLimit);
+        Assert.Empty(result.Problems());
+    }
+
+    [Fact]
+    public void ProblemsName_InflateFailures_AndTheStopOffset()
+    {
+        var result = new RivalsLogDecodeResult(3, 2, 0x1f, false);
+
+        Assert.Equal(
+            ["2 record(s) failed to inflate; their text is cut short or missing.",
+             "stopped at 0x1f, which is not a whole record (truncated or damaged log); the rest was not decoded."],
+            result.Problems());
+    }
+
+    [Fact]
     public void AFileWithoutTheMagic_IsRejected()
     {
         Assert.Throws<InvalidDataException>(() => Decode(Encoding.ASCII.GetBytes("plain text, not a log")));

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -9,7 +10,21 @@ namespace UAssetEditor.Core.Games.Rivals;
 /// <param name="InflateFailures">Compressed records whose zlib data was corrupt; what inflated before the error was still emitted.</param>
 /// <param name="StoppedAtOffset">File offset of the first byte that could not be read as a record, or null when the log ended cleanly (or in the SHM trailer).</param>
 /// <param name="HasTrailer">Whether the plaintext shared-memory trailer was found and emitted.</param>
-public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int? StoppedAtOffset, bool HasTrailer);
+/// <param name="CutAtLimit">The decode limit the text was cut at, in bytes, or null when the whole log fitted.</param>
+public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int? StoppedAtOffset, bool HasTrailer, long? CutAtLimit = null)
+{
+    /// <summary>What a reader of the decoded text should know is missing from it, one sentence each, without the log's name.</summary>
+    public IReadOnlyList<string> Problems()
+    {
+        var problems = new List<string>();
+        if (InflateFailures > 0) problems.Add($"{InflateFailures} record(s) failed to inflate; their text is cut short or missing.");
+        if (StoppedAtOffset is { } offset)
+            problems.Add($"stopped at 0x{offset:x}, which is not a whole record (truncated or damaged log); the rest was not decoded.");
+        if (CutAtLimit is { } limit)
+            problems.Add($"stopped after {limit} bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.");
+        return problems;
+    }
+}
 
 /// <summary>
 /// Decodes a Marvel Rivals engine log (<c>%LOCALAPPDATA%\Marvel\Saved\Logs\*.log</c>, the <c>logversion000</c> container) to text.
@@ -19,6 +34,11 @@ public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int
 /// </summary>
 public static class RivalsLogDecoder
 {
+    /// <summary>The most text one log's records decode to (the plaintext trailer is the file's own bytes, so not counted). A
+    /// 3-hour session's 4.6 MB log decodes to 48 MB (2026-11); a zlib record can inflate about 1000-fold, so without a limit a
+    /// small crafted log fills memory.</summary>
+    public const long MaxDecodedBytes = 256L << 20;
+
     private const int BlockSize = 16;
     private const byte ZlibHeader = 0x78;
 
@@ -32,16 +52,16 @@ public static class RivalsLogDecoder
 
     private static ReadOnlySpan<byte> Iv => "_NMxNi0DK7_qHC_i"u8;
 
-    /// <summary>Decodes <paramref name="blob"/> into <paramref name="output"/>, record by record.</summary>
+    /// <summary>Decodes <paramref name="blob"/> into <paramref name="output"/>, record by record, up to <paramref name="maxDecodedBytes"/>.</summary>
     /// <exception cref="InvalidDataException"><paramref name="blob"/> is not a <c>logversion000</c> log.</exception>
-    public static RivalsLogDecodeResult Decode(ReadOnlyMemory<byte> blob, Stream output)
+    public static RivalsLogDecodeResult Decode(ReadOnlyMemory<byte> blob, Stream output, long maxDecodedBytes = MaxDecodedBytes)
     {
         ArgumentNullException.ThrowIfNull(output);
         return Decode(blob, chunk =>
         {
             output.Write(chunk.Span);
             return true;
-        });
+        }, maxDecodedBytes);
     }
 
     /// <summary>
@@ -49,9 +69,10 @@ public static class RivalsLogDecoder
     /// early (a caller that only wants the header lines).
     /// </summary>
     /// <exception cref="InvalidDataException"><paramref name="blob"/> is not a <c>logversion000</c> log.</exception>
-    public static RivalsLogDecodeResult Decode(ReadOnlyMemory<byte> blob, Func<ReadOnlyMemory<byte>, bool> onChunk)
+    public static RivalsLogDecodeResult Decode(ReadOnlyMemory<byte> blob, Func<ReadOnlyMemory<byte>, bool> onChunk, long maxDecodedBytes = MaxDecodedBytes)
     {
         ArgumentNullException.ThrowIfNull(onChunk);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxDecodedBytes);
         var data = blob.Span;
         if (!data.StartsWith(Magic)) throw new InvalidDataException("Not a logversion000 log.");
 
@@ -62,6 +83,7 @@ public static class RivalsLogDecoder
 
         var offset = Magic.Length;
         int records = 0, inflateFailures = 0;
+        var room = maxDecodedBytes;
         while (offset + 4 <= data.Length)
         {
             var window = Math.Min(data.Length - offset, 8 + ShmBegin.Length);
@@ -77,22 +99,38 @@ public static class RivalsLogDecoder
                     : new RivalsLogDecodeResult(records, inflateFailures, offset, HasTrailer: false);
             }
 
-            var plain = Transform(aes, data.Slice(offset + 4, size));
-            if (plain.Length > 0 && plain[0] == ZlibHeader)
+            var decrypted = Transform(aes, data.Slice(offset + 4, size));
+            ReadOnlyMemory<byte> plain = decrypted;
+            bool cut;
+            if (decrypted.Length > 0 && decrypted[0] == ZlibHeader)
             {
-                var (inflated, ok) = Inflate(plain);
+                var (inflated, ok, overflowed) = Inflate(decrypted, room);
                 if (!ok) inflateFailures++;
                 plain = inflated;
+                cut = overflowed;
             }
+            else
+            {
+                cut = plain.Length > room;
+                if (cut) plain = plain[..(int)room];
+            }
+            room -= plain.Length;
             records++;
             offset += 8 + size;
             if (!onChunk(plain)) return new RivalsLogDecodeResult(records, inflateFailures, StoppedAtOffset: null, HasTrailer: false);
+            if (cut)
+            {
+                // The trailer often holds the crash, so it is still written after the records are cut.
+                var at = data[offset..].IndexOf(ShmBegin);
+                return Finish(at >= 0 && WriteTrailer(blob, offset + at, onChunk), maxDecodedBytes);
+            }
         }
 
         // One to three bytes cannot hold a record's size word: the file was cut off.
         return new RivalsLogDecodeResult(records, inflateFailures, offset < data.Length ? offset : null, HasTrailer: false);
 
-        RivalsLogDecodeResult Finish(bool trailerEmitted) => new(records, inflateFailures, StoppedAtOffset: null, HasTrailer: trailerEmitted);
+        RivalsLogDecodeResult Finish(bool trailerEmitted, long? cutAt = null) =>
+            new(records, inflateFailures, StoppedAtOffset: null, HasTrailer: trailerEmitted, CutAtLimit: cutAt);
     }
 
     /// <summary>Adds one to a 16-byte big-endian counter, wrapping to zero after all 0xFF.</summary>
@@ -131,19 +169,34 @@ public static class RivalsLogDecoder
         return result;
     }
 
-    // Keeps whatever inflated before corrupt data: a damaged record still shows its first lines.
-    private static (byte[] Data, bool Ok) Inflate(byte[] data)
+    // Keeps whatever inflated before corrupt data: a damaged record still shows its first lines. Stops at `room` bytes, and
+    // Overflowed says more was left. Hands back the stream's own buffer rather than a copy, which would double the peak.
+    private static (ReadOnlyMemory<byte> Data, bool Ok, bool Overflowed) Inflate(byte[] data, long room)
     {
         using var zlib = new ZLibStream(new MemoryStream(data), CompressionMode.Decompress);
         using var inflated = new MemoryStream();
+        var buffer = ArrayPool<byte>.Shared.Rent(1 << 16);
         try
         {
-            zlib.CopyTo(inflated);
-            return (inflated.ToArray(), true);
+            int read;
+            while ((read = zlib.Read(buffer)) > 0)
+            {
+                var fits = (int)Math.Min(read, room - inflated.Length);
+                inflated.Write(buffer, 0, fits);
+                if (fits < read) return (Written(inflated), true, true);
+            }
+            return (Written(inflated), true, false);
         }
         catch (InvalidDataException)
         {
-            return (inflated.ToArray(), false);
+            return (Written(inflated), false, false);
         }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        // Disposing a MemoryStream leaves its buffer readable.
+        static ReadOnlyMemory<byte> Written(MemoryStream stream) => stream.GetBuffer().AsMemory(0, (int)stream.Length);
     }
 }

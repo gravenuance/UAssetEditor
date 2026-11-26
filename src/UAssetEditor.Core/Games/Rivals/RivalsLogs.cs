@@ -19,10 +19,17 @@ public static class RivalsLogs
             .MaxBy(File.GetLastWriteTimeUtc);
     }
 
+    /// <summary>The largest log file read; a 3-hour session's log is 4.6 MB (2026-11).</summary>
+    public const long MaxLogBytes = 64L << 20;
+
     /// <summary>Reads a log in full. The game may still have it open for writing, so it is opened with sharing.</summary>
-    public static byte[] ReadAll(string path)
+    /// <exception cref="InvalidDataException">The file is over <see cref="MaxLogBytes"/>.</exception>
+    public static byte[] ReadAll(string path) => ReadAll(path, MaxLogBytes);
+
+    internal static byte[] ReadAll(string path, long maxBytes)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        if (stream.Length > maxBytes) throw new InvalidDataException($"{path} is {stream.Length} bytes; a game log over {maxBytes} bytes is not read.");
         var bytes = new byte[stream.Length];
         stream.ReadExactly(bytes);
         return bytes;
