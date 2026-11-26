@@ -66,6 +66,7 @@ public sealed class ProtocolTests : IAsyncLifetime
     {
         using var reader = new StreamReader(from.AsStream());
         var writer = to.AsStream();
+        Exception? failure = null;
         try
         {
             while (await reader.ReadLineAsync(cancellationToken) is { } line)
@@ -79,9 +80,14 @@ public sealed class ProtocolTests : IAsyncLifetime
         {
             // the test is over
         }
+        catch (Exception ex)
+        {
+            failure = ex; // the client fails with it at once instead of waiting for a result that never comes
+            throw;
+        }
         finally
         {
-            await to.CompleteAsync();
+            await to.CompleteAsync(failure);
         }
     }
 
@@ -98,17 +104,23 @@ public sealed class ProtocolTests : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
-        if (_client is not null) await _client.DisposeAsync();
-        if (_host is not null)
+        try
         {
-            await _host.StopAsync();
-            _host.Dispose();
+            if (_client is not null) await _client.DisposeAsync();
+            if (_host is not null)
+            {
+                await _host.StopAsync();
+                _host.Dispose();
+            }
+            await _stopRelay.CancelAsync();
+            await _relay;
         }
-        await _stopRelay.CancelAsync();
-        await _relay;
-        _stopRelay.Dispose();
-        _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
-        _folder.Dispose();
+        finally
+        {
+            _stopRelay.Dispose();
+            _links.Dispose(); // before the folder: a junction must go as a link, not be walked into
+            _folder.Dispose();
+        }
     }
 
     private McpClient Client => _client ?? throw new InvalidOperationException("Not started.");
@@ -279,7 +291,7 @@ public sealed class ProtocolTests : IAsyncLifetime
     {
         const int files = 40;
         for (var i = 0; i < files; i++) AssetFixtures.WriteSample(_folder, $"A{i}.uasset");
-        var progress = new CollectedProgress();
+        var progress = new CollectedProgress(); // asks for progress: without it the call carries no progress token
 
         var result = await Client.CallToolAsync(
             "search_assets",
@@ -290,8 +302,10 @@ public sealed class ProtocolTests : IAsyncLifetime
         Assert.NotEqual(true, result.IsError);
         using var json = JsonDocument.Parse(Text(result));
         Assert.Equal(files, json.RootElement.GetProperty("total").GetInt32());
-        // Read on the wire, since the client hands notifications to the callback concurrently: every one before the result
-        // (the client drops a later one), rising (parallel workers may skip a count), up to the last file.
+        // Read on the wire, since the SDK client starts a task per incoming message: every notification before the result
+        // (the client drops a later one), rising (parallel workers may skip a count), up to the last file. The SDK (2.4.0)
+        // does not await a progress send, but each one runs synchronously up to the transport's one-slot SemaphoreSlim,
+        // whose waiters go first in, first out, so a send reported before the tool returns is written before its result.
         var sent = SentByServer();
         var resultAt = sent.FindIndex(message => message.TryGetProperty("result", out var body) && body.TryGetProperty("content", out _));
         var notified = sent.Take(resultAt)
