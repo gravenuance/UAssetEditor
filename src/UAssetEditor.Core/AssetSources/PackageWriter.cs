@@ -108,9 +108,9 @@ public static partial class PackageWriter
                 var backup = BackupPathResolver.Resolve(file, backupFolder);
                 var stagedPath = $"{backup}.{stagingId}.tmp";
                 File.Copy(file, stagedPath, overwrite: true);
+                staged.Add(new StagedBackup(file, stagedPath, backup, BackupPathResolver.ResolveOriginal(file, backupFolder)));
                 // Copy keeps the source's write time; stamping it says when this save began, which the sweep reads as its age.
                 File.SetLastWriteTimeUtc(stagedPath, clock.GetUtcNow().UtcDateTime);
-                staged.Add(new StagedBackup(file, stagedPath, backup, BackupPathResolver.ResolveOriginal(file, backupFolder)));
             }
         }
         catch
