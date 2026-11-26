@@ -195,6 +195,15 @@ public sealed class HelperTests : IDisposable
     }
 
     [Fact]
+    public void Clean_KeepsTheJoinersThatShapeText_AndARealReplacementCharacter()
+    {
+        // A family emoji joined by ZWJ, a Persian word with a ZWNJ, and a U+FFFD that is in the text itself.
+        const string text = "\U0001F468‍\U0001F469 می‌خواهم �";
+
+        Assert.Equal(text, Untrusted.Clean(text));
+    }
+
+    [Fact]
     public void Clean_NeverCutsASurrogatePairInHalf()
     {
         Assert.Equal("ab...", Untrusted.Clean("ab\U0001F600", 3));
