@@ -1,5 +1,3 @@
-using System.Text.Json;
-using ModelContextProtocol;
 using UAssetEditor.Core.Editing;
 using UAssetEditor.Tooling;
 
@@ -20,24 +18,8 @@ internal static class RulesetInput
     public static RuleSet Load(string? ruleset)
     {
         var text = ToolInput.Required(ruleset, nameof(ruleset), MaxCharacters);
-        var json = text.StartsWith('{') ? text : ReadFile(text);
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<RuleSet>(json, AssetIo.RuleSetJsonOptions)
-                ?? throw new McpException("ruleset did not contain a rule set.");
-            return parsed.Rules.Count > 0 ? parsed : throw new McpException("ruleset has no rules.");
-        }
-        catch (Exception ex) when (ex is JsonException or ArgumentOutOfRangeException)
-        {
-            throw new McpException($"ruleset is not a valid rule set: {Untrusted.Clean(ex.Message, 300)}", ex);
-        }
-    }
-
-    private static string ReadFile(string path)
-    {
-        var file = ToolPaths.ExistingFile(path, "ruleset", ".json");
-        return new FileInfo(file).Length <= MaxCharacters
-            ? File.ReadAllText(file)
-            : throw new McpException($"ruleset file is limited to {MaxCharacters} bytes.");
+        return text.StartsWith('{')
+            ? RuleSets.Parse(text, nameof(ruleset))
+            : RuleSets.Load(ToolPaths.ExistingFile(text, nameof(ruleset), ".json"), nameof(ruleset), MaxCharacters);
     }
 }

@@ -8,6 +8,7 @@ using UAssetEditor.Core.AssetSources.IoStore;
 using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Mcp.Tools;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tests;
 
@@ -17,6 +18,16 @@ public sealed class ArchiveWriteToolTests : IDisposable
     private readonly McpRig _rig = new();
     private readonly TestLinks _links = new();
     private readonly CancellationToken _ct = TestContext.Current.CancellationToken;
+
+    /// <summary>A refusal, which the caller sees as a tool error with its message: ToolErrorFilter reports a check of the tool's
+    /// own (McpException) and one shared with uacli (ArgException) alike.</summary>
+    private static async Task<Exception> Refused(Func<Task> call)
+    {
+        var ex = await Record.ExceptionAsync(call);
+        return ex is McpException or ArgException
+            ? ex
+            : throw Xunit.Sdk.FailException.ForFailure($"expected a refusal, got {ex?.GetType().Name ?? "no exception"}: {ex?.Message}");
+    }
 
     public void Dispose()
     {
@@ -74,7 +85,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var pak = MakePak("a.pak", "Content/A.txt");
         var destination = _rig.Folder.Combine("out");
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, filter, cancellationToken: _ct));
+        var error = await Refused(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, filter, cancellationToken: _ct));
 
         Assert.Contains("filter is required", error.Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(destination));
@@ -86,7 +97,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var pak = MakePak("a.pak", "Content/A.txt", "Content/B.txt", "Content/C.txt");
         var destination = _rig.Folder.Combine("out");
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "Content", maxFiles: 2, cancellationToken: _ct));
+        var error = await Refused(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "Content", maxFiles: 2, cancellationToken: _ct));
 
         Assert.Contains("matches 3 entries", error.Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(destination));
@@ -101,7 +112,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(existing)!);
         await File.WriteAllTextAsync(existing, "mine", _ct);
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A.txt", cancellationToken: _ct));
+        var error = await Refused(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A.txt", cancellationToken: _ct));
         Assert.Contains("already exists", error.Message, StringComparison.Ordinal);
         Assert.Equal("mine", await File.ReadAllTextAsync(existing, _ct));
 
@@ -126,9 +137,9 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var pak = MakePak("a.pak", "Content/A.txt");
         var destination = _rig.Folder.Combine("out");
 
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(_rig.Folder.Combine("no.pak"), destination, "A", cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, "relative/out", "A", cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A", maxFiles: 0, cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.UnpackPakAsync(_rig.Folder.Combine("no.pak"), destination, "A", cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.UnpackPakAsync(pak, "relative/out", "A", cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A", maxFiles: 0, cancellationToken: _ct));
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _rig.ArchiveWrites.UnpackPakAsync(pak, destination, "A", cancellationToken: McpRig.Cancelled));
         Assert.False(File.Exists(Path.Combine(destination, "Content", "A.txt")));
     }
@@ -195,7 +206,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         await File.WriteAllTextAsync(output, "precious", _ct);
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, cancellationToken: _ct));
+        var error = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, cancellationToken: _ct));
         Assert.Contains("already exists", error.Message, StringComparison.Ordinal);
         Assert.Equal("precious", await File.ReadAllTextAsync(output, _ct));
 
@@ -209,13 +220,13 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var source = SourceFolder("Content/A.txt");
         var output = _rig.Folder.Combine("out", "mod.pak");
 
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(_rig.Folder.Combine("nowhere"), output, cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod.zip"), cancellationToken: _ct));
-        var inside = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, Path.Combine(source, "mod.pak"), cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, pakVersion: "V99", cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, pakVersion: "11", cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, compression: "rot13", cancellationToken: _ct));
-        var rivals = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, kawaiiPhysics: true, cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.PackAsync(_rig.Folder.Combine("nowhere"), output, cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod.zip"), cancellationToken: _ct));
+        var inside = await Refused(() => _rig.ArchiveWrites.PackAsync(source, Path.Combine(source, "mod.pak"), cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, pakVersion: "V99", cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, pakVersion: "11", cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, compression: "rot13", cancellationToken: _ct));
+        var rivals = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, kawaiiPhysics: true, cancellationToken: _ct));
 
         Assert.Contains("must not be inside", inside.Message, StringComparison.Ordinal);
         Assert.Contains("only apply to IoStore", rivals.Message, StringComparison.Ordinal);
@@ -256,9 +267,9 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var utoc = _rig.Folder.Combine("mod.utoc");
         await File.WriteAllTextAsync(utoc, "not read: the arguments are refused first", _ct);
 
-        var layer = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(
+        var layer = await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(
             utoc, _rig.Folder.Combine("out"), layer: "original", noPaksResolve: true, cancellationToken: _ct));
-        var paks = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(
+        var paks = await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(
             utoc, _rig.Folder.Combine("out"), paks: _rig.Folder.Path, noPaksResolve: true, cancellationToken: _ct));
 
         Assert.Contains("noPaksResolve", layer.Message, StringComparison.Ordinal);
@@ -279,7 +290,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
 
         try
         {
-            var error = await Assert.ThrowsAsync<McpException>(() => tools.StagedAsync<int>(target, async staging =>
+            var error = await Refused(() => tools.StagedAsync<int>(target, async staging =>
             {
                 await File.WriteAllTextAsync(staging, "half", TestContext.Current.CancellationToken);
                 scanner = new FileStream(staging, FileMode.Open, FileAccess.Read, FileShare.None);
@@ -346,7 +357,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         Assert.StartsWith("iostore", result.Format, StringComparison.Ordinal);
         Assert.True(File.Exists(output));
         Assert.True(File.Exists(Path.ChangeExtension(output, ".ucas")));
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE5_3", cancellationToken: _ct));
+        var error = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE5_3", cancellationToken: _ct));
         Assert.Contains("already exists", error.Message, StringComparison.Ordinal);
         await _rig.ArchiveWrites.PackAsync(source, output, overwrite: true, engineVersion: "VER_UE5_3", cancellationToken: _ct);
     }
@@ -359,7 +370,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         await File.WriteAllTextAsync(Path.ChangeExtension(output, ".pak"), "an unrelated pak", _ct);
 
-        var rivals = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, game: "rivals", cancellationToken: _ct));
+        var rivals = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, game: "rivals", cancellationToken: _ct));
         await _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE5_3", cancellationToken: _ct);
 
         Assert.Contains("mod.pak already exists", rivals.Message, StringComparison.Ordinal);
@@ -373,9 +384,9 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var source = SourceFolder("Content/Foo.txt");
         var output = _rig.Folder.Combine("out", "mod.utoc");
 
-        var other = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE5_3", obfuscate: true, cancellationToken: _ct));
-        var noUsmap = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, game: "rivals", kawaiiPhysics: true, cancellationToken: _ct));
-        var oldEngine = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE4_10", cancellationToken: _ct));
+        var other = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE5_3", obfuscate: true, cancellationToken: _ct));
+        var noUsmap = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, game: "rivals", kawaiiPhysics: true, cancellationToken: _ct));
+        var oldEngine = await Refused(() => _rig.ArchiveWrites.PackAsync(source, output, engineVersion: "VER_UE4_10", cancellationToken: _ct));
 
         Assert.Contains("only supported with game rivals", other.Message, StringComparison.Ordinal);
         Assert.Contains("need a usmap", noUsmap.Message, StringComparison.Ordinal);
@@ -397,11 +408,11 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var pak = _rig.Folder.Combine("legacy.pak");
         await File.WriteAllTextAsync(pak, "mine", _ct);
 
-        var nonEmpty = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, folder, cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, pak, cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, _rig.Folder.Combine("new"), layer: "both", cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, _rig.Folder.Combine("new"), paks: _rig.Folder.Combine("no-paks"), cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(_rig.Folder.Combine("no.utoc"), _rig.Folder.Combine("new"), cancellationToken: _ct));
+        var nonEmpty = await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, folder, cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, pak, cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, _rig.Folder.Combine("new"), layer: "both", cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, _rig.Folder.Combine("new"), paks: _rig.Folder.Combine("no-paks"), cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(_rig.Folder.Combine("no.utoc"), _rig.Folder.Combine("new"), cancellationToken: _ct));
 
         Assert.Contains("already exists", nonEmpty.Message, StringComparison.Ordinal);
         Assert.Equal("mine", await File.ReadAllTextAsync(Path.Combine(folder, "keep.txt"), _ct));
@@ -475,9 +486,9 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var pak = MakePak("a.pak", "Content/A.txt");
         var existing = MakePak("b.pak", "Content/B.txt");
 
-        var replaced = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, existing, cancellationToken: _ct));
-        var same = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, pak, overwrite: true, cancellationToken: _ct));
-        await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, _rig.Folder.Combine("out.pak"), "{ not json", cancellationToken: _ct));
+        var replaced = await Refused(() => _rig.ArchiveWrites.RepackAsync(pak, existing, cancellationToken: _ct));
+        var same = await Refused(() => _rig.ArchiveWrites.RepackAsync(pak, pak, overwrite: true, cancellationToken: _ct));
+        await Refused(() => _rig.ArchiveWrites.RepackAsync(pak, _rig.Folder.Combine("out.pak"), "{ not json", cancellationToken: _ct));
 
         Assert.Contains("already exists", replaced.Message, StringComparison.Ordinal);
         Assert.Contains("same file", same.Message, StringComparison.Ordinal);
@@ -495,8 +506,8 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var ucas = _rig.Folder.Combine("out", "mod2.ucas");
         TestLinks.MakeHardLink(ucas, inSource);
 
-        var viaUtoc = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, utoc, overwrite: true, cancellationToken: _ct));
-        var viaUcas = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod2.utoc"), overwrite: true, cancellationToken: _ct));
+        var viaUtoc = await Refused(() => _rig.ArchiveWrites.PackAsync(source, utoc, overwrite: true, cancellationToken: _ct));
+        var viaUcas = await Refused(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod2.utoc"), overwrite: true, cancellationToken: _ct));
 
         Assert.Equal("output must not be inside sourceFolder or a hard link to a file in it.", viaUtoc.Message);
         Assert.Equal("output's .ucas must not be inside sourceFolder or a hard link to a file in it.", viaUcas.Message);
@@ -513,7 +524,7 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var companion = Path.Combine(folder, "X_9999999_P.pak");
         await File.WriteAllTextAsync(companion, "pak", _ct);
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, companion, overwrite: true, noPaksResolve: true, cancellationToken: _ct));
+        var error = await Refused(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, companion, overwrite: true, noPaksResolve: true, cancellationToken: _ct));
 
         Assert.Equal("output and utoc's .pak are the same file.", error.Message);
         Assert.Equal("pak", await File.ReadAllTextAsync(companion, _ct));
@@ -529,8 +540,8 @@ public sealed class ArchiveWriteToolTests : IDisposable
         var hardLink = _rig.Folder.Combine("hard.pak");
         TestLinks.MakeHardLink(hardLink, pak);
 
-        var viaJunction = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, Path.Combine(folderLink, "a.pak"), overwrite: true, cancellationToken: _ct));
-        var viaHardLink = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.RepackAsync(pak, hardLink, overwrite: true, cancellationToken: _ct));
+        var viaJunction = await Refused(() => _rig.ArchiveWrites.RepackAsync(pak, Path.Combine(folderLink, "a.pak"), overwrite: true, cancellationToken: _ct));
+        var viaHardLink = await Refused(() => _rig.ArchiveWrites.RepackAsync(pak, hardLink, overwrite: true, cancellationToken: _ct));
 
         Assert.Contains("same file", viaJunction.Message, StringComparison.Ordinal);
         Assert.Contains("same file", viaHardLink.Message, StringComparison.Ordinal);

@@ -40,4 +40,10 @@
     <ProjectReference Include="..\..\src\UAssetEditor.PakWorker\UAssetEditor.PakWorker.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- On-disk assets for the uacli tests, written the way the MCP tests write theirs. -->
+    <Compile Include="..\UAssetEditor.Mcp.Tests\Rig\AssetFixtures.cs" Link="Shared\AssetFixtures.cs" />
+    <Compile Include="..\UAssetEditor.Mcp.Tests\Rig\TempFolder.cs" Link="Shared\TempFolder.cs" />
+  </ItemGroup>
+
 </Project>

@@ -194,6 +194,7 @@ static void PrintUsage()
               Run several set/duplicate/duplicate-row/set-string/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
+              With --save, an asset is saved only if no line was skipped; otherwise nothing is written and the exit code is 1.
               Double quotes group a value with spaces; write \" for a literal quote (e.g. a JSON string value).
               Inside quotes, \" before a space or the line end closes the quote, so a quoted path can end in \.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5
@@ -206,7 +207,7 @@ static void PrintUsage()
           uacli batch <file-or-folder> --ruleset <ruleset.json> [--apply] [--backup]
               Run a full RuleSet (the same JSON the app's batch-edit tab saves/loads: setValue/numericAdjust/replaceText/removeProperty/
               addTag/removeTag/replaceReference/duplicateElement rules over a search Scope) across one asset or every asset under a folder.
-              Defaults to a dry-run preview; --apply actually writes. An asset that can't be opened prints SKIPPED; one whose edit or
+              A rule set with no rules is refused. Defaults to a dry-run preview; --apply actually writes. An asset that can't be opened prints SKIPPED; one whose edit or
               save fails prints FAILED (nothing of it is saved) and makes the run exit 1.
 
         Usmap store and game logs (switches go after the other arguments: a value-less switch before one would take it as its value).
@@ -270,14 +271,16 @@ static void PrintUsage()
           uacli pak-list <pak> [--aes <hex>] [--filter <substring>]
               List every entry in a .pak ('*' marks a .uasset).
 
-          uacli unpack <pak> <destFolder> [--aes <hex>] [--filter <substring>]
+          uacli unpack <pak> <destFolder> [--aes <hex>] [--filter <substring>] [--overwrite]
               Extract a .pak's entries to a loose folder - every entry, or only those whose path contains
               --filter. Always pass --filter when you want a few specific assets: a real game pak can be
               tens of GB and hundreds of thousands of entries, and the unfiltered run extracts all of it.
+              Refuses, writing nothing, if an entry would replace an existing file, unless --overwrite.
 
-          uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>]
+          uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>] [--overwrite]
               Build a new archive from a loose folder: a legacy .pak if <output> ends in ".pak" (--mount defaults to "../../../<folderName>/",
               --pak-version defaults to V11), or an IoStore .utoc/.ucas pair via retoc if it ends in ".utoc" (needs --version, a UE4.25+ engine version).
+              Refuses an output inside the source folder, and one whose files exist (the .ucas, and for rivals the .pak, too) unless --overwrite.
               With --game rivals the .utoc output matches retoc-rivals' pack chunk for chunk, and these switches apply (after the positionals):
                 --obfuscate                               encrypt the container's data blocks, as retoc-rivals --obfuscate does
                 --kawaii-physics                          port legacy KawaiiPhysics anim nodes to the game's Chains layout (needs --usmap)
@@ -300,10 +303,10 @@ static void PrintUsage()
               .ubulk/.uptnl files <utoc> ships: base-game bulk files of a package it replaces are removed (not possible for a .pak
               output, which warns instead).
 
-          uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>]
+          uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>] [--overwrite]
               Rebuild a .pak, optionally applying a RuleSet's edits first (same JSON as 'batch') - the pak counterpart to editing a loose
-              file in place. Always writes a new file; never overwrites the source pak. If any asset's edit fails, it prints FAILED
-              and nothing is repacked; assets that can't be opened print SKIPPED and are packed unchanged.
+              file in place. Never writes over the source pak, and refuses an existing output unless --overwrite. If any asset's edit
+              fails, it prints FAILED and nothing is repacked; assets that can't be opened print SKIPPED and are packed unchanged.
 
         Nothing is written to disk unless --save/--apply is passed (or for a pak-* command, unconditionally, since packing/repacking/converting IS the write);
         --backup copies the original file first ("<file>.bak" for single-file commands: the state before this save), and on the first

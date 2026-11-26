@@ -189,6 +189,22 @@ public sealed class ProtocolTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ARefusalFromTheSharedPipelines_ComesBackAsAnErrorResultWithTheReason()
+    {
+        var source = _folder.Combine("mod");
+        Directory.CreateDirectory(source);
+
+        var result = await Client.CallToolAsync(
+            "pack",
+            new Dictionary<string, object?> { ["sourceFolder"] = source, ["output"] = Path.Combine(source, "out.pak") },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        // A refusal reads as the reason alone, not as "pack failed: ArgException: ...", which marks a failure nobody expected.
+        Assert.StartsWith("output must not be inside sourceFolder", Text(result), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ABadOpLine_ComesBackAsAnErrorResult_NamingTheLine()
     {
         var asset = AssetFixtures.WriteSample(_folder);

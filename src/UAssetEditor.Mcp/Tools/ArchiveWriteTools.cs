@@ -57,8 +57,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
             var matched = entries.Count;
             if (matched > maxFiles)
                 throw new McpException($"filter matches {matched} entries, more than maxFiles ({maxFiles}). Narrow the filter; pak_list shows what it matches.");
-            if (!overwrite && entries.Find(entry => ExistsIn(folder, entry)) is { } existing)
-                throw new McpException($"{Untrusted.Clean(existing, 300)} already exists in the destination. Pass overwrite=true to replace existing files.");
+            if (!overwrite) PakUnpacking.RefuseExisting(entries, folder, "overwrite=true");
 
             var result = PakUnpacker.Unpack(source, folder, Matches, sink, cancellationToken);
             var failed = result.FailedEntries
@@ -70,18 +69,6 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
                 : result.HasFailures ? $"{result.FailedEntries.Count} entr(y/ies) could not be extracted." : "";
             return new UnpackResult(path, folder, matched, result.SucceededCount, failed, note);
         }, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool ExistsIn(string folder, string entry)
-    {
-        try
-        {
-            return File.Exists(Path.GetFullPath(Path.Combine(folder, entry.Replace('/', Path.DirectorySeparatorChar))));
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            return false; // the unpacker records such an entry as failed
-        }
     }
 
     [McpServerTool(Name = "pack", ReadOnly = false, Idempotent = false, Destructive = true, OpenWorld = false)]
@@ -107,37 +94,16 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         ToolRuntime.RequireWindows("pack");
         var source = ToolPaths.ExistingFolder(sourceFolder, nameof(sourceFolder));
         var target = ToolPaths.NewFile(output, nameof(output), overwrite, ".pak", ".utoc");
-        ToolPaths.RefuseInside(target, source, nameof(output), nameof(sourceFolder));
         var isIoStore = string.Equals(Path.GetExtension(target), ".utoc", StringComparison.OrdinalIgnoreCase);
 
         var bitmaps = ToolInput.Optional(defaultHiddenMaterialBitmaps, nameof(defaultHiddenMaterialBitmaps), 200);
         var settings = OpenSettings.Create(store, game, engineVersion, usmap, aesKey: aesKey);
-        if (isIoStore)
-        {
-            RefuseExistingCompanions(target, settings.Game == Game.MarvelRivals, overwrite);
-            // retoc writes the container's files in place, so a hard link among them would write into the source.
-            ToolPaths.RefuseWriteInto(target, source, nameof(output), nameof(sourceFolder));
-            foreach (var companion in CompanionsOf(target, settings.Game == Game.MarvelRivals))
-                ToolPaths.RefuseWriteInto(companion, source, $"{nameof(output)}'s {Path.GetExtension(companion)}", nameof(sourceFolder));
-        }
+        PackOutputs.Refuse(source, target, settings.Game == Game.MarvelRivals, overwrite, pakIsStaged: true, ToolPaths.PackNames);
         var rivalsOnly = obfuscate || kawaiiPhysics || patchDefaultHiddenMats || bitmaps != null;
 
         return isIoStore
             ? await PackIoStoreAsync(source, target, settings, rivalsOnly, obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps, progress, cancellationToken).ConfigureAwait(false)
             : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>The .ucas beside a .utoc is part of the container, and so is the companion .pak a Marvel Rivals pack writes.</summary>
-    private static string[] CompanionsOf(string utoc, bool writesCompanionPak) =>
-        [.. (writesCompanionPak ? (string[])[".ucas", ".pak"] : [".ucas"]).Select(extension => Path.ChangeExtension(utoc, extension))];
-
-    private static void RefuseExistingCompanions(string utoc, bool writesCompanionPak, bool overwrite)
-    {
-        if (overwrite) return;
-        foreach (var path in CompanionsOf(utoc, writesCompanionPak))
-        {
-            if (File.Exists(path)) throw new McpException($"{path} already exists. Pass overwrite=true to replace the container's files.");
-        }
     }
 
     private async Task<PackResult> PackPakAsync(
@@ -258,8 +224,8 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         if (asPak)
         {
             // retoc writes the .pak while it reads the container, whose own files include a Marvel Rivals companion .pak.
-            foreach (var containerFile in (string[])[container, .. CompanionsOf(container, writesCompanionPak: true)])
-                ToolPaths.RefuseSame(target, containerFile, nameof(output), $"{nameof(utoc)}'s {Path.GetExtension(containerFile)}");
+            foreach (var containerFile in (string[])[container, .. PackOutputs.CompanionsOf(container, writesCompanionPak: true)])
+                OutputPaths.RefuseSame(target, containerFile, nameof(output), $"{nameof(utoc)}'s {Path.GetExtension(containerFile)}");
         }
         var filters = ToolInput.Optional(filter, nameof(filter), 20_000)
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
@@ -312,7 +278,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         ToolRuntime.RequireWindows("repack");
         var path = ToolPaths.ExistingFile(pak, nameof(pak), ".pak");
         var target = ToolPaths.NewFile(output, nameof(output), overwrite, ".pak");
-        ToolPaths.RefuseSame(path, target, nameof(pak), nameof(output));
+        OutputPaths.RefuseSame(path, target, nameof(pak), nameof(output));
         var rules = ToolInput.Optional(ruleset, nameof(ruleset), RulesetInput.MaxCharacters) is { } text ? RulesetInput.Load(text) : null;
         var settings = OpenSettings.Create(store, game, engineVersion, usmap, aesKey: aesKey);
         var key = settings.AesKey;
@@ -321,38 +287,9 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         {
             using var source = await Task.Run(() => new PakAssetSource(path, key, variant: settings.PakVariant), cancellationToken).ConfigureAwait(false);
             var log = new LogLines(MaxLogLines);
-            var edited = 0;
-            var changes = 0;
-
-            if (rules != null)
-            {
-                var versions = await Task.Run(
-                    () => AssetIo.ResolveVersions(settings.Args),
-                    cancellationToken).ConfigureAwait(false);
-                var sink = new ProgressSink(progress, "Edited assets");
-                var sets = await EditExecutor.ApplyAsync(
-                    source, versions, rules, createBackup: false, backupFolder: null,
-                    new InlineProgress<EditProgress>(p => sink.Report((p.Completed, p.Total))),
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                foreach (var skipped in sets.Where(s => s.Skipped)) log.Add($"Skipped {skipped.AssetPath}: could not open, packed unchanged: {skipped.Error}");
-                var failed = sets.Where(s => s.Failed).ToList();
-                if (failed.Count > 0)
-                {
-                    var first = failed[0];
-                    throw new McpException(
-                        $"{failed.Count} asset(s) failed to edit, so nothing was repacked. First: {Untrusted.Clean(first.AssetPath, 300)}: {Untrusted.Clean(first.Error, 300)}");
-                }
-
-                edited = sets.Count(s => s.Changed && s.Changes.Count > 0);
-                changes = sets.Sum(s => s.Changes.Count);
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            var result = await Task.Run(() => PakRepacker.Build(source, target), CancellationToken.None).ConfigureAwait(false);
-            if (result.HasFailures) throw new McpException($"Repacking failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
-
-            return new RepackResult(path, target, result.SucceededCount, edited, changes, log.ToList(), settings.Warnings());
+            var outcome = await PakRepack.RunAsync(
+                source, target, rules, settings.Args, note => log.Add($"{(note.Failed ? "Failed" : "Skipped")} {note.Detail}"), new ProgressSink(progress, "Edited assets"), cancellationToken).ConfigureAwait(false);
+            return new RepackResult(path, target, outcome.Entries, outcome.AssetsEdited, outcome.Changes, log.ToList(), settings.Warnings());
         }, cancellationToken).ConfigureAwait(false);
     }
 }

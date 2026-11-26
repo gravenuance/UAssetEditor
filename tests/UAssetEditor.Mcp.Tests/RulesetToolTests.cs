@@ -1,6 +1,7 @@
 using ModelContextProtocol;
 using UAssetAPI;
 using UAssetEditor.Mcp.Tests.Rig;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tests;
 
@@ -140,7 +141,7 @@ public sealed class RulesetToolTests : IDisposable
     {
         var path = Sample();
 
-        await Assert.ThrowsAsync<McpException>(() => _rig.Rulesets.ApplyRulesetAsync(path, ruleset, cancellationToken: _ct));
+        await Assert.ThrowsAsync<ArgException>(() => _rig.Rulesets.ApplyRulesetAsync(path, ruleset, cancellationToken: _ct));
 
         Assert.Equal("5", AssetFixtures.ReadProperty(path, "Count"));
     }
@@ -153,7 +154,7 @@ public sealed class RulesetToolTests : IDisposable
     {
         var ruleset = $$"""{"name":"t","scope":{"propertyNameTerms":[{"text":"Count"}],"regexTimeout":"{{timeout}}"},"rules":[{"kind":"setValue","newValue":"9"}]}""";
 
-        var error = await Assert.ThrowsAsync<McpException>(() => _rig.Rulesets.PreviewRulesetAsync(Sample(), ruleset, cancellationToken: _ct));
+        var error = await Assert.ThrowsAsync<ArgException>(() => _rig.Rulesets.PreviewRulesetAsync(Sample(), ruleset, cancellationToken: _ct));
 
         Assert.Contains("regexTimeout must be more than zero and at most 24 days", error.Message, StringComparison.Ordinal);
     }
