@@ -130,7 +130,19 @@ public class RivalsLogDecoderTests
 
         Assert.Equal(new string('a', 1000), Encoding.ASCII.GetString(output.ToArray()));
         Assert.Equal(new RivalsLogDecodeResult(1, 0, null, false, CutAtLimit: 1000), result);
-        Assert.Contains("stopped after 1000 bytes of text, the most one log is decoded to; the rest was not decoded.", result.Problems());
+        Assert.Contains("stopped after 1000 bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
+    }
+
+    [Fact]
+    public void TheShmTrailer_IsStillWrittenAfterTheRecordsAreCut()
+    {
+        using var output = new MemoryStream();
+
+        var result = RivalsLogDecoder.Decode(
+            Log(Frame(TwoLinesCipher), Frame(SecondCipher), Encoding.ASCII.GetBytes("<SHM_LOG_BEGIN>crash here\n")), output, maxDecodedBytes: 8);
+
+        Assert.Equal("line one\n----- SHM trailer -----\ncrash here\n", Encoding.UTF8.GetString(output.ToArray()));
+        Assert.Equal(new RivalsLogDecodeResult(1, 0, null, true, CutAtLimit: 8), result);
     }
 
     [Fact]

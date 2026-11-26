@@ -19,8 +19,8 @@ public static class RivalsLogs
             .MaxBy(File.GetLastWriteTimeUtc);
     }
 
-    /// <summary>The largest log file read; the game's own logs stay in single-digit MB.</summary>
-    public const long MaxLogBytes = 256L << 20;
+    /// <summary>The largest log file read; a 3-hour session's log is 4.6 MB (2026-11).</summary>
+    public const long MaxLogBytes = 64L << 20;
 
     /// <summary>Reads a log in full. The game may still have it open for writing, so it is opened with sharing.</summary>
     /// <exception cref="InvalidDataException">The file is over <see cref="MaxLogBytes"/>.</exception>

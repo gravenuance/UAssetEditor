@@ -21,7 +21,7 @@ public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int
         if (StoppedAtOffset is { } offset)
             problems.Add($"stopped at 0x{offset:x}, which is not a whole record (truncated or damaged log); the rest was not decoded.");
         if (CutAtLimit is { } limit)
-            problems.Add($"stopped after {limit} bytes of text, the most one log is decoded to; the rest was not decoded.");
+            problems.Add($"stopped after {limit} bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.");
         return problems;
     }
 }
@@ -34,10 +34,10 @@ public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int
 /// </summary>
 public static class RivalsLogDecoder
 {
-    /// <summary>The most text one log's records decode to (the plaintext trailer is the file's own bytes, so not counted). Real
-    /// logs of a long session decode to tens of MB; a zlib record can inflate about 1000-fold, so without a limit a small
-    /// crafted log fills memory.</summary>
-    public const long MaxDecodedBytes = 512L << 20;
+    /// <summary>The most text one log's records decode to (the plaintext trailer is the file's own bytes, so not counted). A
+    /// 3-hour session's 4.6 MB log decodes to 48 MB (2026-11); a zlib record can inflate about 1000-fold, so without a limit a
+    /// small crafted log fills memory.</summary>
+    public const long MaxDecodedBytes = 256L << 20;
 
     private const int BlockSize = 16;
     private const byte ZlibHeader = 0x78;
@@ -99,11 +99,12 @@ public static class RivalsLogDecoder
                     : new RivalsLogDecodeResult(records, inflateFailures, offset, HasTrailer: false);
             }
 
-            var plain = Transform(aes, data.Slice(offset + 4, size));
+            var decrypted = Transform(aes, data.Slice(offset + 4, size));
+            ReadOnlyMemory<byte> plain = decrypted;
             bool cut;
-            if (plain.Length > 0 && plain[0] == ZlibHeader)
+            if (decrypted.Length > 0 && decrypted[0] == ZlibHeader)
             {
-                var (inflated, ok, overflowed) = Inflate(plain, room);
+                var (inflated, ok, overflowed) = Inflate(decrypted, room);
                 if (!ok) inflateFailures++;
                 plain = inflated;
                 cut = overflowed;
@@ -117,13 +118,19 @@ public static class RivalsLogDecoder
             records++;
             offset += 8 + size;
             if (!onChunk(plain)) return new RivalsLogDecodeResult(records, inflateFailures, StoppedAtOffset: null, HasTrailer: false);
-            if (cut) return new RivalsLogDecodeResult(records, inflateFailures, StoppedAtOffset: null, HasTrailer: false, CutAtLimit: maxDecodedBytes);
+            if (cut)
+            {
+                // The trailer often holds the crash, so it is still written after the records are cut.
+                var at = data[offset..].IndexOf(ShmBegin);
+                return Finish(at >= 0 && WriteTrailer(blob, offset + at, onChunk), maxDecodedBytes);
+            }
         }
 
         // One to three bytes cannot hold a record's size word: the file was cut off.
         return new RivalsLogDecodeResult(records, inflateFailures, offset < data.Length ? offset : null, HasTrailer: false);
 
-        RivalsLogDecodeResult Finish(bool trailerEmitted) => new(records, inflateFailures, StoppedAtOffset: null, HasTrailer: trailerEmitted);
+        RivalsLogDecodeResult Finish(bool trailerEmitted, long? cutAt = null) =>
+            new(records, inflateFailures, StoppedAtOffset: null, HasTrailer: trailerEmitted, CutAtLimit: cutAt);
     }
 
     /// <summary>Adds one to a 16-byte big-endian counter, wrapping to zero after all 0xFF.</summary>
@@ -163,8 +170,8 @@ public static class RivalsLogDecoder
     }
 
     // Keeps whatever inflated before corrupt data: a damaged record still shows its first lines. Stops at `room` bytes, and
-    // Overflowed says more was left.
-    private static (byte[] Data, bool Ok, bool Overflowed) Inflate(byte[] data, long room)
+    // Overflowed says more was left. Hands back the stream's own buffer rather than a copy, which would double the peak.
+    private static (ReadOnlyMemory<byte> Data, bool Ok, bool Overflowed) Inflate(byte[] data, long room)
     {
         using var zlib = new ZLibStream(new MemoryStream(data), CompressionMode.Decompress);
         using var inflated = new MemoryStream();
@@ -176,17 +183,20 @@ public static class RivalsLogDecoder
             {
                 var fits = (int)Math.Min(read, room - inflated.Length);
                 inflated.Write(buffer, 0, fits);
-                if (fits < read) return (inflated.ToArray(), true, true);
+                if (fits < read) return (Written(inflated), true, true);
             }
-            return (inflated.ToArray(), true, false);
+            return (Written(inflated), true, false);
         }
         catch (InvalidDataException)
         {
-            return (inflated.ToArray(), false, false);
+            return (Written(inflated), false, false);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
         }
+
+        // Disposing a MemoryStream leaves its buffer readable.
+        static ReadOnlyMemory<byte> Written(MemoryStream stream) => stream.GetBuffer().AsMemory(0, (int)stream.Length);
     }
 }
