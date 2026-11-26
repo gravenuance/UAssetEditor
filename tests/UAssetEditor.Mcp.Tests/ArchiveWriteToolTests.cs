@@ -485,6 +485,25 @@ public sealed class ArchiveWriteToolTests : IDisposable
     }
 
     [Fact]
+    public async Task Pack_RefusesAnOutputOrAContainerFileThatIsAHardLinkToAFileInTheSource()
+    {
+        var source = SourceFolder("Content/A.txt");
+        var inSource = Path.Combine(source, "Content", "A.txt");
+        Directory.CreateDirectory(_rig.Folder.Combine("out"));
+        var pak = _rig.Folder.Combine("out", "mod.pak");
+        TestLinks.MakeHardLink(pak, inSource);
+        var ucas = _rig.Folder.Combine("out", "mod2.ucas");
+        TestLinks.MakeHardLink(ucas, inSource);
+
+        var viaPak = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, pak, overwrite: true, cancellationToken: _ct));
+        var viaUcas = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod2.utoc"), overwrite: true, cancellationToken: _ct));
+
+        Assert.Equal("output must not be inside sourceFolder.", viaPak.Message);
+        Assert.Equal("output's .ucas must not be inside sourceFolder.", viaUcas.Message);
+        Assert.Equal("Content/A.txt", await File.ReadAllTextAsync(inSource, _ct));
+    }
+
+    [Fact]
     public async Task Repack_RefusesAnOutputThatIsTheSourceReachedThroughAJunctionOrAHardLink()
     {
         var pak = MakePak("a.pak", "Content/A.txt");

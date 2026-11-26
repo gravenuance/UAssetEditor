@@ -112,7 +112,12 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
 
         var bitmaps = ToolInput.Optional(defaultHiddenMaterialBitmaps, nameof(defaultHiddenMaterialBitmaps), 200);
         var settings = OpenSettings.Create(store, game, engineVersion, usmap, aesKey: aesKey);
-        if (isIoStore) RefuseExistingCompanions(target, settings.Game == Game.MarvelRivals, overwrite);
+        if (isIoStore)
+        {
+            RefuseExistingCompanions(target, settings.Game == Game.MarvelRivals, overwrite);
+            foreach (var companion in CompanionsOf(target, settings.Game == Game.MarvelRivals))
+                ToolPaths.RefuseInside(companion, source, $"{nameof(output)}'s {Path.GetExtension(companion)}", nameof(sourceFolder));
+        }
         var rivalsOnly = obfuscate || kawaiiPhysics || patchDefaultHiddenMats || bitmaps != null;
 
         return isIoStore
@@ -121,12 +126,14 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
     }
 
     /// <summary>The .ucas beside a .utoc is part of the container, and so is the companion .pak a Marvel Rivals pack writes.</summary>
+    private static string[] CompanionsOf(string utoc, bool writesCompanionPak) =>
+        [.. (writesCompanionPak ? (string[])[".ucas", ".pak"] : [".ucas"]).Select(extension => Path.ChangeExtension(utoc, extension))];
+
     private static void RefuseExistingCompanions(string utoc, bool writesCompanionPak, bool overwrite)
     {
         if (overwrite) return;
-        foreach (var companion in writesCompanionPak ? (string[])[".ucas", ".pak"] : [".ucas"])
+        foreach (var path in CompanionsOf(utoc, writesCompanionPak))
         {
-            var path = Path.ChangeExtension(utoc, companion);
             if (File.Exists(path)) throw new McpException($"{path} already exists. Pass overwrite=true to replace the container's files.");
         }
     }

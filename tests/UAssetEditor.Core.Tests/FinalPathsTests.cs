@@ -119,6 +119,40 @@ public sealed class FinalPathsTests : IDisposable
     }
 
     [Fact]
+    public void IsInside_SeesAFileOutsideThatIsAHardLinkToOneInside()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var folder = Path.Combine(_dir, "src");
+        var outside = Path.Combine(_dir, "out");
+        Directory.CreateDirectory(folder);
+        Directory.CreateDirectory(outside);
+        File.WriteAllText(Path.Combine(folder, "y.pak"), "x");
+        TestLinks.MakeHardLink(Path.Combine(outside, "x.pak"), Path.Combine(folder, "y.pak"));
+        File.WriteAllText(Path.Combine(outside, "z.pak"), "x");
+        TestLinks.MakeHardLink(Path.Combine(outside, "w.pak"), Path.Combine(outside, "z.pak"));
+
+        Assert.True(FinalPaths.IsInside(Path.Combine(outside, "x.pak"), folder));
+        Assert.False(FinalPaths.IsInside(Path.Combine(outside, "w.pak"), folder));
+    }
+
+    [Fact]
+    public void FileKey_IsSharedByHardLinks_ButNotByACopyOrAMissingFile()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var original = Path.Combine(_dir, "a.pak");
+        File.WriteAllText(original, "x");
+        var hardLink = Path.Combine(_dir, "b.pak");
+        TestLinks.MakeHardLink(hardLink, original);
+        var copy = Path.Combine(_dir, "c.pak");
+        File.Copy(original, copy);
+
+        Assert.NotNull(FinalPaths.FileKey(original));
+        Assert.Equal(FinalPaths.FileKey(original), FinalPaths.FileKey(hardLink));
+        Assert.NotEqual(FinalPaths.FileKey(original), FinalPaths.FileKey(copy));
+        Assert.Null(FinalPaths.FileKey(Path.Combine(_dir, "missing.pak")));
+    }
+
+    [Fact]
     public void IsInside_TakesADriveRootAsTheFolder()
     {
         var root = Path.GetPathRoot(_dir)!;
