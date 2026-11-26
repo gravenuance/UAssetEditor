@@ -38,6 +38,9 @@ public sealed partial class PakWorkerProcess : IDisposable
     public static PakWorkerProcess Shared { get; } = new();
 
     private readonly string? _workerExecutable;
+#pragma warning disable CA2213 // not owned: the process-wide job must outlive every worker, and a test closes its own
+    private readonly KillOnCloseJob _job = KillOnCloseJob.Workers;
+#pragma warning restore CA2213
     private readonly string? _fixedOodlePath;
     private readonly PakWorkerProcess _root;
     private readonly ConcurrentDictionary<string, PakWorkerProcess> _byOodlePath = new(StringComparer.OrdinalIgnoreCase);
@@ -58,10 +61,19 @@ public sealed partial class PakWorkerProcess : IDisposable
         _workerExecutable = workerExecutable;
     }
 
+    /// <summary>A worker whose processes join <paramref name="job"/> instead of the process-wide one (a test seam: closing it
+    /// stands in for the host ending).</summary>
+    internal PakWorkerProcess(string workerExecutable, KillOnCloseJob job)
+        : this(workerExecutable)
+    {
+        _job = job;
+    }
+
     private PakWorkerProcess(PakWorkerProcess root, string oodlePath)
     {
         _root = root;
         _workerExecutable = root._workerExecutable;
+        _job = root._job;
         _fixedOodlePath = oodlePath;
     }
 
@@ -216,6 +228,8 @@ public sealed partial class PakWorkerProcess : IDisposable
                 process.Dispose();
                 throw;
             }
+            // The pipe closing ends a worker only when it next reads, so one busy in a native read would outlive a crashed host.
+            _job.Assign(process);
 
             _pipe = pipe;
             _process = process;
