@@ -528,41 +528,17 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         public void CancelScheduledReload() => owner._reloadDebounceTimer.Stop();
     }
 
-    /// <summary>Re-runs whichever of the last search or last opened tree entry populated the results grid, against the (just-reloaded) workspace.</summary>
+    /// <summary>Refills the results grid against the (just-reloaded) workspace; see <see cref="OpenContentRefresh"/>. Never throws.</summary>
     private async Task RefreshOpenContentAsync()
     {
         var workspace = _workspace;
         if (workspace == null) return;
 
-        if (_lastSearchQuery != null)
-        {
-            var outcome = await workspace.SearchAsync(_lastSearchQuery, maxDegreeOfParallelism: 0);
-            SearchResults.Clear();
-            foreach (var result in outcome.Results)
-                SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
-            SearchNotice = SearchPresentation.Notice(outcome);
-        }
-        else if (_lastOpenedExports.Count > 0)
-        {
-            var scopes = _lastOpenedExports;
-            SearchResults.Clear();
-            foreach (var scope in scopes)
-            {
-                var results = await Task.Run(() =>
-                {
-                    var asset = workspace.GetOrOpen(scope.AssetPath);
-                    return scope.PropertyPath == null
-                        ? SearchService.PropertiesForExport(asset, scope.AssetPath, scope.ExportIndex).ToList()
-                        : SearchService.PropertiesUnder(asset, scope.AssetPath, scope.ExportIndex, scope.PropertyPath).ToList();
-                });
-                foreach (var result in results)
-                    SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
-            }
-        }
-        else
-        {
-            SearchResults.Clear();
-        }
+        var content = await OpenContentRefresh.RunAsync(workspace, _lastSearchQuery, _lastOpenedExports, Logger);
+        SearchResults.Clear();
+        foreach (var result in content.Results)
+            SearchResults.Add(new SearchResultRow(result, workspace, OnResultRowDirty));
+        SearchNotice = content.Notice;
     }
 
     /// <summary>Finds every currently-materialized Asset node whose path is in <paramref name="assetPaths"/>, anywhere in the tree - however deeply "compact folders" (see <see cref="AssetTreeItemViewModel"/>'s ctor) nested it.</summary>
