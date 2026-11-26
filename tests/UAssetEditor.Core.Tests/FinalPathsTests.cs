@@ -119,7 +119,7 @@ public sealed class FinalPathsTests : IDisposable
     }
 
     [Fact]
-    public void IsInside_SeesAFileOutsideThatIsAHardLinkToOneInside()
+    public void ReachesInto_SeesAFileOutsideThatIsAHardLinkToOneInside_WhichIsInsideDoesNot()
     {
         if (!OperatingSystem.IsWindows()) return;
         var folder = Path.Combine(_dir, "src");
@@ -131,8 +131,11 @@ public sealed class FinalPathsTests : IDisposable
         File.WriteAllText(Path.Combine(outside, "z.pak"), "x");
         TestLinks.MakeHardLink(Path.Combine(outside, "w.pak"), Path.Combine(outside, "z.pak"));
 
-        Assert.True(FinalPaths.IsInside(Path.Combine(outside, "x.pak"), folder));
-        Assert.False(FinalPaths.IsInside(Path.Combine(outside, "w.pak"), folder));
+        Assert.True(FinalPaths.ReachesInto(Path.Combine(outside, "x.pak"), folder));
+        Assert.False(FinalPaths.ReachesInto(Path.Combine(outside, "w.pak"), folder));
+        Assert.False(FinalPaths.ReachesInto(Path.Combine(outside, "new.pak"), folder));
+        Assert.True(FinalPaths.ReachesInto(Path.Combine(folder, "new.pak"), folder));
+        Assert.False(FinalPaths.IsInside(Path.Combine(outside, "x.pak"), folder));
     }
 
     [Fact]

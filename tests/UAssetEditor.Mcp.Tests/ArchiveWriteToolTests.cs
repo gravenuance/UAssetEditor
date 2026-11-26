@@ -485,22 +485,38 @@ public sealed class ArchiveWriteToolTests : IDisposable
     }
 
     [Fact]
-    public async Task Pack_RefusesAnOutputOrAContainerFileThatIsAHardLinkToAFileInTheSource()
+    public async Task PackToUtoc_RefusesAContainerFileThatIsAHardLinkToAFileInTheSource()
     {
         var source = SourceFolder("Content/A.txt");
         var inSource = Path.Combine(source, "Content", "A.txt");
         Directory.CreateDirectory(_rig.Folder.Combine("out"));
-        var pak = _rig.Folder.Combine("out", "mod.pak");
-        TestLinks.MakeHardLink(pak, inSource);
+        var utoc = _rig.Folder.Combine("out", "mod.utoc");
+        TestLinks.MakeHardLink(utoc, inSource);
         var ucas = _rig.Folder.Combine("out", "mod2.ucas");
         TestLinks.MakeHardLink(ucas, inSource);
 
-        var viaPak = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, pak, overwrite: true, cancellationToken: _ct));
+        var viaUtoc = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, utoc, overwrite: true, cancellationToken: _ct));
         var viaUcas = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod2.utoc"), overwrite: true, cancellationToken: _ct));
 
-        Assert.Equal("output must not be inside sourceFolder.", viaPak.Message);
-        Assert.Equal("output's .ucas must not be inside sourceFolder.", viaUcas.Message);
+        Assert.Equal("output must not be inside sourceFolder or a hard link to a file in it.", viaUtoc.Message);
+        Assert.Equal("output's .ucas must not be inside sourceFolder or a hard link to a file in it.", viaUcas.Message);
         Assert.Equal("Content/A.txt", await File.ReadAllTextAsync(inSource, _ct));
+    }
+
+    [Fact]
+    public async Task ToLegacy_RefusesAPakOutputThatIsOneOfTheContainersOwnFiles()
+    {
+        var folder = _rig.Folder.Combine("c");
+        Directory.CreateDirectory(folder);
+        var utoc = Path.Combine(folder, "X_9999999_P.utoc");
+        await File.WriteAllTextAsync(utoc, "utoc", _ct);
+        var companion = Path.Combine(folder, "X_9999999_P.pak");
+        await File.WriteAllTextAsync(companion, "pak", _ct);
+
+        var error = await Assert.ThrowsAsync<McpException>(() => _rig.ArchiveWrites.ToLegacyAsync(utoc, companion, overwrite: true, noPaksResolve: true, cancellationToken: _ct));
+
+        Assert.Equal("output and utoc's .pak are the same file.", error.Message);
+        Assert.Equal("pak", await File.ReadAllTextAsync(companion, _ct));
     }
 
     [Fact]

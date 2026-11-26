@@ -115,8 +115,10 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         if (isIoStore)
         {
             RefuseExistingCompanions(target, settings.Game == Game.MarvelRivals, overwrite);
+            // retoc writes the container's files in place, so a hard link among them would write into the source.
+            ToolPaths.RefuseWriteInto(target, source, nameof(output), nameof(sourceFolder));
             foreach (var companion in CompanionsOf(target, settings.Game == Game.MarvelRivals))
-                ToolPaths.RefuseInside(companion, source, $"{nameof(output)}'s {Path.GetExtension(companion)}", nameof(sourceFolder));
+                ToolPaths.RefuseWriteInto(companion, source, $"{nameof(output)}'s {Path.GetExtension(companion)}", nameof(sourceFolder));
         }
         var rivalsOnly = obfuscate || kawaiiPhysics || patchDefaultHiddenMats || bitmaps != null;
 
@@ -253,6 +255,12 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         var target = asPak
             ? ToolPaths.NewFile(output, nameof(output), overwrite, ".pak")
             : ToolPaths.NewFolder(output, nameof(output), overwrite);
+        if (asPak)
+        {
+            // retoc writes the .pak while it reads the container, whose own files include a Marvel Rivals companion .pak.
+            foreach (var containerFile in (string[])[container, .. CompanionsOf(container, writesCompanionPak: true)])
+                ToolPaths.RefuseSame(target, containerFile, nameof(output), $"{nameof(utoc)}'s {Path.GetExtension(containerFile)}");
+        }
         var filters = ToolInput.Optional(filter, nameof(filter), 20_000)
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
         var retocLayer = ToolInput.OneOf(layer ?? "modded", nameof(layer), "modded", "original") == "modded" ? RetocLayer.Modded : RetocLayer.Original;
