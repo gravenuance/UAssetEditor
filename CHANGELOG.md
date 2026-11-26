@@ -38,6 +38,9 @@ All notable changes to this project are documented here.
 - `to-legacy` on a container with no entries of its own under a Paks folder converted with no filter against the whole merged Paks view; it now converts the container alone.
 - A long-running host (the MCP server) kept every earlier load of a usmap replaced in place, and warned that a usmap was older than the game only once per process. It now keeps one load per usmap file, and checks again whenever the game's newest log changes, so a patch noticed after the server started still draws the warning.
 - A folder search (`uacli search`, `search_assets`) dropped assets it could not open or whose regular expression failed, without a word, so a missing hit looked like no match. It now counts them, names the first few with the reason, and gives a regular expression 3 s per match instead of running without limit. `search_assets` also stops collecting hits at `maxResults` while still counting every match.
+- A save killed while it copied a file's first backup could leave a cut-short `<file>.orig.bak` that no later save replaced. The copy is now staged and moved into place, and a later save sweeps a staged copy that duplicates a backup.
+- Reading a Marvel Rivals log (`uacli game-log`, `game_log_summary`, the stale-usmap check) no longer fails when the game truncates or rotates the log while it is read; what is left is read. A log cut at the decode limit no longer ends in half a character.
+- MCP tool output keeps the zero-width joiners of emoji and scripts such as Persian, and a U+FFFD the text really holds, instead of turning them into spaces.
 
 ### Removed
 - The vendored `oo2core_9_win64.dll`: Oodle is proprietary, so the repository and releases no longer carry it (`THIRD_PARTY_NOTICES.md`, `docs/adr/0001-oodle-from-the-game-install.md`). It has been in the repository's public history since 84e788b (2026-09-16), and removing it from the tree does not remove it from old commits.

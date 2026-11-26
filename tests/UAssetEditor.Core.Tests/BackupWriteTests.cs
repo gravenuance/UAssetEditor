@@ -162,6 +162,22 @@ public sealed class BackupWriteTests : IDisposable
     }
 
     [Fact]
+    public void AStagedOrigBakCopy_LeftByAKilledFirstSave_IsSweptOnceItDuplicatesTheOrigBak_AndACutShortOneIsKept()
+    {
+        // Killed after copying, before the move: the next save makes the same .orig.bak. Killed mid-copy: the copy is cut short.
+        Leftover($"A.uasset.orig.bak.{StagingId}.tmp", "header v1", Old);
+        var cutShort = Leftover($"A.uexp.orig.bak.{StagingId}.tmp", "expo", Old);
+
+        var result = Save();
+
+        Assert.True(result.Placed);
+        Assert.Equal(
+            ["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak", Path.GetFileName(cutShort)],
+            FileNames());
+        Assert.Equal("exports v1", File.ReadAllText(_uexp + ".orig.bak"));
+    }
+
+    [Fact]
     public void AStagedCopyMatchingNoFileOnDisk_IsKept_AsItMayBeTheOnlyCopy()
     {
         // What a stranded save reported to the user, or what a save killed mid-write left of the state before it.
@@ -201,7 +217,7 @@ public sealed class BackupWriteTests : IDisposable
             Leftover("A.uasset.bak.notastagingid.tmp", "header v1", Old),
             Leftover($"A.uasset.bak.{StagingId}0.tmp", "header v1", Old),
             Leftover($"B.uasset.bak.{StagingId}.tmp", "header v1", Old),
-            Leftover($"A.uasset.orig.bak.{StagingId}.tmp", "header v1", Old),
+            Leftover($"B.uasset.orig.bak.{StagingId}.tmp", "header v1", Old),
         ];
 
         Save();

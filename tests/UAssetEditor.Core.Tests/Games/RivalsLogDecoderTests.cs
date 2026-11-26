@@ -133,6 +133,22 @@ public class RivalsLogDecoderTests
         Assert.Contains("stopped after 1000 bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
     }
 
+    [Theory]
+    [InlineData(false, 2, new byte[] { 0x61 })]
+    [InlineData(true, 2, new byte[] { 0x61 })]
+    [InlineData(false, 4, new byte[] { 0x61, 0xC3, 0xA9 })]
+    [InlineData(true, 5, new byte[] { 0x61, 0xC3, 0xA9 })]
+    public void ACutAtTheLimit_NeverEndsInHalfACharacter(bool zlib, int limit, byte[] expected)
+    {
+        // "aé€": 0x61, then é in two bytes and € in three.
+        byte[] text = [0x61, 0xC3, 0xA9, 0xE2, 0x82, 0xAC];
+        using var output = new MemoryStream();
+
+        RivalsLogDecoder.Decode(Log(Frame(Encrypt(zlib ? Zlib(text) : text))), output, maxDecodedBytes: limit);
+
+        Assert.Equal(expected, output.ToArray());
+    }
+
     [Fact]
     public void TheShmTrailer_IsStillWrittenAfterTheRecordsAreCut()
     {

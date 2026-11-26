@@ -184,15 +184,21 @@ public static partial class PackageWriter
     private static readonly TimeSpan StaleStagingAge = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Deletes "&lt;backup&gt;.&lt;staging id&gt;.tmp" copies that earlier saves left next to <paramref name="copy"/>'s backup, but
+    /// Deletes "&lt;backup&gt;.&lt;staging id&gt;.tmp" copies (and the same for its ".orig.bak") that earlier saves left next to <paramref name="copy"/>'s backup, but
     /// only those byte for byte the same as the file, its ".bak" or its ".orig.bak": any other may be the only copy of some
     /// state (a save reported it stranded, or was killed mid-write, or it belongs to a same-named file sharing the backup
     /// folder), so it is kept and logged.
     /// </summary>
     private static void SweepStaleStaging(StagedBackup copy, TimeProvider clock)
     {
-        var folder = Path.GetDirectoryName(copy.Backup)!; // Resolve returns a full file path, so it has a folder
-        var prefix = Path.GetFileName(copy.Backup) + ".";
+        foreach (var target in (string[])[copy.Backup, copy.Vanilla]) SweepStaleStaging(copy, target, clock);
+    }
+
+    /// <summary>Sweeps the staging copies left for <paramref name="target"/>, the backup or the ".orig.bak" of <paramref name="copy"/>.</summary>
+    private static void SweepStaleStaging(StagedBackup copy, string target, TimeProvider clock)
+    {
+        var folder = Path.GetDirectoryName(target)!; // Resolve returns a full file path, so it has a folder
+        var prefix = Path.GetFileName(target) + ".";
         List<string> candidates;
         try
         {
@@ -235,19 +241,26 @@ public static partial class PackageWriter
     private static readonly SearchValues<char> LowerHex = SearchValues.Create("0123456789abcdef");
 
     /// <summary>Copies the earliest state at hand to the file's ".orig.bak", unless an earlier save already did: a ".bak" left by
-    /// a save from before ".orig.bak" existed, else the file as it was before this save.</summary>
+    /// a save from before ".orig.bak" existed, else the file as it was before this save. The copy is staged and moved into place,
+    /// so a save killed mid-copy leaves a staging file for a later sweep, never a cut-short ".orig.bak" no save would replace.</summary>
     private static bool KeepVanilla(StagedBackup copy)
     {
         if (File.Exists(copy.Vanilla)) return true;
+        // Staged's name is the backup's plus ".<staging id>.tmp"; the vanilla copy takes the same suffix.
+        var staging = copy.Vanilla + copy.Staged[copy.Backup.Length..];
         try
         {
-            File.Copy(File.Exists(copy.Backup) ? copy.Backup : copy.Staged, copy.Vanilla, overwrite: false);
+            File.Copy(File.Exists(copy.Backup) ? copy.Backup : copy.Staged, staging, overwrite: true);
+            File.Move(staging, copy.Vanilla, overwrite: false);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Also when another save placed its ".orig.bak" first: theirs stays.
+            TryDelete(staging);
+            if (File.Exists(copy.Vanilla)) return true;
             LogBackupNotPlaced(AppLog.For<UAsset>(), copy.Vanilla, copy.Staged, ex);
-            return File.Exists(copy.Vanilla);
+            return false;
         }
     }
 
