@@ -3,8 +3,8 @@ using System.Text.RegularExpressions;
 
 namespace UAssetEditor.Mcp.Tools;
 
-/// <summary>Keeps AES keys out of results and logs. retoc's failure message repeats its whole command line, and with it
-/// the <c>--aes-key</c> it was given, so every failure text passes through here before it is returned or written.</summary>
+/// <summary>Keeps AES keys out of results and logs. <c>RetocProcess</c> already redacts the key it passed, so this is the
+/// second gate: every failure text passes through here before it is returned or written, whatever layer produced it.</summary>
 internal static partial class Secrets
 {
     public const string Redacted = "[redacted]";

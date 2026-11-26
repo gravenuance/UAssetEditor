@@ -131,7 +131,7 @@ public static class RetocProcess
 
         if (sawSummaryLine && totalSucceeded == 0)
         {
-            var detail = diagnostics.Count > 0 ? $": {string.Join('\n', diagnostics)}" : "";
+            var detail = diagnostics.Count > 0 ? $": {WithoutKey(fixedArgs, string.Join('\n', diagnostics))}" : "";
             throw new IoStoreConversionException(
                 $"retoc to-legacy {utocPath} -> {output} converted 0 assets across {batches.Count} batch(es){detail}",
                 "No assets converted - see the log for retoc's reason.",
@@ -282,13 +282,25 @@ public static class RetocProcess
 
         if (process.ExitCode != 0)
         {
-            var command = string.Join(' ', args);
-            var detail = string.IsNullOrWhiteSpace(stdErr) ? "" : $": {stdErr.Trim()}";
+            var command = WithoutKey(args, string.Join(' ', args));
+            var cleanStdErr = WithoutKey(args, stdErr);
+            var detail = string.IsNullOrWhiteSpace(cleanStdErr) ? "" : $": {cleanStdErr.Trim()}";
             var message = $"retoc {command} failed (exit code {process.ExitCode}){detail}";
-            throw new IoStoreConversionException(message, SummarizeStdErr(stdErr, process.ExitCode), process.ExitCode);
+            throw new IoStoreConversionException(message, SummarizeStdErr(cleanStdErr, process.ExitCode), process.ExitCode);
         }
 
-        return stdErr;
+        return WithoutKey(args, stdErr);
+    }
+
+    private const string RedactedKey = "[redacted]";
+
+    // Every text this class hands out passes through here, so the key never reaches a log, CLI stderr or the app's status line.
+    private static string WithoutKey(List<string> args, string text)
+    {
+        var keyAt = args.IndexOf("--aes-key") + 1;
+        return keyAt > 0 && keyAt < args.Count && args[keyAt].Length > 0
+            ? text.Replace(args[keyAt], RedactedKey, StringComparison.OrdinalIgnoreCase)
+            : text;
     }
 
     // retoc's stderr on failure is Clap's usual multi-paragraph dump (the real error, then a
