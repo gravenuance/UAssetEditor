@@ -119,12 +119,12 @@ internal static class AssetIo
         var explicitPath = args.Option(option);
         if (explicitPath != null)
         {
-            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath, args.Diagnostics, args.GameLogs);
+            if (option == "usmap") WarnIfStale(ResolveProfile(args), explicitPath, args);
             return explicitPath;
         }
 
         if (option != "usmap" || ResolveProfile(args) is not { } profile) return null;
-        return args.StoredUsmaps.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, args.Mappings, args.Diagnostics, args.GameLogs))).Value;
+        return args.StoredUsmaps.GetOrAdd(profile.CliName, _ => new Lazy<string?>(() => UseStoredUsmap(profile, args))).Value;
     }
 
     /// <summary>"build N", or "no build" for a usmap stored without one.</summary>
@@ -132,32 +132,34 @@ internal static class AssetIo
         stored.Build is { } build ? $"build {build.ToString(CultureInfo.InvariantCulture)}" : "no build";
 
     /// <summary>
-    /// The newest usmap stored for <paramref name="profile"/>, announced on <paramref name="diagnostics"/>. When there is none,
-    /// says so: assets of these games open without one and quietly parse to nothing.
+    /// The newest usmap stored for <paramref name="profile"/> in <paramref name="args"/>' store, announced on its diagnostics. When
+    /// there is none, says so and how to give one: assets of these games open without one and quietly parse to nothing.
     /// </summary>
-    internal static string? UseStoredUsmap(GameProfile profile, MappingsStore store, TextWriter diagnostics, string? gameLogs = null)
+    private static string? UseStoredUsmap(GameProfile profile, ArgReader args)
     {
+        var store = args.Mappings;
         if (store.Latest(profile) is not { } stored)
         {
-            diagnostics.WriteLine(
-                $"Warning: --game {profile.CliName} without --usmap, and no usmap is stored in {store.DirectoryFor(profile)}" +
+            args.Diagnostics.WriteLine(
+                $"Warning: no usmap is given or stored for {profile.CliName} in {store.DirectoryFor(profile)}" +
                 $" ({MappingsStore.RootEnvironmentVariable} sets the store); unversioned assets will read as empty." +
-                $" Pass --usmap or run 'uacli usmap add <file> --game {profile.CliName}'.");
+                $" Pass {args.UsmapHints.Pass}, or store one with {args.UsmapHints.Store(profile)}.");
             return null;
         }
-        diagnostics.WriteLine($"Using stored usmap {stored.Path} ({DescribeBuild(stored)}).");
-        WarnIfStale(profile, stored.Path, diagnostics, gameLogs ?? RivalsLogs.DefaultDirectory);
+        args.Diagnostics.WriteLine($"Using stored usmap {stored.Path} ({DescribeBuild(stored)}).");
+        WarnIfStale(profile, stored.Path, args);
         return stored.Path;
     }
 
-    private static void WarnIfStale(GameProfile? profile, string usmapPath, TextWriter diagnostics, string gameLogs)
+    private static void WarnIfStale(GameProfile? profile, string usmapPath, ArgReader args)
     {
         if (profile?.Game != Game.MarvelRivals) return;
         if (MappingsStore.ParseBuild(Path.GetFileName(usmapPath)) is not { } usmapBuild) return;
-        if (!NeedsStaleCheck(Path.GetFullPath(usmapPath), gameLogs)) return;
-        if (RivalsLogs.InstalledBuild(gameLogs) is not { } installed || installed == usmapBuild) return;
-        diagnostics.WriteLine(
-            $"Warning: usmap is build {usmapBuild} but Marvel Rivals last ran build {installed}; dump a new usmap (Dumper-7) and add it with 'uacli usmap add'.");
+        if (!NeedsStaleCheck(Path.GetFullPath(usmapPath), args.GameLogs)) return;
+        if (RivalsLogs.InstalledBuild(args.GameLogs) is not { } installed || installed == usmapBuild) return;
+        args.Diagnostics.WriteLine(
+            $"Warning: usmap is build {usmapBuild} but Marvel Rivals last ran build {installed};" +
+            $" dump a new usmap (Dumper-7) and store it with {args.UsmapHints.Store(profile)}.");
     }
 
     /// <summary>
@@ -205,7 +207,7 @@ internal static class AssetIo
 
     public static PakVersion ResolvePakVersion(ArgReader args)
     {
-        var text = args.Option("pak-version") ?? "V11";
+        if (args.Option("pak-version") is not { } text) return PakPacker.DefaultVersion;
         return Enum.TryParse<PakVersion>(text, ignoreCase: true, out var version)
             ? version
             : throw new ArgException($"Unknown --pak-version '{text}' (expects a UAssetAPI.PakVersion name, e.g. V11).");

@@ -100,8 +100,8 @@ internal sealed class AssetEditTools(MappingsStore store)
                 }
                 else if (kept is { Placed: true })
                 {
-                    backupPath = path + ".bak";
-                    originalPath = path + ".orig.bak";
+                    backupPath = kept.Backup;
+                    originalPath = kept.Original;
                     note = $"Saved {path}. Beside it, .bak holds the files as they were before this save, and .orig.bak the files as they were before the first save (never replaced).";
                 }
                 else

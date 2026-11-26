@@ -39,6 +39,34 @@ public sealed class BackupWriteTests : IDisposable
         Assert.Equal("header v2", File.ReadAllText(_uasset));
         Assert.True(result.Placed);
         Assert.Empty(result.Stranded);
+        Assert.Equal(_uasset + ".bak", result.Backup);
+        Assert.Equal(_uasset + ".orig.bak", result.Original);
+    }
+
+    [Fact]
+    public void Result_NamesTheBackupsWhereTheyWent_InABackupFolder()
+    {
+        var folder = Path.Combine(_dir, "backups");
+
+        var result = PackageWriter.WithBackup(_uasset, folder, WriteBoth);
+
+        var backup = Path.Combine(folder, "A.uasset.bak");
+        var original = Path.Combine(folder, "A.uasset.orig.bak");
+        Assert.Equal(backup, result.Backup);
+        Assert.Equal(original, result.Original);
+        Assert.Equal("header v1", File.ReadAllText(backup));
+        Assert.Equal("header v1", File.ReadAllText(original));
+    }
+
+    [Fact]
+    public void Result_OfANewFile_NamesNoBackup()
+    {
+        var path = Path.Combine(_dir, "New.uasset");
+
+        var result = PackageWriter.WithBackup(path, backupFolder: null, () => File.WriteAllText(path, "new"));
+
+        Assert.Null(result.Backup);
+        Assert.Null(result.Original);
     }
 
     [Fact]

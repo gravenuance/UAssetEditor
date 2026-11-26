@@ -7,7 +7,10 @@ namespace UAssetEditor.Core.Games;
 /// <summary>One usmap in the <see cref="MappingsStore"/>: the game build it was dumped from (null when unknown) and where it lives.</summary>
 public sealed record StoredMappings(int? Build, string Path);
 
-/// <summary>A usmap could not be stored or found; the message says what to do about it.</summary>
+/// <summary>
+/// A usmap could not be stored or found. When the refusal is a usmap already stored under the same build
+/// (<see cref="Conflict"/>), the way past it is an option each front end names its own way: <see cref="MessageWith"/>.
+/// </summary>
 public sealed class MappingsStoreException : Exception
 {
     public MappingsStoreException() { }
@@ -15,6 +18,19 @@ public sealed class MappingsStoreException : Exception
     public MappingsStoreException(string message) : base(message) { }
 
     public MappingsStoreException(string message, Exception innerException) : base(message, innerException) { }
+
+    public MappingsStoreException(string message, StoredMappings conflict) : base(message) => Conflict = conflict;
+
+    /// <summary>The stored usmap the add would replace; null for any other refusal.</summary>
+    public StoredMappings? Conflict { get; }
+
+    /// <summary>The message, with the advice to pass <paramref name="force"/> (or, for a usmap with no build, <paramref name="build"/>) when it is a <see cref="Conflict"/>.</summary>
+    public string MessageWith(string force, string build) => Conflict switch
+    {
+        null => Message,
+        { Build: null } => $"{Message} Replace it with {force}, or give this one a build ({build}).",
+        _ => $"{Message} Replace it with {force}.",
+    };
 }
 
 /// <summary>
@@ -89,9 +105,11 @@ public sealed partial class MappingsStore
         var existing = List(game).Where(entry => entry.Build == resolved).ToList();
         if (existing.Count > 0 && !force)
         {
-            throw new MappingsStoreException(resolved is { } known
-                ? $"Build {known} is already stored as {existing[0].Path}. Replace it with --force."
-                : $"{game.DisplayName} already has a usmap without a build: {existing[0].Path}. Replace it with --force, or give this one a build (--build N).");
+            throw new MappingsStoreException(
+                resolved is { } known
+                    ? $"Build {known} is already stored as {existing[0].Path}."
+                    : $"{game.DisplayName} already has a usmap without a build: {existing[0].Path}.",
+                existing[0]);
         }
 
         var directory = DirectoryFor(game);

@@ -112,7 +112,7 @@ internal static class PakCommands
             if (args.Flag(name) || args.Option(name) != null) throw new ArgException($"--{name} only applies to IoStore (.utoc) output.");
         }
 
-        var mountPoint = args.Option("mount") ?? $"../../../{new DirectoryInfo(sourceFolder.TrimEnd('\\', '/')).Name}/";
+        var mountPoint = args.Option("mount") ?? PakPacker.DefaultMountPoint(sourceFolder) ?? PakPacker.GenericMountPoint;
         var result = PakPacker.Build(sourceFolder, output, mountPoint, AssetIo.ResolvePakVersion(args), AssetIo.ResolveCompression(args), AssetIo.ResolveAesKey(args), AssetIo.ResolvePakVariant(args));
 
         if (result.HasFailures)

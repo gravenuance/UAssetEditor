@@ -71,7 +71,10 @@ public sealed class MappingsStoreTests : IDisposable
         var first = _store.Add(Source("StellarBlade.usmap"), _stellarBlade);
 
         var ex = Assert.Throws<MappingsStoreException>(() => _store.Add(Source("SB_new.usmap", OtherUsmap), _stellarBlade));
-        Assert.Contains("without a build", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(first, ex.Conflict);
+        Assert.Equal(
+            $"Stellar Blade already has a usmap without a build: {first.Path}. Replace it with -f, or give this one a build (-b).",
+            ex.MessageWith("-f", "-b"));
 
         var second = _store.Add(Source("SB_new.usmap", OtherUsmap), _stellarBlade, force: true);
 

@@ -1627,7 +1627,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRunWhenIdle))]
     private void PackFolder()
     {
-        using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? "../../../Game/", PakAesKeyHex, DefaultEngineVersion,
+        using var viewModel = new PackFolderViewModel(null, _currentPakSource?.MountPoint ?? PakPacker.GenericMountPoint, PakAesKeyHex, DefaultEngineVersion,
             mountPointIsAuthoritative: _currentPakSource != null, initialVersion: _currentPakSource?.Version, game: Game, pakVariant: DialogPakVariant);
         new PackFolderWindow { DataContext = viewModel, Owner = Application.Current.MainWindow }.ShowDialog();
     }
