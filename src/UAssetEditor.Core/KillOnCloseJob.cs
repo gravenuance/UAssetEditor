@@ -43,9 +43,9 @@ internal sealed partial class KillOnCloseJob : IDisposable
     public void Assign(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
-        if (_handle == null) return;
-        if (!AssignProcessToJobObject(_handle, process.SafeHandle) && !process.HasExited)
-            LogNotAssigned(AppLog.For<KillOnCloseJob>(), process.Id, new Win32Exception(Marshal.GetLastPInvokeError()));
+        if (_handle == null || AssignProcessToJobObject(_handle, process.SafeHandle)) return;
+        var error = Marshal.GetLastPInvokeError();
+        if (!process.HasExited) LogNotAssigned(AppLog.For<KillOnCloseJob>(), process.Id, new Win32Exception(error));
     }
 
     /// <summary>Whether <paramref name="process"/> is in this job.</summary>
