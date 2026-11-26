@@ -31,7 +31,7 @@ public static class IoStoreLegacyConverter
         ArgumentNullException.ThrowIfNull(utocPath);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
-        RefuseOwnPak(utocPath, output);
+        RefuseOwnFile(utocPath, output);
 
         using var scope = RetocLayerResolver.Resolve(utocPath, layer, paksFolder);
         if (scope.InputDirectory == utocPath)
@@ -63,13 +63,24 @@ public static class IoStoreLegacyConverter
         return new LegacyConversionResult(true, ownEntries.Count, RemoveBulkFilesNotShipped(output, ownEntries), BaseGameBulkKept: false);
     }
 
-    // retoc reads a Marvel Rivals container's companion .pak while it writes a .pak output, so the two must not be one file
-    // (under another case or through a hard link either). uacli and MCP check this first, with their own argument names.
-    private static void RefuseOwnPak(string utocPath, string output)
+    /// <summary>The container file (the .utoc, its .ucas, or a Marvel Rivals container's companion .pak) that a .pak
+    /// <paramref name="output"/> would write over, by any name or hard link; null when it reaches none of them, or is a folder.
+    /// retoc reads these while it writes the output.</summary>
+    /// <exception cref="PathNotPlaceableException">A path cannot be resolved, so whether it reaches a container file is unknown.</exception>
+    public static string? ContainerFileReachedBy(string utocPath, string output)
     {
-        if (!IsPakOutput(output)) return;
-        if (RetocProcess.CompanionsOf(utocPath, writesCompanionPak: true).Where(IsPakOutput).Any(own => FinalPaths.SameFile(output, own)))
-            throw new ArgumentException($"The output is the container's own .pak, which retoc reads while it writes: {output}. Choose another path.", nameof(output));
+        ArgumentNullException.ThrowIfNull(utocPath);
+        ArgumentNullException.ThrowIfNull(output);
+        if (!IsPakOutput(output)) return null;
+        return ((string[])[utocPath, .. RetocProcess.CompanionsOf(utocPath, writesCompanionPak: true)])
+            .FirstOrDefault(own => FinalPaths.SameFile(output, own));
+    }
+
+    // uacli and MCP refuse this first, under their own argument names.
+    private static void RefuseOwnFile(string utocPath, string output)
+    {
+        if (ContainerFileReachedBy(utocPath, output) is { } own)
+            throw new ArgumentException($"The output is the container's own {Path.GetExtension(own)}, which retoc reads while it writes: {output}. Choose another path.", nameof(output));
     }
 
     private static bool IsPakOutput(string path) => string.Equals(Path.GetExtension(path), ".pak", StringComparison.OrdinalIgnoreCase);
