@@ -15,11 +15,29 @@ namespace UAssetEditor.Core.AssetSources;
 /// </summary>
 public static class PakPacker
 {
+    /// <summary>The mount point for a pak whose project folder is unknown.</summary>
+    public const string GenericMountPoint = "../../../Game/";
+
+    /// <summary>The pak version every front end writes unless told otherwise.</summary>
+    public const PakVersion DefaultVersion = PakVersion.V11;
+
+    /// <summary>
+    /// The mount point every front end assumes for a pak built from <paramref name="sourceFolder"/>: the folder is taken to be
+    /// named after the game's project folder ("../../../&lt;name&gt;/"). Null when the path has no folder name.
+    /// </summary>
+    public static string? DefaultMountPoint(string sourceFolder)
+    {
+        ArgumentNullException.ThrowIfNull(sourceFolder);
+        var trimmed = sourceFolder.TrimEnd('\\', '/');
+        var name = trimmed.Length == 0 ? "" : new DirectoryInfo(trimmed).Name;
+        return name.Length == 0 ? null : $"../../../{name}/";
+    }
+
     public static PakBulkResult Build(
         string sourceFolder,
         string outputPakPath,
-        string mountPoint = "../../../Game/",
-        PakVersion version = PakVersion.V11,
+        string mountPoint = GenericMountPoint,
+        PakVersion version = DefaultVersion,
         PakCompression[]? compression = null,
         byte[]? aesKey = null,
         PakVariant variant = PakVariant.Standard,

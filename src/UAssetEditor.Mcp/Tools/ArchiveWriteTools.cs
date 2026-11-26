@@ -114,8 +114,10 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         if (rivalsOnly)
             throw new McpException($"{string.Join(", ", RivalsPackSwitches)} only apply to IoStore (.utoc) output.");
 
-        var mountPoint = ToolInput.Optional(mount, nameof(mount), 300) ?? $"../../../{new DirectoryInfo(source.TrimEnd('\\', '/')).Name}/";
-        var version = ToolInput.Name<PakVersion>(ToolInput.Optional(pakVersion, nameof(pakVersion), 40) ?? "V11", nameof(pakVersion));
+        var mountPoint = ToolInput.Optional(mount, nameof(mount), 300) ?? PakPacker.DefaultMountPoint(source) ?? PakPacker.GenericMountPoint;
+        var version = ToolInput.Optional(pakVersion, nameof(pakVersion), 40) is { } versionName
+            ? ToolInput.Name<PakVersion>(versionName, nameof(pakVersion))
+            : PakPacker.DefaultVersion;
         var codecs = ToolInput.Optional(compression, nameof(compression), 40) is { } codec
             ? new[] { ToolInput.Name<PakCompression>(codec, nameof(compression)) }
             : null;

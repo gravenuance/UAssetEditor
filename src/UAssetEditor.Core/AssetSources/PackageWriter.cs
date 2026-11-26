@@ -58,7 +58,9 @@ public static class InlineDataResources
 /// <summary>What became of the backups a write asked for.</summary>
 /// <param name="Placed">Every ".bak" (and the first save's ".orig.bak") is where it belongs; false when one could not be put there.</param>
 /// <param name="Stranded">Copies of the previous files still under their temporary names, the only good copy when <paramref name="Placed"/> is false.</param>
-public sealed record BackupResult(bool Placed, IReadOnlyList<string> Stranded);
+/// <param name="Backup">Where the package file's ".bak" goes (its .uexp's sits beside it); null when there was no file to back up.</param>
+/// <param name="Original">Where the package file's ".orig.bak" goes; null when there was no file to back up.</param>
+public sealed record BackupResult(bool Placed, IReadOnlyList<string> Stranded, string? Backup, string? Original);
 
 /// <summary>Writes a package to disk, keeping inline data resources pointed at their bytes.</summary>
 public static partial class PackageWriter
@@ -128,13 +130,13 @@ public static partial class PackageWriter
         }
         finally
         {
-            result = SettleBackups(staged, written, clock);
+            result = SettleBackups(path, staged, written, clock);
         }
         return result;
     }
 
     /// <summary>Never throws, so the write's own outcome is what the caller sees. When in doubt the copy is kept as the backup.</summary>
-    private static BackupResult SettleBackups(List<StagedBackup> staged, bool written, TimeProvider clock)
+    private static BackupResult SettleBackups(string path, List<StagedBackup> staged, bool written, TimeProvider clock)
     {
         bool untouched;
         try
@@ -172,7 +174,8 @@ public static partial class PackageWriter
         {
             foreach (var copy in staged) SweepStaleStaging(copy, clock);
         }
-        return new BackupResult(placed, stranded);
+        var main = staged.Find(copy => copy.Original == path);
+        return main == default ? new BackupResult(placed, stranded, null, null) : new BackupResult(placed, stranded, main.Backup, main.Vanilla);
     }
 
     // No save holds its staged copy this long, so an older one was left by a save that was killed or could not place it.

@@ -143,7 +143,7 @@ internal static class UsmapCommands
         }
         catch (MappingsStoreException ex)
         {
-            throw new ArgException(ex.Message, ex);
+            throw new ArgException(ex.MessageWith("--force", "--build N"), ex);
         }
 
         Console.WriteLine($"Stored {stored.Path} ({game.CliName}, {AssetIo.DescribeBuild(stored)}).");

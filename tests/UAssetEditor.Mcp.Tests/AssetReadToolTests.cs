@@ -162,8 +162,9 @@ public sealed class AssetReadToolTests : IDisposable
         var result = await _rig.Assets.ListExportsAsync(Sample(), game: "rivals", engineVersion: "VER_UE4_27", cancellationToken: _ct);
 
         var warning = Assert.Single(result.Warnings);
-        Assert.Contains("No usmap is stored for rivals", warning, StringComparison.Ordinal);
-        Assert.Contains("usmap_add", warning, StringComparison.Ordinal);
+        Assert.Contains("no usmap is given or stored for rivals", warning, StringComparison.Ordinal);
+        Assert.EndsWith("Pass usmap, or store one with usmap_add.", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("--usmap", warning, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -42,7 +42,7 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
     [ObservableProperty] private PackOutputFormat _outputFormat = PackOutputFormat.Pak;
     [ObservableProperty] private string _mountPoint;
     [ObservableProperty] private string _aesKeyHex;
-    [ObservableProperty] private PakVersion _version = PakVersion.V11;
+    [ObservableProperty] private PakVersion _version = PakPacker.DefaultVersion;
     [ObservableProperty] private PakCompression? _compression;
     [ObservableProperty] private bool _isRunning;
     [ObservableProperty] private bool _isDone;
@@ -247,11 +247,10 @@ public sealed partial class PackFolderViewModel : ObservableObject, IDisposable
 
         if (_mountPointIsAuthoritative) return;
 
-        var folderName = new System.IO.DirectoryInfo(value.TrimEnd('\\', '/')).Name;
-        if (folderName.Length == 0) return;
+        if (PakPacker.DefaultMountPoint(value) is not { } mountPoint) return;
 
         _suppressMountPointTracking = true;
-        MountPoint = $"../../../{folderName}/";
+        MountPoint = mountPoint;
         _suppressMountPointTracking = false;
     }
 

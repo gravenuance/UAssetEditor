@@ -20,15 +20,13 @@ internal sealed class OpenSettings
     private const int MaxWarnings = 20;
 
     private readonly StringWriter _diagnostics;
-    private readonly List<string> _notes;
 
-    private OpenSettings(ArgReader args, StringWriter diagnostics, GameProfile? profile, string? usmapPath, List<string> notes)
+    private OpenSettings(ArgReader args, StringWriter diagnostics, GameProfile? profile, string? usmapPath)
     {
         Args = args;
         _diagnostics = diagnostics;
         Profile = profile;
         UsmapPath = usmapPath;
-        _notes = notes;
     }
 
     public ArgReader Args { get; }
@@ -53,7 +51,6 @@ internal sealed class OpenSettings
     {
         ArgumentNullException.ThrowIfNull(store);
 
-        var notes = new List<string>();
         var arguments = new List<string>();
 
         var profile = ParseGame(game);
@@ -62,8 +59,7 @@ internal sealed class OpenSettings
         if (ToolInput.Optional(engineVersion, nameof(engineVersion), 60) is { } versionText)
             arguments.AddRange(["--version", ParseEngineVersion(versionText).ToString()]);
 
-        var usmapPath = ResolveUsmap(store, profile, usmap, notes);
-        if (usmapPath != null) arguments.AddRange(["--usmap", usmapPath]);
+        if (ToolInput.Optional(usmap, nameof(usmap)) is { } given) arguments.AddRange(["--usmap", ToolPaths.ExistingFile(given, nameof(usmap), ".usmap")]);
 
         if (ToolInput.Optional(aesKey, nameof(aesKey), 200) is { } keyText) arguments.AddRange(["--aes", ValidateKey(keyText)]);
 
@@ -71,18 +67,18 @@ internal sealed class OpenSettings
         if (strict) arguments.Add("--strict");
 
         var diagnostics = new StringWriter(CultureInfo.InvariantCulture);
-        var args = new ArgReader(arguments) { Diagnostics = diagnostics, Mappings = store };
-        // The store was already read for this call (with its own note), so the open must not look again and warn twice.
-        if (profile != null && usmapPath == null) args.StoredUsmaps[profile.CliName] = new Lazy<string?>(() => null);
+        var args = new ArgReader(arguments) { Diagnostics = diagnostics, Mappings = store, NoStoredUsmapAdvice = _ => "Pass usmap, or store one with usmap_add." };
+        // Resolved up front, so the call reports the usmap it uses even when it opens nothing; the reader keeps the answer for the open.
+        var usmapPath = AssetIo.ResolveUsmapPath(args);
 
-        return new OpenSettings(args, diagnostics, profile, usmapPath, notes);
+        return new OpenSettings(args, diagnostics, profile, usmapPath);
     }
 
     /// <summary>Everything worth telling the caller: what was picked for them, then the open's own warnings, each on one line.</summary>
     public IReadOnlyList<string> Warnings()
     {
         var lines = _diagnostics.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        return [.. _notes.Concat(lines).Select(line => Untrusted.Clean(line, 500)).Distinct(StringComparer.Ordinal).Take(MaxWarnings)];
+        return [.. lines.Select(line => Untrusted.Clean(line, 500)).Distinct(StringComparer.Ordinal).Take(MaxWarnings)];
     }
 
     /// <summary>The profile a tool's game argument names, or null when it is omitted.</summary>
@@ -98,21 +94,6 @@ internal sealed class OpenSettings
         ToolInput.TryOneName<EngineVersion>(text, out var version)
             ? version
             : throw new McpException($"Unknown engineVersion '{Untrusted.Clean(text, 60)}': expected a UAssetAPI EngineVersion name such as VER_UE5_3.");
-
-    private static string? ResolveUsmap(MappingsStore store, GameProfile? profile, string? usmap, List<string> notes)
-    {
-        if (ToolInput.Optional(usmap, nameof(usmap)) is { } given) return ToolPaths.ExistingFile(given, nameof(usmap), ".usmap");
-        if (profile == null) return null;
-
-        if (store.Latest(profile) is not { } stored)
-        {
-            notes.Add($"No usmap is stored for {profile.CliName} ({store.DirectoryFor(profile)}); assets that use unversioned properties will read as empty. Pass usmap, or store one with usmap_add.");
-            return null;
-        }
-
-        notes.Add($"Using stored usmap {stored.Path} ({AssetIo.DescribeBuild(stored)}).");
-        return stored.Path;
-    }
 
     /// <summary>Checks a given key once, up front, so a bad one fails the call before anything opens; a key given but empty (just "0x") is refused too.</summary>
     private static string ValidateKey(string text)
