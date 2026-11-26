@@ -303,10 +303,10 @@ static void PrintUsage()
               .ubulk/.uptnl files <utoc> ships: base-game bulk files of a package it replaces are removed (not possible for a .pak
               output, which warns instead).
 
-          uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>]
+          uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>] [--overwrite]
               Rebuild a .pak, optionally applying a RuleSet's edits first (same JSON as 'batch') - the pak counterpart to editing a loose
-              file in place. Always writes a new file; never overwrites the source pak. If any asset's edit fails, it prints FAILED
-              and nothing is repacked; assets that can't be opened print SKIPPED and are packed unchanged.
+              file in place. Never writes over the source pak, and refuses an existing output unless --overwrite. If any asset's edit
+              fails, it prints Failed and nothing is repacked; assets that can't be opened print Skipped and are packed unchanged.
 
         Nothing is written to disk unless --save/--apply is passed (or for a pak-* command, unconditionally, since packing/repacking/converting IS the write);
         --backup copies the original file first ("<file>.bak" for single-file commands: the state before this save), and on the first

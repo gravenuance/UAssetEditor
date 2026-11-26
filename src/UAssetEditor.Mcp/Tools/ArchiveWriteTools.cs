@@ -287,38 +287,9 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         {
             using var source = await Task.Run(() => new PakAssetSource(path, key, variant: settings.PakVariant), cancellationToken).ConfigureAwait(false);
             var log = new LogLines(MaxLogLines);
-            var edited = 0;
-            var changes = 0;
-
-            if (rules != null)
-            {
-                var versions = await Task.Run(
-                    () => AssetIo.ResolveVersions(settings.Args),
-                    cancellationToken).ConfigureAwait(false);
-                var sink = new ProgressSink(progress, "Edited assets");
-                var sets = await EditExecutor.ApplyAsync(
-                    source, versions, rules, createBackup: false, backupFolder: null,
-                    new InlineProgress<EditProgress>(p => sink.Report((p.Completed, p.Total))),
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
-
-                foreach (var skipped in sets.Where(s => s.Skipped)) log.Add($"Skipped {skipped.AssetPath}: could not open, packed unchanged: {skipped.Error}");
-                var failed = sets.Where(s => s.Failed).ToList();
-                if (failed.Count > 0)
-                {
-                    var first = failed[0];
-                    throw new McpException(
-                        $"{failed.Count} asset(s) failed to edit, so nothing was repacked. First: {Untrusted.Clean(first.AssetPath, 300)}: {Untrusted.Clean(first.Error, 300)}");
-                }
-
-                edited = sets.Count(s => s.Changed && s.Changes.Count > 0);
-                changes = sets.Sum(s => s.Changes.Count);
-            }
-
-            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-            var result = await Task.Run(() => PakRepacker.Build(source, target), CancellationToken.None).ConfigureAwait(false);
-            if (result.HasFailures) throw new McpException($"Repacking failed: {Untrusted.Clean(result.FailedEntries[0].Reason, 400)}");
-
-            return new RepackResult(path, target, result.SucceededCount, edited, changes, log.ToList(), settings.Warnings());
+            var outcome = await PakRepack.RunAsync(
+                source, target, rules, settings.Args, log.Add, new ProgressSink(progress, "Edited assets"), cancellationToken).ConfigureAwait(false);
+            return new RepackResult(path, target, outcome.Entries, outcome.AssetsEdited, outcome.Changes, log.ToList(), settings.Warnings());
         }, cancellationToken).ConfigureAwait(false);
     }
 }

@@ -261,39 +261,19 @@ internal static class PakCommands
         var pakPath = args.Positional(0, "pak");
         var output = args.Positional(1, "output pak");
         if (!File.Exists(pakPath)) throw new ArgException($"File not found: {pakPath}");
+        OutputPaths.RefuseExisting(output, "--output", args.Switch("overwrite"), "--overwrite");
+        OutputPaths.RefuseSame(pakPath, output, "the pak", "--output");
+        var rules = args.Option("ruleset") is { } rulesetPath ? RuleSets.Load(rulesetPath, "--ruleset") : null;
 
-        var aesKey = AssetIo.ResolveAesKey(args);
-        using var source = new PakAssetSource(pakPath, aesKey, variant: AssetIo.ResolvePakVariant(args));
-
-        var rulesetPath = args.Option("ruleset");
-        if (rulesetPath != null)
-        {
-            var ruleSet = RuleSets.Load(rulesetPath, "--ruleset");
-            var versions = AssetIo.ResolveVersions(args);
-
-            var changeSets = EditExecutor.ApplyAsync(source, versions, ruleSet, createBackup: false, backupFolder: null).GetAwaiter().GetResult();
-            foreach (var changeSet in changeSets.Where(c => c.Skipped))
-                Console.WriteLine($"SKIPPED {changeSet.AssetPath}: could not open, packed unchanged: {changeSet.Error}");
-            var failed = changeSets.Where(c => c.Failed).ToList();
-            if (failed.Count > 0)
-            {
-                // Repacking anyway would ship those assets unedited without anyone noticing.
-                foreach (var changeSet in failed)
-                    Console.WriteLine($"FAILED {changeSet.AssetPath}: {changeSet.Error}");
-                Console.WriteLine($"-- {failed.Count} asset(s) failed; nothing was repacked");
-                return 1;
-            }
-            var totalChanges = changeSets.Sum(c => c.Changes.Count);
-            Console.WriteLine($"-- applied ruleset: {changeSets.Count(c => c.Changed)} asset(s), {totalChanges} change(s)");
-        }
-
-        var result = PakRepacker.Build(source, output);
-        if (result.HasFailures)
-        {
-            Console.WriteLine($"FAILED: {result.FailedEntries[0].Reason}");
-            return 1;
-        }
-        Console.WriteLine($"-- repacked {result.SucceededCount} entr(y/ies) to {output}");
+        var outcome = RepackAsync(pakPath, output, rules, args).GetAwaiter().GetResult(); // the CLI's synchronous entry point
+        if (rules != null) Console.WriteLine($"-- applied ruleset: {outcome.AssetsEdited} asset(s), {outcome.Changes} change(s)");
+        Console.WriteLine($"-- repacked {outcome.Entries} entr(y/ies) to {output}");
         return 0;
+    }
+
+    private static async Task<RepackOutcome> RepackAsync(string pakPath, string output, RuleSet? rules, ArgReader args)
+    {
+        using var source = new PakAssetSource(pakPath, AssetIo.ResolveAesKey(args), variant: AssetIo.ResolvePakVariant(args));
+        return await PakRepack.RunAsync(source, output, rules, args, Console.WriteLine, progress: null, CancellationToken.None).ConfigureAwait(false);
     }
 }

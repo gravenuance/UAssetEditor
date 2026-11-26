@@ -87,6 +87,36 @@ public sealed class CliPakTests : IDisposable
     }
 
     [Fact]
+    public void Repack_ToAnExistingFile_RefusesItUnlessOverwriteIsPassed()
+    {
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]> { ["Content/A.txt"] = Encoding.UTF8.GetBytes("a") });
+        var output = _folder.Combine("new.pak");
+        File.WriteAllText(output, "mine");
+
+        var ex = Assert.Throws<ArgException>(() => PakCommands.Repack(new ArgReader([pak.Path, output])));
+
+        Assert.Equal($"--output already exists: {output}. Pass --overwrite to replace it, or choose another path.", ex.Message);
+        Assert.Equal("mine", File.ReadAllText(output));
+        Assert.Equal(0, PakCommands.Repack(new ArgReader([pak.Path, output, "--overwrite"])));
+        Assert.NotEqual("mine", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public void Repack_OntoItsOwnSource_IsRefused_EvenWithOverwrite()
+    {
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]> { ["Content/A.txt"] = Encoding.UTF8.GetBytes("a") });
+        var before = File.ReadAllBytes(pak.Path);
+        var hardLink = _folder.Combine("same.pak");
+        TestLinks.MakeHardLink(hardLink, pak.Path);
+
+        var ex = Assert.Throws<ArgException>(() => PakCommands.Repack(new ArgReader([pak.Path, hardLink, "--overwrite"])));
+
+        Assert.Equal("the pak and --output are the same file.", ex.Message);
+        Assert.Equal(before, File.ReadAllBytes(pak.Path));
+        File.Delete(hardLink);
+    }
+
+    [Fact]
     public void Unpack_WithAFilter_ChecksOnlyTheEntriesItWouldWrite()
     {
         using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]>
