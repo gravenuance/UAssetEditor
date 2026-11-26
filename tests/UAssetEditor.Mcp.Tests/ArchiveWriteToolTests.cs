@@ -496,22 +496,19 @@ public sealed class ArchiveWriteToolTests : IDisposable
     }
 
     [Fact]
-    public async Task PackToUtoc_RefusesAContainerFileThatIsAHardLinkToAFileInTheSource()
+    public async Task PackToUtoc_OverContainerFilesHardLinkedToTheSource_ReplacesTheLinks_AndLeavesTheSourceAlone()
     {
         var source = SourceFolder("Content/A.txt");
         var inSource = Path.Combine(source, "Content", "A.txt");
         Directory.CreateDirectory(_rig.Folder.Combine("out"));
         var utoc = _rig.Folder.Combine("out", "mod.utoc");
         TestLinks.MakeHardLink(utoc, inSource);
-        var ucas = _rig.Folder.Combine("out", "mod2.ucas");
-        TestLinks.MakeHardLink(ucas, inSource);
+        TestLinks.MakeHardLink(Path.ChangeExtension(utoc, ".ucas"), inSource);
 
-        var viaUtoc = await Refused(() => _rig.ArchiveWrites.PackAsync(source, utoc, overwrite: true, cancellationToken: _ct));
-        var viaUcas = await Refused(() => _rig.ArchiveWrites.PackAsync(source, _rig.Folder.Combine("out", "mod2.utoc"), overwrite: true, cancellationToken: _ct));
+        await _rig.ArchiveWrites.PackAsync(source, utoc, overwrite: true, engineVersion: "VER_UE5_3", cancellationToken: _ct);
 
-        Assert.Equal("output must not be inside sourceFolder or a hard link to a file in it.", viaUtoc.Message);
-        Assert.Equal("output's .ucas must not be inside sourceFolder or a hard link to a file in it.", viaUcas.Message);
         Assert.Equal("Content/A.txt", await File.ReadAllTextAsync(inSource, _ct));
+        Assert.NotEqual("Content/A.txt", await File.ReadAllTextAsync(utoc, _ct));
     }
 
     [Fact]

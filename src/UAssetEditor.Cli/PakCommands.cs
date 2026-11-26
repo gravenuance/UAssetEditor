@@ -95,7 +95,7 @@ internal static class PakCommands
             ".PAK" => PackToPak,
             _ => throw new ArgException($"--output must end in .pak or .utoc, not '{Path.GetExtension(output)}'."),
         };
-        // PakPacker writes the .pak in place, as retoc does the container's files.
+        // PakPacker writes the .pak in place; an IoStore container is always staged and moved into place.
         PackOutputs.Refuse(sourceFolder, output, AssetIo.ResolveGame(args) == Game.MarvelRivals, args.Switch("overwrite"), pakIsStaged: false, PackNames);
         return pack(args, sourceFolder, output);
     }

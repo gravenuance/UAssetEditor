@@ -22,4 +22,11 @@ public static class AppLog
     }
 
     public static ILogger For<T>() => _factory.CreateLogger<T>();
+
+    /// <summary>For a static class, which cannot be a type argument.</summary>
+    public static ILogger For(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return _factory.CreateLogger(type);
+    }
 }
