@@ -201,14 +201,14 @@ public sealed class RulesetToolTests : IDisposable
     {
         var free = Sample("Sub/A.uasset");
         var held = Sample("Sub/B.uasset");
-        var holding = new TaskCompletionSource();
-        var release = new TaskCompletionSource();
-        var holder = PathLocks.RunAsync([held], async () =>
+        var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var holder = Task.Run(() => PathLocks.RunAsync([held], async () =>
         {
             holding.SetResult();
             await release.Task;
             return 0;
-        }, _ct);
+        }, _ct), _ct);
         await holding.Task;
 
         var run = _rig.Rulesets.ApplyRulesetAsync(_rig.Folder.Path, SetCountTo9, cancellationToken: _ct);

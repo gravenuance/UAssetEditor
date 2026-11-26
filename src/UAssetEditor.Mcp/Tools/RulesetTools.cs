@@ -67,7 +67,7 @@ internal sealed class RulesetTools(MappingsStore store)
         // Each asset is locked while it is opened, edited and saved, so an edit_asset on it waits for that asset (and the run for
         // the edit), and nobody waits for the rest of the run.
         AssetGuard guard = (assetPath, work, token) =>
-            PathLocks.RunAsync([isFolder ? Path.Combine(target, assetPath) : target], work, token);
+            PathLocks.RunAsync([source is LooseFolderAssetSource folder ? folder.FilePathOf(assetPath) : target], work, token);
         var results = apply
             ? await EditExecutor.ApplyAsync(source, versions, rules, backup, backupFolder: null, editProgress, guard: guard, cancellationToken: cancellationToken).ConfigureAwait(false)
             : await EditExecutor.PreviewAsync(source, versions, rules, editProgress, guard: guard, cancellationToken: cancellationToken).ConfigureAwait(false);

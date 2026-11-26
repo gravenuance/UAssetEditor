@@ -37,10 +37,17 @@ public sealed class LooseFolderAssetSource : IAssetSource
         ArgumentNullException.ThrowIfNull(asset);
         ArgumentNullException.ThrowIfNull(assetPath);
 
-        var absolutePath = ToAbsolutePath(assetPath);
+        var absolutePath = FilePathOf(assetPath);
 
         if (createBackup) PackageWriter.WriteWithBackup(asset, absolutePath, backupFolder);
         else PackageWriter.Write(asset, absolutePath);
+    }
+
+    /// <summary>The file this source opens and saves for <paramref name="relativePath"/>.</summary>
+    public string FilePathOf(string relativePath)
+    {
+        ArgumentNullException.ThrowIfNull(relativePath);
+        return ToAbsolutePath(relativePath);
     }
 
     private string ToRelativePath(string absolutePath) =>

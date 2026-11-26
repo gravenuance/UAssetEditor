@@ -15,7 +15,8 @@ using UAssetEditor.Core.Versioning;
 namespace UAssetEditor.Core.Editing;
 
 /// <summary>Runs <paramref name="work"/> on one asset (its path as the source names it) when the caller allows it, such as
-/// once a lock on its file is held; each asset is guarded on its own, so a long run never holds the ones it is not working on.</summary>
+/// once a lock on its file is held; each asset is guarded on its own, so a long run never holds the ones it is not working on.
+/// An asset waiting in its guard keeps its worker slot. A guard that throws marks that asset skipped, unopened.</summary>
 public delegate Task<AssetChangeSet?> AssetGuard(string assetPath, Func<Task<AssetChangeSet?>> work, CancellationToken cancellationToken);
 
 /// <summary>
@@ -97,9 +98,20 @@ public static class EditExecutor
         await ThrottledParallel.ForEachAsync(paths, maxDegreeOfParallelism, async (path, token) =>
         {
             AssetChangeSet? Process() => ProcessAsset(source, openAsset, ruleSet, path, save, createBackup, backupFolder);
-            var changeSet = guard == null
-                ? Process()
-                : await guard(path, () => Task.FromResult(Process()), token).ConfigureAwait(false);
+            AssetChangeSet? changeSet;
+            try
+            {
+                changeSet = guard == null
+                    ? Process()
+                    : await guard(path, () => Task.FromResult(Process()), token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not (OperationCanceledException or OutOfMemoryException))
+            {
+                // Process reports its own failures, so this is the guard refusing the asset (a lock on a file it cannot place):
+                // the asset was never opened, and the rest of the run goes on, as for an asset that cannot be opened.
+                changeSet = new AssetChangeSet(path, [], ex.Message, Skipped: true);
+            }
+
             if (changeSet != null)
                 results.Add(changeSet);
 
