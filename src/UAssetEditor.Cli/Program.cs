@@ -194,6 +194,7 @@ static void PrintUsage()
               Run several set/duplicate/duplicate-row/set-string/remove/add-node/splice-node/append-clone/duplicate-export ops (one per line, same "--flag value" syntax minus the file/verb)
               against one asset opened once - much faster than one CLI invocation per edit for a multi-step workflow (e.g. splicing in a node).
               Blank lines and lines starting with '#' are skipped; a failing line is reported and skipped, the rest still run.
+              With --save, an asset is saved only if no line was skipped; otherwise nothing is written and the exit code is 1.
               Double quotes group a value with spaces; write \" for a literal quote (e.g. a JSON string value).
               Inside quotes, \" before a space or the line end closes the quote, so a quoted path can end in \.
               Example opsfile line: set --export 3 --path Chains[0].PhysicsSettings.Damping --value 0.5

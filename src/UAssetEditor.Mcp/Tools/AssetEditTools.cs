@@ -87,7 +87,7 @@ internal sealed class AssetEditTools(MappingsStore store)
             }
             else if (skipped > 0)
             {
-                note = $"Nothing was saved: {skipped} op(s) were skipped. Fix them and run again.";
+                note = ScriptOps.NothingSavedNote(skipped);
             }
             else
             {

@@ -17,8 +17,9 @@ internal static class ScriptRunner
 
         var path = args.Positional(0, "file");
         var ops = Parse(args.RequireOption("ops"));
-        Console.Write(RunOne(path, ops, args));
-        return 0;
+        var (text, saveRefused) = RunOne(path, ops, args);
+        Console.Write(text);
+        return saveRefused ? 1 : 0;
     }
 
     /// <summary>Every line is checked before any asset is opened, so a typo stops the run before it touches anything.</summary>
@@ -28,19 +29,26 @@ internal static class ScriptRunner
         return ScriptOps.Parse(File.ReadLines(opsPath), opsPath);
     }
 
-    private static string RunOne(string path, IReadOnlyList<ScriptOp> ops, ArgReader args)
+    /// <summary>The report, and whether --save was refused because an op was skipped.</summary>
+    private static (string Text, bool SaveRefused) RunOne(string path, IReadOnlyList<ScriptOp> ops, ArgReader args)
     {
         var output = new StringBuilder();
         var asset = AssetIo.Open(path, args);
 
-        output.Append(ScriptOps.Run(asset, ops, args));
+        var results = ScriptOps.Execute(asset, ops, args);
+        output.Append(ScriptOps.Format(results));
+        if (!args.Flag("save")) return (output.ToString(), false);
 
-        if (args.Flag("save"))
+        var skipped = results.Count(r => r.Skipped);
+        if (skipped > 0)
         {
-            AssetIo.WarnIfBackupMissing(AssetIo.Save(asset, path, backup: args.Flag("backup")), args.Diagnostics);
-            output.AppendLine($"Saved {path}");
+            output.AppendLine(ScriptOps.NothingSavedNote(skipped));
+            return (output.ToString(), true);
         }
-        return output.ToString();
+
+        AssetIo.WarnIfBackupMissing(AssetIo.Save(asset, path, backup: args.Flag("backup")), args.Diagnostics);
+        output.AppendLine($"Saved {path}");
+        return (output.ToString(), false);
     }
 
     /// <summary>Plan lines are "asset&lt;TAB&gt;opsfile". Each asset's output prints as one block; one failed asset doesn't stop the rest.</summary>
@@ -73,7 +81,9 @@ internal static class ScriptRunner
             string block;
             try
             {
-                block = $"== {job.Asset}{Environment.NewLine}{RunOne(job.Asset, job.Ops, args)}";
+                var (text, saveRefused) = RunOne(job.Asset, job.Ops, args);
+                if (saveRefused) failures.Add(job.Asset);
+                block = $"== {job.Asset}{Environment.NewLine}{text}";
             }
             catch (Exception ex) when (ex is ArgException or IOException or UnauthorizedAccessException or FormatException or InvalidOperationException)
             {

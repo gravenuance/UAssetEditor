@@ -74,15 +74,12 @@ internal static class ScriptOps
         return ops;
     }
 
-    /// <summary>
-    /// Runs <paramref name="ops"/> in order against <paramref name="asset"/>, one report line per op ("[line] verb: result"; a
-    /// <c>dump</c> contributes its own text). A failing op is reported as SKIPPED and the rest still run. Ops that name no
-    /// game, version or usmap of their own take them from <paramref name="openSettings"/>.
-    /// </summary>
-    public static string Run(UAsset asset, IReadOnlyList<ScriptOp> ops, ArgReader openSettings)
+    /// <summary>One report line per op ("[line] verb: result", or "SKIPPED - reason"); a <c>dump</c> contributes its own text.</summary>
+    public static string Format(IReadOnlyList<OpResult> results)
     {
+        ArgumentNullException.ThrowIfNull(results);
         var output = new StringBuilder();
-        foreach (var result in Execute(asset, ops, openSettings))
+        foreach (var result in results)
         {
             if (result.Skipped) output.AppendLine(CultureInfo.InvariantCulture, $"[{result.Op.Line}] {result.Op.Verb}: SKIPPED - {result.Text}");
             else if (result.Op.Verb == "dump") output.Append(result.Text);
@@ -91,7 +88,13 @@ internal static class ScriptOps
         return output.ToString();
     }
 
-    /// <summary>Runs <paramref name="ops"/> like <see cref="Run"/>, but returns each op's outcome instead of a formatted report.</summary>
+    /// <summary>Why a save was refused: saving an asset some of whose ops were skipped would keep it half-edited.</summary>
+    public static string NothingSavedNote(int skipped) => $"Nothing was saved: {skipped} op(s) were skipped. Fix them and run again.";
+
+    /// <summary>
+    /// Runs <paramref name="ops"/> in order against <paramref name="asset"/>. A failing op is recorded as skipped and the rest
+    /// still run. Ops that name no game, version or usmap of their own take them from <paramref name="openSettings"/>.
+    /// </summary>
     public static IReadOnlyList<OpResult> Execute(UAsset asset, IReadOnlyList<ScriptOp> ops, ArgReader openSettings)
     {
         var results = new List<OpResult>(ops.Count);
