@@ -9,7 +9,7 @@ public static class ConditionMatcher
     /// must match, at least one OR term must match if any OR terms are present, and no NOT
     /// term may match - NOT is a hard exclusion applied on top of whatever the AND/OR terms
     /// decide, not a third alternative combined the same way they are. A regex that runs past
-    /// <paramref name="regexTimeout"/> (default: the process's) throws <see cref="RegexMatchTimeoutException"/>.
+    /// <paramref name="regexTimeout"/> (default: <see cref="SearchQuery.DefaultRegexTimeout"/>) throws <see cref="RegexMatchTimeoutException"/>.
     /// </summary>
     public static bool Matches(string text, IReadOnlyList<ConditionTerm> terms, TextCompare compare, TimeSpan? regexTimeout = null)
     {
@@ -44,7 +44,7 @@ public static class ConditionMatcher
     {
         TextCompare.Equals => string.Equals(text, pattern, StringComparison.OrdinalIgnoreCase),
         TextCompare.Contains => text.Contains(pattern, StringComparison.OrdinalIgnoreCase),
-        TextCompare.Regex => regexTimeout is { } limit ? Regex.IsMatch(text, pattern, RegexOptions.None, limit) : Regex.IsMatch(text, pattern),
+        TextCompare.Regex => RegexLimit.IsMatch(text, pattern, regexTimeout),
         _ => false,
     };
 }

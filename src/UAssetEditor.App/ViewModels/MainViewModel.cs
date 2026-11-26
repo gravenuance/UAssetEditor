@@ -1976,7 +1976,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var changeSets = await EditExecutor.PreviewAsync(source, versions, ruleSet, progress, maxDegreeOfParallelism: 0, cancellationToken: _cts.Token);
             foreach (var change in changeSets.Where(c => c.Changed).SelectMany(c => c.Changes))
                 PreviewChanges.Add(change);
-            StatusMessage = $"Preview: {changeSets.Count(c => c.Changed)} asset(s), {PreviewChanges.Count} change(s).{DescribeFailures(changeSets)}";
+            StatusMessage = $"Preview: {changeSets.Count(c => c.Changed)} asset(s), {PreviewChanges.Count} change(s).{DescribeFailures(changeSets, editsKept: false)}";
         }
         catch (OperationCanceledException)
         {
@@ -2056,7 +2056,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             var applied = appliedCount == 0
                 ? "Applied: no changes matched."
                 : $"Applied changes to {appliedCount} asset(s) - not saved yet.";
-            StatusMessage = applied + DescribeFailures(changeSets);
+            StatusMessage = applied + DescribeFailures(changeSets, editsKept: true);
             SaveConfig();
         }
         catch (OperationCanceledException)
@@ -2307,20 +2307,15 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             TreeSelectNameTerms.Add(new ConditionTermViewModel(term.Text, term.Tag));
     }
 
-    /// <summary>Logs every failed or unreadable asset and returns a status-line suffix naming the first failure, or "" when there are none.</summary>
-    private static string DescribeFailures(IReadOnlyList<AssetChangeSet> changeSets)
+    /// <summary>Logs every failed or unreadable asset and returns the status-line suffix <see cref="EditPresentation.Failures"/> words.</summary>
+    private static string DescribeFailures(IReadOnlyList<AssetChangeSet> changeSets, bool editsKept)
     {
         foreach (var changeSet in changeSets.Where(c => c.Skipped))
             Logger.LogWarning("Batch edit skipped '{AssetPath}', which could not be opened: {Error}", changeSet.AssetPath, changeSet.Error);
-        var failed = changeSets.Where(c => c.Failed).ToList();
-        foreach (var changeSet in failed)
+        foreach (var changeSet in changeSets.Where(c => c.Failed))
             Logger.LogWarning("Batch edit failed for '{AssetPath}': {Error}", changeSet.AssetPath, changeSet.Error);
 
-        var skippedCount = changeSets.Count(c => c.Skipped);
-        var skipped = skippedCount == 0 ? "" : $" {skippedCount} unreadable asset(s) skipped.";
-        return failed.Count == 0
-            ? skipped
-            : $" {failed.Count} asset(s) failed, first {Path.GetFileName(failed[0].AssetPath)}: {failed[0].Error}.{skipped}";
+        return EditPresentation.Failures(changeSets, editsKept);
     }
 
     private static string Describe(EditRule rule) => rule switch
