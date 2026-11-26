@@ -62,9 +62,12 @@ public sealed class PakWorkerClient(PakWorkerProcess process)
             await PakWorkerFraming.WriteMessageAsync(pipe, request, payload, cancellationToken).ConfigureAwait(false);
             return await readResponse(pipe, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (process.IsDisposed && !cancellationToken.IsCancellationRequested && (IsPipeFailure(ex) || ex is OperationCanceledException))
+        catch (Exception ex) when (process.IsDisposed
+                                   && (ex is IOException or ObjectDisposedException
+                                       || ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
-            // Disposal (the host shutting down) killed the worker or closed the pipe under this request: not a crash.
+            // Disposal (the host shutting down) killed the worker or closed the pipe under this request: not a crash. A
+            // malformed frame stays one, and the caller's own cancellation stays cancellation.
             if (ex is ObjectDisposedException) throw;
             throw PakWorkerProcess.Stopped(ex);
         }

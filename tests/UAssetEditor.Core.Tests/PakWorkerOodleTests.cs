@@ -45,16 +45,19 @@ public sealed class CleanWorkerFolder : IDisposable
     }
 
     /// <summary>
-    /// Deletes the folder where it can. It never throws: it runs while a failed test unwinds, and an error here would
-    /// replace that test's own failure. A test that needs the folder gone calls <see cref="Delete"/>.
+    /// For a test that calls <see cref="Delete"/> itself as its check: <see cref="Dispose"/> then never throws, because it
+    /// runs while a failed test unwinds and its error would replace that test's own failure.
     /// </summary>
+    public bool DisposeQuietly { get; init; }
+
+    /// <summary>Deletes the folder; it throws while a worker still holds a file there, so a fixture that leaks one fails, unless <see cref="DisposeQuietly"/>.</summary>
     public void Dispose()
     {
         try
         {
             Delete();
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (DisposeQuietly && ex is IOException or UnauthorizedAccessException)
         {
             TestContext.Current.SendDiagnosticMessage($"Could not delete the worker folder {_folder}: {ex.Message}");
         }

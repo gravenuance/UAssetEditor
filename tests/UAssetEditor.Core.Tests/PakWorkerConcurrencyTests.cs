@@ -172,7 +172,6 @@ public sealed class PakWorkerConcurrencyTests : IClassFixture<CleanWorkerFolder>
         var waited = await Assert.ThrowsAsync<ObjectDisposedException>(() => queued.WaitAsync(Timeout, ct));
         Assert.IsType<OperationCanceledException>(waited.InnerException, exactMatch: false);
     }
-
     [Fact]
     public async Task Send_WhenTheWorkerExitsBeforeConnecting_FailsPromptlyInsteadOfWaitingForever()
     {
