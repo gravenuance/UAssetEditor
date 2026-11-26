@@ -158,6 +158,22 @@ public sealed class PakWorkerConcurrencyTests : IClassFixture<CleanWorkerFolder>
     }
 
     [Fact]
+    public async Task Dispose_DuringRequests_EndsThemAsDisposedNotAsACrash()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await PakWorkerOodleTests.StateAsync(_worker); // connected, so the first request below takes the turn and goes onto the wire at once
+        var hang = new PakWorkerRequest { Opcode = PakWorkerOpcode.ReadEntry, EntryPath = "__TEST_HANG__" };
+        var inFlight = new PakWorkerClient(_worker).SendPooledAsync(hang, cancellationToken: ct);
+        var queued = new PakWorkerClient(_worker).SendPooledAsync(hang, cancellationToken: ct); // waits for the first one's turn
+
+        await Task.Run(_worker.Dispose, ct).WaitAsync(Timeout, ct);
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => inFlight.WaitAsync(Timeout, ct));
+        var waited = await Assert.ThrowsAsync<ObjectDisposedException>(() => queued.WaitAsync(Timeout, ct));
+        Assert.IsType<OperationCanceledException>(waited.InnerException, exactMatch: false);
+    }
+
+    [Fact]
     public async Task Send_WhenTheWorkerExitsBeforeConnecting_FailsPromptlyInsteadOfWaitingForever()
     {
         // whoami.exe takes the pipe name as a bad argument, prints an error and exits without ever connecting.

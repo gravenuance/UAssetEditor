@@ -38,7 +38,7 @@ public sealed class PakWorkerTeardownTests
             ReleaseAll(running);
 
             Assert.All(ended, e => Assert.True(e, "a worker was still ending when Dispose returned"));
-            folder.Dispose(); // throws UnauthorizedAccessException while a worker still maps repak_bind.dll
+            folder.Delete(); // throws UnauthorizedAccessException while a worker still maps repak_bind.dll
         }
         finally
         {
@@ -77,7 +77,7 @@ public sealed class PakWorkerTeardownTests
             ReleaseAll(crashed);
 
             Assert.True(ended, "the crashed worker was still ending when Dispose returned");
-            folder.Dispose(); // throws UnauthorizedAccessException while the crashed worker still maps repak_bind.dll
+            folder.Delete(); // throws UnauthorizedAccessException while the crashed worker still maps repak_bind.dll
         }
         finally
         {

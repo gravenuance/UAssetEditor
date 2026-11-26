@@ -22,7 +22,7 @@ namespace UAssetEditor.Core.AssetSources.PakWorker;
 /// </summary>
 public sealed partial class PakWorkerProcess : IDisposable
 {
-    /// <summary>When set to 1 in the worker's environment, it answers the test-only entries (<c>__TEST_CRASH__</c>, <c>__TEST_STATE__</c>); production workers never do.</summary>
+    /// <summary>When set to 1 in the worker's environment, it answers the test-only entries (<c>__TEST_CRASH__</c>, <c>__TEST_STATE__</c>, <c>__TEST_HANG__</c>); production workers never do.</summary>
     public const string TestHooksEnvironmentVariable = "UASSETEDITOR_PAKWORKER_TEST_HOOKS";
 
     /// <summary>How long a started worker has to connect (its own connect gives up after 10 s; the first start also unpacks the embedded exe).</summary>
@@ -93,7 +93,11 @@ public sealed partial class PakWorkerProcess : IDisposable
     /// <summary>1 once disposal has started; set by exchange, so disposal runs exactly once.</summary>
     private int _disposeState;
 
-    private bool IsDisposed => Volatile.Read(ref _disposeState) != 0;
+    /// <summary>True once disposal has started: a request that fails from then on was cut short by it, not by a crash.</summary>
+    internal bool IsDisposed => Volatile.Read(ref _disposeState) != 0;
+
+    /// <summary>What a wait, connect or request ended by disposal throws, carrying what ended it.</summary>
+    internal static ObjectDisposedException Stopped(Exception cause) => new("The pak worker was stopped.", cause);
 
     /// <summary>Waits for the pipe; dispose the result to let the next request through.</summary>
     internal async Task<IDisposable> AcquireRequestAsync(CancellationToken cancellationToken)
@@ -112,9 +116,9 @@ public sealed partial class PakWorkerProcess : IDisposable
         {
             await gate.WaitAsync(linked.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new ObjectDisposedException(nameof(PakWorkerProcess));
+            throw Stopped(ex);
         }
     }
 
@@ -222,11 +226,11 @@ public sealed partial class PakWorkerProcess : IDisposable
             {
                 await ConnectAsync(pipe, exited.Task, connectOrDispose.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
                 // Dispose cut the connect short and waits for this lock; the worker is stopped here or by it.
                 await CleanupAsync().ConfigureAwait(false);
-                throw new ObjectDisposedException(nameof(PakWorkerProcess));
+                throw Stopped(ex);
             }
             catch
             {
