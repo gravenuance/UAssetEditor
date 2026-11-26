@@ -1,3 +1,4 @@
+using UAssetAPI;
 using UAssetEditor.Core.AssetSources;
 using UAssetEditor.Core.Editing;
 
@@ -16,6 +17,13 @@ internal sealed record RepackNote(bool Failed, string AssetPath, string? Error)
 /// <summary>Repacks a pak into a new one, optionally applying a rule set to its assets first, for every front end.</summary>
 internal static class PakRepack
 {
+    /// <summary>
+    /// Opens <paramref name="pakPath"/> for a repack. Without <paramref name="rules"/> nothing is extracted up front, whatever the
+    /// pak's size, since <see cref="PakRepacker"/> reads each entry it was not handed from the pak itself; a rule set opens every asset.
+    /// </summary>
+    public static PakAssetSource OpenSource(string pakPath, byte[]? aesKey, PakVariant variant, RuleSet? rules, string? tempRoot = null) =>
+        new(pakPath, aesKey, rules == null ? 0 : PakAssetSource.LargePakThresholdBytes, tempRoot, variant);
+
     /// <summary>
     /// Applies <paramref name="rules"/> (when given) to <paramref name="source"/>'s assets, then writes every entry to <paramref name="output"/>.
     /// An asset the rules could not edit stops the repack before anything is written, since repacking anyway would ship it

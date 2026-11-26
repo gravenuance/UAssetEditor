@@ -1,6 +1,7 @@
 using System.Text;
 using UAssetEditor.Cli;
 using UAssetEditor.Core.AssetSources.IoStore;
+using UAssetEditor.Core.Editing;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Tooling;
 
@@ -100,6 +101,21 @@ public sealed class CliPakTests : IDisposable
         Assert.Equal("mine", File.ReadAllText(output));
         Assert.Equal(0, PakCommands.Repack(new ArgReader([pak.Path, output, "--overwrite"])));
         Assert.NotEqual("mine", File.ReadAllText(output));
+    }
+
+    [Fact]
+    public void Repack_WithoutARuleSet_ExtractsNothingUpFront_AndWithOneExtractsTheAssets()
+    {
+        using var pak = TestPaks.CreateTemp(new Dictionary<string, byte[]>
+        {
+            ["Content/A.uasset"] = [1, 2, 3],
+            ["Content/A.uexp"] = [4, 5, 6],
+        });
+
+        using (var plain = PakRepack.OpenSource(pak.Path, null, UAssetAPI.PakVariant.Standard, rules: null, tempRoot: _folder.Path))
+            Assert.Empty(Directory.EnumerateFiles(plain.TempExtractionDirectory, "*", SearchOption.AllDirectories));
+        using var edited = PakRepack.OpenSource(pak.Path, null, UAssetAPI.PakVariant.Standard, new RuleSet { Scope = new() }, tempRoot: _folder.Path);
+        Assert.NotEmpty(Directory.EnumerateFiles(edited.TempExtractionDirectory, "*", SearchOption.AllDirectories));
     }
 
     [Fact]
