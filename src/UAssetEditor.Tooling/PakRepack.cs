@@ -6,6 +6,13 @@ namespace UAssetEditor.Tooling;
 /// <summary>What a repack wrote: every entry of the source pak, and the edits a rule set made on the way.</summary>
 internal sealed record RepackOutcome(int Entries, int AssetsEdited, int Changes);
 
+/// <summary>An asset a repack's rule set could not edit (<see cref="Failed"/>), or could not open and packed unchanged.</summary>
+internal sealed record RepackNote(bool Failed, string AssetPath, string? Error)
+{
+    /// <summary>The note without its tag, which each front end writes its own way.</summary>
+    public string Detail => Failed ? $"{AssetPath}: {Error}" : $"{AssetPath}: could not open, packed unchanged: {Error}";
+}
+
 /// <summary>Repacks a pak into a new one, optionally applying a rule set to its assets first, for every front end.</summary>
 internal static class PakRepack
 {
@@ -20,7 +27,7 @@ internal static class PakRepack
         string output,
         RuleSet? rules,
         ArgReader openSettings,
-        Action<string> log,
+        Action<RepackNote> log,
         IProgress<(int Done, int Total)>? progress,
         CancellationToken cancellationToken)
     {
@@ -36,11 +43,11 @@ internal static class PakRepack
             var sets = await EditExecutor.ApplyAsync(
                 source, versions, rules, createBackup: false, backupFolder: null, editProgress, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-            foreach (var skipped in sets.Where(s => s.Skipped)) log($"Skipped {skipped.AssetPath}: could not open, packed unchanged: {skipped.Error}");
-            var failed = sets.Where(s => s.Failed).ToList();
-            foreach (var set in failed) log($"Failed {set.AssetPath}: {set.Error}");
+            foreach (var skipped in sets.Where(s => s.Skipped)) log(new RepackNote(Failed: false, skipped.AssetPath, skipped.Error));
+            var failed = sets.Where(s => s.Failed).Select(s => new RepackNote(Failed: true, s.AssetPath, s.Error)).ToList();
+            foreach (var note in failed) log(note);
             if (failed.Count > 0)
-                throw new ArgException($"{failed.Count} asset(s) failed to edit, so nothing was repacked. First: {failed[0].AssetPath}: {failed[0].Error}");
+                throw new ArgException($"{failed.Count} asset(s) failed to edit, so nothing was repacked. First: {failed[0].Detail}");
 
             edited = sets.Count(s => s.Changed && s.Changes.Count > 0);
             changes = sets.Sum(s => s.Changes.Count);

@@ -288,7 +288,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
             using var source = await Task.Run(() => new PakAssetSource(path, key, variant: settings.PakVariant), cancellationToken).ConfigureAwait(false);
             var log = new LogLines(MaxLogLines);
             var outcome = await PakRepack.RunAsync(
-                source, target, rules, settings.Args, log.Add, new ProgressSink(progress, "Edited assets"), cancellationToken).ConfigureAwait(false);
+                source, target, rules, settings.Args, note => log.Add($"{(note.Failed ? "Failed" : "Skipped")} {note.Detail}"), new ProgressSink(progress, "Edited assets"), cancellationToken).ConfigureAwait(false);
             return new RepackResult(path, target, outcome.Entries, outcome.AssetsEdited, outcome.Changes, log.ToList(), settings.Warnings());
         }, cancellationToken).ConfigureAwait(false);
     }

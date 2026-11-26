@@ -6,7 +6,7 @@ namespace UAssetEditor.Mcp.Tools;
 /// <summary>Reads the rule set argument of the ruleset tools and of repack.</summary>
 internal static class RulesetInput
 {
-    public const int MaxCharacters = RuleSets.MaxCharacters;
+    public const int MaxCharacters = 262_144;
 
     public const string Description =
         "The rule set: either its JSON text (starting with '{') or the absolute path of a .json file. Same document as the app's " +
@@ -20,6 +20,6 @@ internal static class RulesetInput
         var text = ToolInput.Required(ruleset, nameof(ruleset), MaxCharacters);
         return text.StartsWith('{')
             ? RuleSets.Parse(text, nameof(ruleset))
-            : RuleSets.Load(ToolPaths.ExistingFile(text, nameof(ruleset), ".json"), nameof(ruleset));
+            : RuleSets.Load(ToolPaths.ExistingFile(text, nameof(ruleset), ".json"), nameof(ruleset), MaxCharacters);
     }
 }

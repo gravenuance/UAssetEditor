@@ -207,7 +207,7 @@ static void PrintUsage()
           uacli batch <file-or-folder> --ruleset <ruleset.json> [--apply] [--backup]
               Run a full RuleSet (the same JSON the app's batch-edit tab saves/loads: setValue/numericAdjust/replaceText/removeProperty/
               addTag/removeTag/replaceReference/duplicateElement rules over a search Scope) across one asset or every asset under a folder.
-              Defaults to a dry-run preview; --apply actually writes. An asset that can't be opened prints SKIPPED; one whose edit or
+              A rule set with no rules is refused. Defaults to a dry-run preview; --apply actually writes. An asset that can't be opened prints SKIPPED; one whose edit or
               save fails prints FAILED (nothing of it is saved) and makes the run exit 1.
 
         Usmap store and game logs (switches go after the other arguments: a value-less switch before one would take it as its value).
@@ -277,7 +277,7 @@ static void PrintUsage()
               tens of GB and hundreds of thousands of entries, and the unfiltered run extracts all of it.
               Refuses, writing nothing, if an entry would replace an existing file, unless --overwrite.
 
-          uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>]
+          uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>] [--overwrite]
               Build a new archive from a loose folder: a legacy .pak if <output> ends in ".pak" (--mount defaults to "../../../<folderName>/",
               --pak-version defaults to V11), or an IoStore .utoc/.ucas pair via retoc if it ends in ".utoc" (needs --version, a UE4.25+ engine version).
               Refuses an output inside the source folder, and one whose files exist (the .ucas, and for rivals the .pak, too) unless --overwrite.
@@ -306,7 +306,7 @@ static void PrintUsage()
           uacli repack <pak> <output.pak> [--ruleset <ruleset.json>] [--aes <hex>] [--overwrite]
               Rebuild a .pak, optionally applying a RuleSet's edits first (same JSON as 'batch') - the pak counterpart to editing a loose
               file in place. Never writes over the source pak, and refuses an existing output unless --overwrite. If any asset's edit
-              fails, it prints Failed and nothing is repacked; assets that can't be opened print Skipped and are packed unchanged.
+              fails, it prints FAILED and nothing is repacked; assets that can't be opened print SKIPPED and are packed unchanged.
 
         Nothing is written to disk unless --save/--apply is passed (or for a pak-* command, unconditionally, since packing/repacking/converting IS the write);
         --backup copies the original file first ("<file>.bak" for single-file commands: the state before this save), and on the first

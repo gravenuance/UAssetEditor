@@ -50,12 +50,21 @@ public sealed class CliRuleSetTests : IDisposable
     }
 
     [Fact]
-    public void RuleSetFile_OverTheSizeLimit_IsRefusedUnread()
+    public void RuleSetFile_OverTheCallersLimit_IsRefusedUnread()
     {
-        var path = RuleSetFile("{" + new string(' ', RuleSets.MaxCharacters) + "}");
+        var path = RuleSetFile("{" + new string(' ', 100) + "}");
 
-        var ex = Assert.Throws<ArgException>(() => RuleSets.Load(path, "--ruleset"));
+        var ex = Assert.Throws<ArgException>(() => RuleSets.Load(path, "ruleset", maxBytes: 100));
 
-        Assert.Equal("--ruleset file is limited to 262144 bytes.", ex.Message);
+        Assert.Equal("ruleset file is limited to 100 bytes.", ex.Message);
+    }
+
+    [Fact]
+    public void Batch_TakesARuleSetFileOfAnySize()
+    {
+        var filler = string.Concat(Enumerable.Repeat("""{"text":"x"},""", 30_000));
+        var path = RuleSetFile($$"""{"scope":{"exportNameTerms":[{{filler}}{"text":"y"}]},"rules":[{"kind":"setValue","newValue":"1"}]}""");
+
+        Assert.Equal(0, Commands.Batch(new ArgReader([_folder, "--ruleset", path])));
     }
 }

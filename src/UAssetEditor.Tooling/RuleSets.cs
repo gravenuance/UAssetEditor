@@ -3,16 +3,13 @@ using UAssetEditor.Core.Editing;
 
 namespace UAssetEditor.Tooling;
 
-/// <summary>Reads a rule set (the JSON the app's batch-edit tab saves) for every front end, with the same limits and messages.</summary>
+/// <summary>Reads a rule set (the JSON the app's batch-edit tab saves) for every front end, with the same messages.</summary>
 internal static class RuleSets
 {
-    public const int MaxCharacters = 262_144;
-
     /// <summary>The rule set in <paramref name="json"/>; one with no rules is refused, since applying it would change nothing.</summary>
     public static RuleSet Parse(string json, string name)
     {
         ArgumentNullException.ThrowIfNull(json);
-        if (json.Length > MaxCharacters) throw new ArgException($"{name} is limited to {MaxCharacters} characters.");
         try
         {
             var parsed = JsonSerializer.Deserialize<RuleSet>(json, AssetIo.RuleSetJsonOptions)
@@ -25,13 +22,13 @@ internal static class RuleSets
         }
     }
 
-    /// <summary>The rule set in the file at <paramref name="path"/>.</summary>
-    public static RuleSet Load(string path, string name)
+    /// <summary>The rule set in the file at <paramref name="path"/>; a caller taking input it does not trust caps its size with <paramref name="maxBytes"/>.</summary>
+    public static RuleSet Load(string path, string name, long? maxBytes = null)
     {
         ArgumentNullException.ThrowIfNull(path);
         var file = new FileInfo(path);
         if (!file.Exists) throw new ArgException($"{name} not found: {path}");
-        if (file.Length > MaxCharacters) throw new ArgException($"{name} file is limited to {MaxCharacters} bytes.");
+        if (file.Length > maxBytes) throw new ArgException($"{name} file is limited to {maxBytes} bytes.");
         return Parse(File.ReadAllText(path), name);
     }
 }
