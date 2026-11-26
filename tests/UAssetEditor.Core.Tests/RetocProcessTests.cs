@@ -259,6 +259,42 @@ public class RetocProcessTests
     }
 
     [Fact]
+    public async Task ListAsync_ARelativePathStartingWithAHyphen_IsReadAsAPath_NotAnOption()
+    {
+        // retoc's parser (clap) reads "-name" as an unknown option and exits 2 before opening anything; a missing file is exit 1.
+        var relative = "-UAssetEditorTest_Retoc_Missing_" + Guid.NewGuid() + ".utoc";
+
+        var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
+            RetocProcess.ListAsync(relative, aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, exception.ExitCode);
+        Assert.Contains("failed to open file", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConvertToLegacyAsync_AFilterStartingWithAHyphen_ReachesRetocAsAFilter()
+    {
+        // `-f -x` is a parse error in retoc (exit 2, "unexpected argument '-x'"); the filter must reach it as a value.
+        var workDir = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_" + Guid.NewGuid());
+        Directory.CreateDirectory(workDir);
+        try
+        {
+            var pakPath = BuildLegacyTestPak(workDir);
+            var utocPath = Path.Combine(workDir, "test.utoc");
+            await RetocProcess.ConvertToZenAsync(pakPath, utocPath, "UE5_3", aesKey: null, cancellationToken: TestContext.Current.CancellationToken);
+
+            var exception = await Assert.ThrowsAsync<IoStoreConversionException>(() =>
+                RetocProcess.ConvertToLegacyAsync(utocPath, Path.Combine(workDir, "legacy_out"), ["-x"], aesKey: null, cancellationToken: TestContext.Current.CancellationToken));
+
+            Assert.Equal("No assets converted - see the log for retoc's reason.", exception.UserMessage);
+        }
+        finally
+        {
+            Directory.Delete(workDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ListAsync_OnFailure_KeepsTheAesKeyOutOfTheMessages()
     {
         var missingPath = Path.Combine(Path.GetTempPath(), "UAssetEditorTest_Retoc_Missing_" + Guid.NewGuid() + ".utoc");
