@@ -21,7 +21,7 @@ public sealed record RivalsLogDecodeResult(int Records, int InflateFailures, int
         if (StoppedAtOffset is { } offset)
             problems.Add($"stopped at 0x{offset:x}, which is not a whole record (truncated or damaged log); the rest was not decoded.");
         if (CutAtLimit is { } limit)
-            problems.Add($"stopped after {limit} bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.");
+            problems.Add($"stopped at the {limit}-byte limit on the text one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.");
         return problems;
     }
 }

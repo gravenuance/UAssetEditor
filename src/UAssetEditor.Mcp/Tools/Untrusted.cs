@@ -38,22 +38,28 @@ internal static class Untrusted
                 break;
             }
 
-            if (status != OperationStatus.Done || IsHidden(rune)) builder.Append(' ');
-            else builder.Append(units[..rune.EncodeToUtf16(units)]);
+            var shown = status == OperationStatus.Done && (IsJoiner(rune) ? JoinsTwoCharacters(builder, rest) : !IsHidden(rune));
+            if (shown) builder.Append(units[..rune.EncodeToUtf16(units)]);
+            else builder.Append(' ');
         }
 
         var cleaned = builder.ToString().TrimEnd();
         return cut ? cleaned + "..." : cleaned;
     }
 
-    private const int ZeroWidthNonJoiner = 0x200C;
-    private const int ZeroWidthJoiner = 0x200D;
+    private static bool IsJoiner(Rune rune) => rune.Value is 0x200C or 0x200D; // ZWNJ, ZWJ
 
-    private static bool IsHidden(Rune rune) =>
-        rune.Value is not (ZeroWidthNonJoiner or ZeroWidthJoiner)
-        && Rune.GetUnicodeCategory(rune) is
-            UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.PrivateUse
-            or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
+    // A joiner kept anywhere else would be an invisible difference between two values that look the same.
+    private static bool JoinsTwoCharacters(StringBuilder before, ReadOnlySpan<char> after)
+    {
+        if (before.Length == 0 || before[^1] == ' ') return false;
+        return Rune.DecodeFromUtf16(after, out var next, out _) == OperationStatus.Done
+            && !IsJoiner(next) && !IsHidden(next) && !Rune.IsWhiteSpace(next);
+    }
+
+    private static bool IsHidden(Rune rune) => Rune.GetUnicodeCategory(rune) is
+        UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.PrivateUse
+        or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
 
     /// <summary>Multi-line text with each line cleaned and cut to <paramref name="maxLineLength"/>, and the whole cut to
     /// <paramref name="maxTotal"/> characters.</summary>

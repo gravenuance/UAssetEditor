@@ -130,7 +130,7 @@ public class RivalsLogDecoderTests
 
         Assert.Equal(new string('a', 1000), Encoding.ASCII.GetString(output.ToArray()));
         Assert.Equal(new RivalsLogDecodeResult(1, 0, null, false, CutAtLimit: 1000), result);
-        Assert.Contains("stopped after 1000 bytes of text, the most one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
+        Assert.Contains("stopped at the 1000-byte limit on the text one log is decoded to; the rest of the records was not decoded, so a crash near the end may be missing.", result.Problems());
     }
 
     [Theory]

@@ -162,19 +162,32 @@ public sealed class BackupWriteTests : IDisposable
     }
 
     [Fact]
-    public void AStagedOrigBakCopy_LeftByAKilledFirstSave_IsSweptOnceItDuplicatesTheOrigBak_AndACutShortOneIsKept()
+    public void StagedOrigBakCopies_LeftByAKilledFirstSave_AreSwept_WhenABackupHoldsAllTheyHold()
     {
         // Killed after copying, before the move: the next save makes the same .orig.bak. Killed mid-copy: the copy is cut short.
         Leftover($"A.uasset.orig.bak.{StagingId}.tmp", "header v1", Old);
-        var cutShort = Leftover($"A.uexp.orig.bak.{StagingId}.tmp", "expo", Old);
+        Leftover($"A.uexp.orig.bak.{StagingId}.tmp", "expo", Old);
+        var other = Leftover($"A.uexp.orig.bak.{StagingId.Replace('0', '1')}.tmp", "exports v0", Old);
 
         var result = Save();
 
         Assert.True(result.Placed);
         Assert.Equal(
-            ["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak", Path.GetFileName(cutShort)],
+            ["A.uasset", "A.uasset.bak", "A.uasset.orig.bak", "A.uexp", "A.uexp.bak", "A.uexp.orig.bak", Path.GetFileName(other)],
             FileNames());
         Assert.Equal("exports v1", File.ReadAllText(_uexp + ".orig.bak"));
+    }
+
+    [Fact]
+    public void TheOrigBak_IsStampedWithTheSaveTime_SoNoOtherSavesSweepTakesItsStagingCopyForStale()
+    {
+        File.WriteAllText(_uasset + ".bak", "header v0");
+        File.SetLastWriteTimeUtc(_uasset + ".bak", Now - TimeSpan.FromDays(300));
+
+        Save();
+
+        Assert.Equal("header v0", File.ReadAllText(_uasset + ".orig.bak"));
+        Assert.Equal(Now, File.GetLastWriteTimeUtc(_uasset + ".orig.bak"));
     }
 
     [Fact]
