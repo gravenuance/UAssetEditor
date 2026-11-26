@@ -36,6 +36,56 @@ public sealed class CliPakTests : IDisposable
         Assert.Equal("new-b", File.ReadAllText(existing));
     }
 
+    private string SourceFolder()
+    {
+        var source = _folder.Combine("src");
+        Directory.CreateDirectory(Path.Combine(source, "Content"));
+        File.WriteAllText(Path.Combine(source, "Content", "A.txt"), "a");
+        return source;
+    }
+
+    [Fact]
+    public void Pack_ToAnExistingPak_RefusesItUnlessOverwriteIsPassed()
+    {
+        var source = SourceFolder();
+        var output = _folder.Combine("mod.pak");
+        File.WriteAllText(output, "mine");
+
+        var ex = Assert.Throws<ArgException>(() => PakCommands.Pack(new ArgReader([source, output])));
+
+        Assert.Equal($"--output already exists: {output}. Pass --overwrite to replace it, or choose another path.", ex.Message);
+        Assert.Equal("mine", File.ReadAllText(output));
+        Assert.Equal(0, PakCommands.Pack(new ArgReader([source, output, "--overwrite"])));
+        Assert.NotEqual("mine", File.ReadAllText(output));
+    }
+
+    [Theory]
+    [InlineData(null, ".ucas")]
+    [InlineData("rivals", ".ucas")]
+    [InlineData("rivals", ".pak")]
+    public void Pack_ToAUtoc_RefusesAnExistingFileOfTheContainer(string? game, string extension)
+    {
+        var source = SourceFolder();
+        var utoc = _folder.Combine("mod_9999999_P.utoc");
+        var companion = Path.ChangeExtension(utoc, extension);
+        File.WriteAllText(companion, "mine");
+        string[] gameArgs = game == null ? [] : ["--game", game];
+
+        var ex = Assert.Throws<ArgException>(() => PakCommands.Pack(new ArgReader([source, utoc, .. gameArgs, "--version", "VER_UE4_27"])));
+
+        Assert.Equal($"{companion} already exists. Pass --overwrite to replace the container's files.", ex.Message);
+        Assert.Equal("mine", File.ReadAllText(companion));
+    }
+    [Fact]
+    public void Pack_IntoItsOwnSourceFolder_IsRefused()
+    {
+        var source = SourceFolder();
+
+        var ex = Assert.Throws<ArgException>(() => PakCommands.Pack(new ArgReader([source, Path.Combine(source, "mod.pak")])));
+
+        Assert.Equal("--output must not be inside the source folder.", ex.Message);
+    }
+
     [Fact]
     public void Unpack_WithAFilter_ChecksOnlyTheEntriesItWouldWrite()
     {

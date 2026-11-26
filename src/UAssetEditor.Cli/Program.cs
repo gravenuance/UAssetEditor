@@ -280,6 +280,7 @@ static void PrintUsage()
           uacli pack <sourceFolder> <output> [--mount <point>] [--pak-version <v>] [--compression <name>] [--version <EngineVersion>] [--aes <hex>]
               Build a new archive from a loose folder: a legacy .pak if <output> ends in ".pak" (--mount defaults to "../../../<folderName>/",
               --pak-version defaults to V11), or an IoStore .utoc/.ucas pair via retoc if it ends in ".utoc" (needs --version, a UE4.25+ engine version).
+              Refuses an output inside the source folder, and one whose files exist (the .ucas, and for rivals the .pak, too) unless --overwrite.
               With --game rivals the .utoc output matches retoc-rivals' pack chunk for chunk, and these switches apply (after the positionals):
                 --obfuscate                               encrypt the container's data blocks, as retoc-rivals --obfuscate does
                 --kawaii-physics                          port legacy KawaiiPhysics anim nodes to the game's Chains layout (needs --usmap)

@@ -5,6 +5,7 @@ using UAssetEditor.Core.Tests;
 using UAssetEditor.Mcp.Hosting;
 using UAssetEditor.Mcp.Tests.Rig;
 using UAssetEditor.Mcp.Tools;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tests;
 
@@ -87,16 +88,16 @@ public sealed class HelperTests : IDisposable
     {
         var folder = _folder.Combine("mod");
 
-        Assert.Throws<McpException>(() => ToolPaths.RefuseInside(Path.Combine(folder, "out.pak"), folder, "output", "source"));
-        ToolPaths.RefuseInside(_folder.Combine("mod2", "out.pak"), folder, "output", "source");
-        ToolPaths.RefuseInside(folder, folder, "output", "source");
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseInside(Path.Combine(folder, "out.pak"), folder, "output", "source"));
+        OutputPaths.RefuseInside(_folder.Combine("mod2", "out.pak"), folder, "output", "source");
+        OutputPaths.RefuseInside(folder, folder, "output", "source");
     }
 
     [Fact]
     public void RefuseSame_ComparesFullPaths()
     {
-        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(_folder.Combine("a.pak"), _folder.Combine("a.pak"), "pak", "output"));
-        ToolPaths.RefuseSame(_folder.Combine("a.pak"), _folder.Combine("b.pak"), "pak", "output");
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseSame(_folder.Combine("a.pak"), _folder.Combine("a.pak"), "pak", "output"));
+        OutputPaths.RefuseSame(_folder.Combine("a.pak"), _folder.Combine("b.pak"), "pak", "output");
     }
 
     [Fact]
@@ -108,9 +109,9 @@ public sealed class HelperTests : IDisposable
         var link = _folder.Combine("link");
         _links.MakeJunction(link, real);
 
-        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(Path.Combine(real, "a.pak"), Path.Combine(link, "a.pak"), "pak", "output"));
-        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(Path.Combine(link, "a.pak"), Path.Combine(real, "A.PAK"), "pak", "output"));
-        ToolPaths.RefuseSame(Path.Combine(real, "a.pak"), Path.Combine(link, "b.pak"), "pak", "output");
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseSame(Path.Combine(real, "a.pak"), Path.Combine(link, "a.pak"), "pak", "output"));
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseSame(Path.Combine(link, "a.pak"), Path.Combine(real, "A.PAK"), "pak", "output"));
+        OutputPaths.RefuseSame(Path.Combine(real, "a.pak"), Path.Combine(link, "b.pak"), "pak", "output");
     }
 
     [Fact]
@@ -123,8 +124,8 @@ public sealed class HelperTests : IDisposable
         var copy = _folder.Combine("c.pak");
         File.Copy(pak, copy);
 
-        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(pak, hardLink, "pak", "output"));
-        ToolPaths.RefuseSame(pak, copy, "pak", "output");
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseSame(pak, hardLink, "pak", "output"));
+        OutputPaths.RefuseSame(pak, copy, "pak", "output");
     }
 
     [Fact]
@@ -134,7 +135,7 @@ public sealed class HelperTests : IDisposable
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, "a.pak"), "x");
 
-        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(Path.Combine(folder, "a.pak"), Path.Combine(TestLinks.ShortName(folder), "a.pak"), "pak", "output"));
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseSame(Path.Combine(folder, "a.pak"), Path.Combine(TestLinks.ShortName(folder), "a.pak"), "pak", "output"));
     }
 
     [Fact]
@@ -146,8 +147,8 @@ public sealed class HelperTests : IDisposable
         Directory.CreateDirectory(elsewhere);
         _links.MakeJunction(Path.Combine(elsewhere, "into"), folder);
 
-        Assert.Throws<McpException>(() => ToolPaths.RefuseInside(Path.Combine(elsewhere, "into", "out.pak"), folder, "output", "source"));
-        ToolPaths.RefuseInside(Path.Combine(elsewhere, "out.pak"), folder, "output", "source");
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseInside(Path.Combine(elsewhere, "into", "out.pak"), folder, "output", "source"));
+        OutputPaths.RefuseInside(Path.Combine(elsewhere, "out.pak"), folder, "output", "source");
     }
 
     [Fact]
@@ -159,8 +160,8 @@ public sealed class HelperTests : IDisposable
         _links.MakeFolderLink(second, first);
         var looped = Path.Combine(first, "a.uasset");
 
-        var inside = Assert.Throws<PathNotPlaceableException>(() => ToolPaths.RefuseInside(looped, _folder.Combine("mod"), "output", "source"));
-        var same = Assert.Throws<PathNotPlaceableException>(() => ToolPaths.RefuseSame(looped, _folder.Combine("b.pak"), "pak", "output"));
+        var inside = Assert.Throws<PathNotPlaceableException>(() => OutputPaths.RefuseInside(looped, _folder.Combine("mod"), "output", "source"));
+        var same = Assert.Throws<PathNotPlaceableException>(() => OutputPaths.RefuseSame(looped, _folder.Combine("b.pak"), "pak", "output"));
         var locked = await Assert.ThrowsAsync<PathNotPlaceableException>(() => PathLocks.RunAsync([looped], () => Task.FromResult(0), TestContext.Current.CancellationToken));
 
         Assert.All([inside, same, locked], error => Assert.Contains("Too many levels of links", error.Message, StringComparison.Ordinal));
@@ -172,8 +173,8 @@ public sealed class HelperTests : IDisposable
         if (!OperatingSystem.IsWindows()) return; // Windows is where a path can pass 32,767 characters
         var tooLong = Path.Combine(_folder.Path, new string('a', 40_000));
 
-        Assert.Throws<McpException>(() => ToolPaths.RefuseInside(tooLong, _folder.Combine("mod"), "output", "source"));
-        Assert.Throws<McpException>(() => ToolPaths.RefuseSame(tooLong, _folder.Combine("b.pak"), "pak", "output"));
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseInside(tooLong, _folder.Combine("mod"), "output", "source"));
+        Assert.Throws<ArgException>(() => OutputPaths.RefuseSame(tooLong, _folder.Combine("b.pak"), "pak", "output"));
     }
 
     // Untrusted / ToolInput

@@ -89,13 +89,18 @@ internal static class PakCommands
         var output = args.Positional(1, "output path");
         if (!Directory.Exists(sourceFolder)) throw new ArgException($"Folder not found: {sourceFolder}");
 
-        return Path.GetExtension(output).ToUpperInvariant() switch
+        Func<ArgReader, string, string, int> pack = Path.GetExtension(output).ToUpperInvariant() switch
         {
-            ".UTOC" => PackToIoStore(args, sourceFolder, output),
-            ".PAK" => PackToPak(args, sourceFolder, output),
+            ".UTOC" => PackToIoStore,
+            ".PAK" => PackToPak,
             _ => throw new ArgException($"--output must end in .pak or .utoc, not '{Path.GetExtension(output)}'."),
         };
+        // PakPacker writes the .pak in place, as retoc does the container's files.
+        PackOutputs.Refuse(sourceFolder, output, AssetIo.ResolveGame(args) == Game.MarvelRivals, args.Switch("overwrite"), pakIsStaged: false, PackNames);
+        return pack(args, sourceFolder, output);
     }
+
+    private static readonly PackNames PackNames = new("the source folder", "--output", "--overwrite");
 
     /// <summary>Valueless pack switches that only apply to a Marvel Rivals IoStore pack.</summary>
     private static readonly string[] RivalsPackSwitches = ["kawaii-physics", "patch-default-hidden-mats", "obfuscate"];

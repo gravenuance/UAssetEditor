@@ -1,5 +1,5 @@
 using ModelContextProtocol;
-using UAssetEditor.Core;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tools;
 
@@ -69,44 +69,8 @@ internal static class ToolPaths
         return RefuseExisting(path, name, overwrite, holdsFiles);
     }
 
-    /// <summary>Refuses <paramref name="candidate"/> when it lies inside <paramref name="folder"/>, so an output cannot end up in what it is built from.
-    /// Both are resolved first, so a link, junction or 8.3 name into the folder does not get round it.</summary>
-    public static void RefuseInside(string candidate, string folder, string candidateName, string folderName)
-    {
-        if (Placed(() => FinalPaths.IsInside(candidate, folder)))
-            throw new McpException($"{candidateName} must not be inside {folderName}.");
-    }
-
-    /// <summary>Refuses an output written in place (not staged and moved over it) when that write would change a file in
-    /// <paramref name="folder"/>: it lies inside, or is a hard link to a file there.</summary>
-    public static void RefuseWriteInto(string candidate, string folder, string candidateName, string folderName)
-    {
-        if (Placed(() => FinalPaths.ReachesInto(candidate, folder)))
-            throw new McpException($"{candidateName} must not be inside {folderName} or a hard link to a file in it.");
-    }
-
-    /// <summary>Refuses two paths that name the same file, however they are spelled: through a link or junction, by an 8.3
-    /// name, in another letter case, or as a hard link.</summary>
-    public static void RefuseSame(string first, string second, string firstName, string secondName)
-    {
-        if (Placed(() => FinalPaths.SameFile(first, second))) throw new McpException($"{firstName} and {secondName} are the same file.");
-    }
-
-    /// <summary><see cref="FinalPaths.Resolve"/> for a tool.</summary>
-    public static string Resolve(string path) => Placed(() => FinalPaths.Resolve(path));
-
-    // Wraps only the call itself. An unplaceable path is reported by ToolErrorFilter as it is; any other I/O failure of the resolution (a path too long) becomes a tool error here.
-    private static T Placed<T>(Func<T> resolve)
-    {
-        try
-        {
-            return resolve();
-        }
-        catch (IOException ex) when (ex is not PathNotPlaceableException)
-        {
-            throw new McpException(ex.Message, ex);
-        }
-    }
+    /// <summary>How the pack and convert tools name their arguments in the shared output checks.</summary>
+    public static readonly PackNames PackNames = new("sourceFolder", "output", "overwrite=true");
 
     private static string RefuseExisting(string path, string name, bool overwrite, bool exists) =>
         exists && !overwrite

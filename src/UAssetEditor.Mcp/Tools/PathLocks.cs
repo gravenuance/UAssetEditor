@@ -1,4 +1,5 @@
 using UAssetEditor.Core;
+using UAssetEditor.Tooling;
 
 namespace UAssetEditor.Mcp.Tools;
 
@@ -32,7 +33,7 @@ internal static class PathLocks
         // Resolved, so two names for one file (through a junction or an 8.3 name) share one lock; an existing file is also
         // locked by its file id, which its hard links share. The path stays locked too: a file created under it gets an id
         // only then, and a call that came first must still hold it.
-        var keys = paths.Select(ToolPaths.Resolve)
+        var keys = paths.Select(OutputPaths.Resolve)
             .SelectMany(path => FinalPaths.FileKey(path) is { } file ? [path, "file:" + file] : new[] { path })
             .Distinct(KeyComparison).Order(KeyComparison).ToList();
         var interested = new List<(string Key, Gate Gate)>();

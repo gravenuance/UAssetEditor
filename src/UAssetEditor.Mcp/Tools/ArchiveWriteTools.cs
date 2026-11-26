@@ -94,37 +94,16 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         ToolRuntime.RequireWindows("pack");
         var source = ToolPaths.ExistingFolder(sourceFolder, nameof(sourceFolder));
         var target = ToolPaths.NewFile(output, nameof(output), overwrite, ".pak", ".utoc");
-        ToolPaths.RefuseInside(target, source, nameof(output), nameof(sourceFolder));
         var isIoStore = string.Equals(Path.GetExtension(target), ".utoc", StringComparison.OrdinalIgnoreCase);
 
         var bitmaps = ToolInput.Optional(defaultHiddenMaterialBitmaps, nameof(defaultHiddenMaterialBitmaps), 200);
         var settings = OpenSettings.Create(store, game, engineVersion, usmap, aesKey: aesKey);
-        if (isIoStore)
-        {
-            RefuseExistingCompanions(target, settings.Game == Game.MarvelRivals, overwrite);
-            // retoc writes the container's files in place, so a hard link among them would write into the source.
-            ToolPaths.RefuseWriteInto(target, source, nameof(output), nameof(sourceFolder));
-            foreach (var companion in CompanionsOf(target, settings.Game == Game.MarvelRivals))
-                ToolPaths.RefuseWriteInto(companion, source, $"{nameof(output)}'s {Path.GetExtension(companion)}", nameof(sourceFolder));
-        }
+        PackOutputs.Refuse(source, target, settings.Game == Game.MarvelRivals, overwrite, pakIsStaged: true, ToolPaths.PackNames);
         var rivalsOnly = obfuscate || kawaiiPhysics || patchDefaultHiddenMats || bitmaps != null;
 
         return isIoStore
             ? await PackIoStoreAsync(source, target, settings, rivalsOnly, obfuscate, kawaiiPhysics, patchDefaultHiddenMats, bitmaps, progress, cancellationToken).ConfigureAwait(false)
             : await PackPakAsync(source, target, settings, mount, pakVersion, compression, rivalsOnly, progress, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>The .ucas beside a .utoc is part of the container, and so is the companion .pak a Marvel Rivals pack writes.</summary>
-    private static string[] CompanionsOf(string utoc, bool writesCompanionPak) =>
-        [.. (writesCompanionPak ? (string[])[".ucas", ".pak"] : [".ucas"]).Select(extension => Path.ChangeExtension(utoc, extension))];
-
-    private static void RefuseExistingCompanions(string utoc, bool writesCompanionPak, bool overwrite)
-    {
-        if (overwrite) return;
-        foreach (var path in CompanionsOf(utoc, writesCompanionPak))
-        {
-            if (File.Exists(path)) throw new McpException($"{path} already exists. Pass overwrite=true to replace the container's files.");
-        }
     }
 
     private async Task<PackResult> PackPakAsync(
@@ -245,8 +224,8 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         if (asPak)
         {
             // retoc writes the .pak while it reads the container, whose own files include a Marvel Rivals companion .pak.
-            foreach (var containerFile in (string[])[container, .. CompanionsOf(container, writesCompanionPak: true)])
-                ToolPaths.RefuseSame(target, containerFile, nameof(output), $"{nameof(utoc)}'s {Path.GetExtension(containerFile)}");
+            foreach (var containerFile in (string[])[container, .. PackOutputs.CompanionsOf(container, writesCompanionPak: true)])
+                OutputPaths.RefuseSame(target, containerFile, nameof(output), $"{nameof(utoc)}'s {Path.GetExtension(containerFile)}");
         }
         var filters = ToolInput.Optional(filter, nameof(filter), 20_000)
             ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
@@ -299,7 +278,7 @@ internal sealed partial class ArchiveWriteTools(MappingsStore store, ILogger<Arc
         ToolRuntime.RequireWindows("repack");
         var path = ToolPaths.ExistingFile(pak, nameof(pak), ".pak");
         var target = ToolPaths.NewFile(output, nameof(output), overwrite, ".pak");
-        ToolPaths.RefuseSame(path, target, nameof(pak), nameof(output));
+        OutputPaths.RefuseSame(path, target, nameof(pak), nameof(output));
         var rules = ToolInput.Optional(ruleset, nameof(ruleset), RulesetInput.MaxCharacters) is { } text ? RulesetInput.Load(text) : null;
         var settings = OpenSettings.Create(store, game, engineVersion, usmap, aesKey: aesKey);
         var key = settings.AesKey;
