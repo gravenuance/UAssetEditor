@@ -21,8 +21,11 @@ public sealed class OpenContentRefreshTests
         public IEnumerable<string> EnumerateAssetPaths() =>
             listingFails ? throw new IOException("the pak is gone") : ["good.uasset", "bad.uasset"];
 
+        public int Opens { get; private set; }
+
         public UAsset OpenAsset(string assetPath, EngineVersion engineVersion, Usmap? mappings, Game game)
         {
+            Opens++;
             if (assetPath != "good.uasset") throw new InvalidDataException("not a package");
             var asset = new UAsset(engineVersion);
             asset.ClearNameIndexList();
@@ -51,6 +54,19 @@ public sealed class OpenContentRefreshTests
         var row = Assert.Single(content.Results);
         Assert.Equal(("good.uasset", "Count", "5"), (row.AssetPath, row.PropertyPath, row.MatchedText));
         Assert.Equal("bad.uasset could not be shown again: not a package", content.Notice);
+    }
+
+    [Fact]
+    public async Task SeveralEntriesOfAnAssetThatCannotBeOpened_TryItOnce_AndNameItOnce()
+    {
+        var source = new Source();
+        OpenedScope[] opened = [new("bad.uasset", 0, null), new("bad.uasset", 1, null), new("bad.uasset", 0, "Count")];
+
+        var content = await OpenContentRefresh.RunAsync(new AssetWorkspace(source, new EngineVersionResolver()), null, opened, NullLogger.Instance);
+
+        Assert.Empty(content.Results);
+        Assert.Equal("bad.uasset could not be shown again: not a package", content.Notice);
+        Assert.Equal(1, source.Opens);
     }
 
     [Fact]
