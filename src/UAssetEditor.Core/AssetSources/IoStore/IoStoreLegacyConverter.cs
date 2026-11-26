@@ -31,6 +31,7 @@ public static class IoStoreLegacyConverter
         ArgumentNullException.ThrowIfNull(utocPath);
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(filters);
+        RefuseOwnPak(utocPath, output);
 
         using var scope = RetocLayerResolver.Resolve(utocPath, layer, paksFolder);
         if (scope.InputDirectory == utocPath)
@@ -57,10 +58,21 @@ public static class IoStoreLegacyConverter
 
         if (!prune)
             return new LegacyConversionResult(true, ownEntries.Count, [], BaseGameBulkKept: false);
-        if (string.Equals(Path.GetExtension(output), ".pak", StringComparison.OrdinalIgnoreCase))
+        if (IsPakOutput(output))
             return new LegacyConversionResult(true, ownEntries.Count, [], BaseGameBulkKept: true);
         return new LegacyConversionResult(true, ownEntries.Count, RemoveBulkFilesNotShipped(output, ownEntries), BaseGameBulkKept: false);
     }
+
+    // retoc reads a Marvel Rivals container's companion .pak while it writes a .pak output, so the two must not be one file
+    // (under another case or through a hard link either). uacli and MCP check this first, with their own argument names.
+    private static void RefuseOwnPak(string utocPath, string output)
+    {
+        if (!IsPakOutput(output)) return;
+        if (RetocProcess.CompanionsOf(utocPath, writesCompanionPak: true).Where(IsPakOutput).Any(own => FinalPaths.SameFile(output, own)))
+            throw new ArgumentException($"The output is the container's own .pak, which retoc reads while it writes: {output}. Choose another path.", nameof(output));
+    }
+
+    private static bool IsPakOutput(string path) => string.Equals(Path.GetExtension(path), ".pak", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Deletes each bulk file under <paramref name="outputDirectory"/> whose package is one of

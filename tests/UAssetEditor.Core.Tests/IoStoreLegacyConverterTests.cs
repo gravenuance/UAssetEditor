@@ -27,6 +27,23 @@ public sealed class IoStoreLegacyConverterTests : IDisposable
 
     private bool Exists(string relativePath) => File.Exists(Path.Combine(_output, relativePath));
 
+    // retoc reads a Marvel Rivals container's companion .pak while it writes the output, so the output must not be it.
+    [Theory]
+    [InlineData("Mod_P.pak")]
+    [InlineData("MOD_P.PAK")]
+    public async Task ConvertAsync_RefusesAPakOutputThatIsTheContainersOwnPak_BeforeTouchingIt(string outputName)
+    {
+        foreach (var file in (string[])["Mod_P.utoc", "Mod_P.ucas", "Mod_P.pak"]) Write(file);
+        var utoc = Path.Combine(_output, "Mod_P.utoc");
+
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => IoStoreLegacyConverter.ConvertAsync(
+            utoc, Path.Combine(_output, outputName), RetocLayer.Modded, [], aesKey: null, paksFolder: null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("output", refused.ParamName);
+        Assert.Contains("container's own .pak", refused.Message, StringComparison.Ordinal);
+        Assert.Equal("x", await File.ReadAllTextAsync(Path.Combine(_output, "Mod_P.pak"), TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public void RemoveBulkFilesNotShipped_DeletesBaseGameBulkOfAReplacedPackage()
     {
